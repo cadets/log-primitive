@@ -34,16 +34,15 @@
  *
  */
 
-#include "../headers/protocol.h"
-#include "../headers/protocol_common.h"
-#include "../headers/message.h"
-#include "../headers/caml_common.h"
-
 #include <string.h>
 #include <time.h>
 #include <stdio.h>
 #include <stdarg.h>
 
+#include "protocol.h"
+#include "protocol_common.h"
+#include "message.h"
+#include "caml_common.h"
 
 void build_req(struct RequestMessage* rq, enum request_type rt, int correlationId, char* clientId, va_list varlist){
 

@@ -41,12 +41,12 @@
 #include <string.h>
 #include <time.h>
 
-#include "../headers/caml_common.h"
-#include "../headers/protocol_common.h"
-#include "../headers/protocol.h"
-#include "../headers/protocol_parser.h"
-#include "../headers/protocol_encoder.h"
-#include "../headers/utils.h"
+#include "caml_common.h"
+#include "protocol_common.h"
+#include "protocol.h"
+#include "protocol_parser.h"
+#include "protocol_encoder.h"
+#include "utils.h"
 
 unsigned short PRIO_LOG = PRIO_HIGH; 
 extern int MTU;

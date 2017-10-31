@@ -82,8 +82,8 @@
 #include <string.h>
 #include <stdarg.h>
 
-#include "../headers/caml_common.h"
-#include "../headers/utils.h"
+#include "caml_common.h"
+#include "utils.h"
 
 segment* ptr_seg;
 

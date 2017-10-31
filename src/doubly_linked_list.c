@@ -39,9 +39,9 @@
 #include <stdarg.h>
 #include <string.h>
 
-#include "../headers/doubly_linked_list.h"
-#include "../headers/caml_common.h"
-#include "../headers/utils.h"
+#include "doubly_linked_list.h"
+#include "caml_common.h"
+#include "utils.h"
 
 extern mallocfunctiontype ilia_alloc;
 extern freefunctiontype ilia_free;

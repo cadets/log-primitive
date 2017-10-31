@@ -50,17 +50,17 @@
 #include <sys/poll.h>
 #include <stdarg.h>
 
-#include "../headers/utils.h"
-#include "../headers/message.h"
-#include "../headers/circular_queue.h"
-#include "../headers/doubly_linked_list.h"
-#include "../headers/binary_tree.h"
-#include "../headers/caml_common.h"
-#include "../headers/caml_client.h"
+#include "utils.h"
+#include "message.h"
+#include "circular_queue.h"
+#include "doubly_linked_list.h"
+#include "binary_tree.h"
+#include "caml_common.h"
+#include "caml_client.h"
 
-#include "../headers/protocol.h"
-#include "../headers/protocol_parser.h"
-#include "../headers/protocol_encoder.h"
+#include "protocol.h"
+#include "protocol_parser.h"
+#include "protocol_encoder.h"
 
 extern int NUM_NOTIFIERS; // Number of notifiers for the client.
 extern int NUM_READERS; // Number of readers for the client.

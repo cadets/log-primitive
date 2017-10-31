@@ -34,48 +34,46 @@
  *
  */
 
-#ifndef BT_H
-#define BT_H
+#ifndef _CAML_CLIENT_H
+#define _CAML_CLIENT_H
 
-#include "../headers/caml_common.h"
-#include "../headers/doubly_linked_list.h"
+#define MAX_SIZE_HOSTNAME 16
 
-struct bt_node{
+#include "pthread.h"
+#include "protocol.h"
+#include "protocol_common.h"
+#include "caml_common.h"
 
-    void *val;
-	DLLNode* me;
+static int NUM_NOTIFIERS = 5;
+static int NUM_READERS   = 1;
+static int REQUESTS_PER_NOTIFIER = 10;
+static int NODE_POOL_SIZE = 128; // number of maximum outstanding un-acked messages
 
-	int height;
-	correlationId_t key;
 
-    struct bt_node *left;
-    struct bt_node *right;
+struct notifier_argument{
+    int index;
+    pthread_t* tid;
+    struct client_configuration *config;
 
-    int should_resend;
-    unsigned long last_sent, resend_timeout;
+    ack_function on_ack;
+    response_function on_response;
 };
 
-typedef struct bt_node bt_node;
+struct reader_argument{
+    int index;
+    pthread_t* tid;
+    struct client_configuration *config;
 
-struct bt_holder{
-    bt_node* bt;
-    pthread_mutex_t mtx;
+    char hostname[MAX_SIZE_HOSTNAME];
+    int portnumber;
 };
 
-typedef struct bt_holder bt_holder;
 
-void init_bt_holder(struct bt_holder *h);
+typedef struct notifier_argument notifier_argument;
+typedef struct reader_argument reader_argument;
 
-bt_node* new_node(correlationId_t key, DLLNode** dnode, void *grq);
-bt_node* insert(bt_node *node, correlationId_t key, DLLNode** dnode, void *grq);
+void client_busyloop(const char *hostname, int portnumber, struct client_configuration* cc);
 
-bt_node *delete_node(bt_node *root, correlationId_t key);
-void print_bt(bt_node *root);
+int send_request(int server_id, enum request_type rt, int correlationId, char* clientId, int should_resend, int resend_timeout, ...);
 
-int height(bt_node* n);
-bt_node* search(bt_node* root, correlationId_t key);
-
-void lock_bth(struct bt_holder* bth);
-void ulock_bth(struct bt_holder* bth);
 #endif
-

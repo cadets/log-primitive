@@ -34,12 +34,12 @@
  *
  */
 
-#ifndef PROTOCOL_COMMON_H
-#define PROTOCOL_COMMON_H
+#ifndef _PROTOCOL_COMMON_H
+#define _PROTOCOL_COMMON_H
 
 #define MESSAGE_HOLDER_SIZE 1500
-#include "../headers/caml_common.h"
-#include "../headers/protocol.h"
+#include "caml_common.h"
+#include "protocol.h"
 
 static int MESSAGESETSIZE_FIELD_SIZE= 12;
 static int NUM_SOR_FIELD_SIZE= 12;

@@ -34,7 +34,11 @@
  *
  */
 
-#include "../headers/caml_common.h"
+#ifndef _CAML_BROKER_H
+#define _CAML_BROKER_H
+
+#include "caml_common.h"
 
 void broker_busyloop(int portnumber, const char* p_name, struct broker_configuration *conf);
 
+#endif

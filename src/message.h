@@ -34,53 +34,30 @@
  *
  */
 
-#ifndef CAML_COMMON_H
-#define CAML_COMMON_H
+#ifndef _MESSAGE_H
+#define _MESSAGE_H
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include "../headers/protocol.h" 
+#include "protocol.h"
 
-static int MAX_NUM_REQUESTS_PER_PROCESSOR  = 128; // Maximum outstanding requests per processor.
-static int NUM_PROCESSORS                  = 10;   // Number of processors.
-static int MAX_NUM_RESPONSES_PER_PROCESSOR = 128; // Maximum outstanding responses per processor.
-static int CONNECTIONS_PER_PROCESSOR       = 10; // Number of connections per processor.
-static int MAX_NUM_UNFSYNCED = 20; // Maximum number of unfsynced inserts
+static int      clientId_field_size = 4;
+static int   overall_msg_field_size = 4;
+static int correlationId_field_size = 4;
+static int          type_field_size = 3;
 
-typedef void* (*mallocfunctiontype)(unsigned long);
-typedef void (*freefunctiontype)(void*);
+// Insert request variables.
+static int           crc_field_size = 20;
+static int           msg_field_size = 4;
 
-typedef void (*ack_function)(unsigned long);
-typedef void (*response_function)(struct RequestMessage *rm, struct ResponseMessage *rs);
+static int MTU = 2000;
+static int MSG_POOL_SIZE = 16;
 
-static mallocfunctiontype ilia_alloc = &malloc;
-static freefunctiontype ilia_free = &free;
+unsigned long get_crc(char* text_message, int message_size);
+void get_val(char** saveto, char* beg, int field_size);
+int get_int(char* beg, int field_size);
+long get_long(char* beg, int field_size);
 
-typedef int correlationId_t;
+int read_msg(int fd, char** saveto);
 
-enum broker_confs{
-    BROKER_SEND_ACKS= 1 << 1,
-    BROKER_FSYNC_ALWAYS= 1 << 2,
-};
+int wrap_with_size(struct ResponseMessage* rm, char** buf, char* send_out_buf, enum request_type rt);
 
-struct broker_configuration{
-    int fsync_thread_sleep_length;
-    int processor_thread_sleep_length;
-    int val;
-};
-
-struct client_configuration{
-    int to_resend;
-    int resender_thread_sleep_length;
-    int request_notifier_thread_sleep_length;
-
-    int reconn_timeout;
-    int poll_timeout;
-
-    ack_function on_ack;
-    response_function on_response;
-};
-
-void print_configuration(struct broker_configuration* bc);
 #endif

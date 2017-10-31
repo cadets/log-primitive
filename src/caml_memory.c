@@ -34,5 +34,5 @@
  *
  */
 
-#include "../headers/caml_memory.h"
+#include "caml_memory.h"
 

@@ -34,11 +34,12 @@
  *
  */
 
-#ifndef PROTOCOL_PARSER_H
-#define PROTOCOL_PARSER_H
-#include "../headers/message.h"
-#include "../headers/protocol.h"
-#include "../headers/protocol_common.h"
+#ifndef _PROTOCOL_ENCODER_H
+#define _PROTOCOL_ENCODER_H
+
+#include "message.h"
+#include "protocol.h"
+#include "protocol_common.h"
 #include <strings.h>
 #include <stdio.h>
 
@@ -137,45 +138,44 @@ extern int OFFSET_FETCH_RESPONSE_SIZE_FIELD_SIZE;
 extern int PARTITIONERRORCODE_FIELD_SIZE;
 extern int PORT_FIELD_SIZE;
 
-int parse_message(struct Message* inp, char *beg);
-int parse_messagesetelement(struct MessageSetElement* inp, char *beg);
-int parse_messageset(struct MessageSet* inp, char *beg);
-int parse_topicname(struct TopicName* inp, char *beg);
-int parse_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp, char *beg);
-int parse_metadatarequest(struct MetadataRequest* inp, char *beg);
-int parse_subsubproducerequest(struct SubSubProduceRequest* inp, char *beg);
-int parse_subproducerequest(struct SubProduceRequest* inp, char *beg);
-int parse_producerequest(struct ProduceRequest* inp, char *beg);
-int parse_fetchrequest(struct FetchRequest* inp, char *beg);
-int parse_offsetrequest(struct OffsetRequest* inp, char *beg);
-int parse_offsetcommitrequest(struct OffsetCommitRequest* inp, char *beg);
-int parse_offsetfetchrequest(struct OffsetFetchRequest* inp, char *beg);
-int parse_reqmessage(union ReqMessage* inp, char *beg, enum request_type rt);
-int parse_requestmessage(struct RequestMessage* inp, char *beg);
-int parse_broker(struct Broker* inp, char *beg);
-int parse_replica(struct Replica* inp, char *beg);
-int parse_isr(struct Isr* inp, char *beg);
-int parse_partitionmetadata(struct PartitionMetadata* inp, char *beg);
-int parse_topicmetadata(struct TopicMetadata* inp, char *beg);
-int parse_metadataresponse(struct MetadataResponse* inp, char *beg);
-int parse_subsubproduceresponse(struct SubSubProduceResponse* inp, char *beg);
-int parse_subproduceresponse(struct SubProduceResponse* inp, char *beg);
-int parse_produceresponse(struct ProduceResponse* inp, char *beg);
-int parse_subsubfetchresponse(struct subSubFetchResponse* inp, char *beg);
-int parse_subfetchresponse(struct subFetchResponse* inp, char *beg);
-int parse_fetchresponse(struct FetchResponse* inp, char *beg);
-int parse_offset(struct Offset* inp, char *beg);
-int parse_partitionoffsets(struct PartitionOffsets* inp, char *beg);
-int parse_suboffsetresponse(struct subOffsetResponse* inp, char *beg);
-int parse_offsetresponse(struct OffsetResponse* inp, char *beg);
-int parse_groupcoordinatorresponse(struct GroupCoordinatorResponse* inp, char *beg);
-int parse_subsuboffsetcommitresponse(struct subSubOffsetCommitResponse* inp, char *beg);
-int parse_suboffsetcommitresponse(struct subOffsetCommitResponse* inp, char *beg);
-int parse_offsetcommitresponse(struct OffsetCommitResponse* inp, char *beg);
-int parse_subsuboffsetfetchresponse(struct subSubOffsetFetchResponse* inp, char *beg);
-int parse_suboffsetfetchresponse(struct subOffsetFetchResponse* inp, char *beg);
-int parse_offsetfetchresponse(struct OffsetFetchResponse* inp, char *beg);
-int parse_resmessage(union ResMessage* inp, char *beg);
-int parse_responsemessage(struct ResponseMessage* inp, char *beg, enum response_type rt);
-enum request_type get_apikey(char* beg);
+int encode_message(struct Message* inp, char** st);
+int encode_messagesetelement(struct MessageSetElement* inp, char** st);
+int encode_messageset(struct MessageSet* inp, char** st);
+int encode_topicname(struct TopicName* inp, char** st);
+int encode_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp, char** st);
+int encode_metadatarequest(struct MetadataRequest* inp, char** st);
+int encode_subsubproducerequest(struct SubSubProduceRequest* inp, char** st);
+int encode_subproducerequest(struct SubProduceRequest* inp, char** st);
+int encode_producerequest(struct ProduceRequest* inp, char** st);
+int encode_fetchrequest(struct FetchRequest* inp, char** st);
+int encode_offsetrequest(struct OffsetRequest* inp, char** st);
+int encode_offsetcommitrequest(struct OffsetCommitRequest* inp, char** st);
+int encode_offsetfetchrequest(struct OffsetFetchRequest* inp, char** st);
+int encode_reqmessage(union ReqMessage* inp, char** st, enum request_type rt);
+int encode_requestmessage(struct RequestMessage* inp, char** st);
+int encode_broker(struct Broker* inp, char** st);
+int encode_replica(struct Replica* inp, char** st);
+int encode_isr(struct Isr* inp, char** st);
+int encode_partitionmetadata(struct PartitionMetadata* inp, char** st);
+int encode_topicmetadata(struct TopicMetadata* inp, char** st);
+int encode_metadataresponse(struct MetadataResponse* inp, char** st);
+int encode_subsubproduceresponse(struct SubSubProduceResponse* inp, char** st);
+int encode_subproduceresponse(struct SubProduceResponse* inp, char** st);
+int encode_produceresponse(struct ProduceResponse* inp, char** st);
+int encode_subsubfetchresponse(struct subSubFetchResponse* inp, char** st);
+int encode_subfetchresponse(struct subFetchResponse* inp, char** st);
+int encode_fetchresponse(struct FetchResponse* inp, char** st);
+int encode_offset(struct Offset* inp, char** st);
+int encode_partitionoffsets(struct PartitionOffsets* inp, char** st);
+int encode_suboffsetresponse(struct subOffsetResponse* inp, char** st);
+int encode_offsetresponse(struct OffsetResponse* inp, char** st);
+int encode_groupcoordinatorresponse(struct GroupCoordinatorResponse* inp, char** st);
+int encode_subsuboffsetcommitresponse(struct subSubOffsetCommitResponse* inp, char** st);
+int encode_suboffsetcommitresponse(struct subOffsetCommitResponse* inp, char** st);
+int encode_offsetcommitresponse(struct OffsetCommitResponse* inp, char** st);
+int encode_subsuboffsetfetchresponse(struct subSubOffsetFetchResponse* inp, char** st);
+int encode_suboffsetfetchresponse(struct subOffsetFetchResponse* inp, char** st);
+int encode_offsetfetchresponse(struct OffsetFetchResponse* inp, char** st);
+int encode_resmessage(union ResMessage* inp, char** st);
+int encode_responsemessage(struct ResponseMessage* inp, char** st, enum response_type rt);
 #endif

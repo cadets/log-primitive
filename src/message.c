@@ -41,11 +41,11 @@
 #include <string.h>
 #include <sys/socket.h>
 
-#include "../headers/message.h"
-#include "../headers/protocol.h"
-#include "../headers/protocol_common.h"
-#include "../headers/protocol_encoder.h"
-#include "../headers/utils.h"
+#include "message.h"
+#include "protocol.h"
+#include "protocol_common.h"
+#include "protocol_encoder.h"
+#include "utils.h"
 
 extern segment ptr_seg;
 

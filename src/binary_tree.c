@@ -36,9 +36,9 @@
 
 #include <pthread.h>
 
-#include "../headers/binary_tree.h"
-#include "../headers/doubly_linked_list.h"
-#include "../headers/caml_common.h"
+#include "binary_tree.h"
+#include "doubly_linked_list.h"
+#include "caml_common.h"
 
 int height(bt_node* n){
 	if(!n) return 0;

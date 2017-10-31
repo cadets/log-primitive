@@ -36,10 +36,10 @@
 
 #include <unistd.h>
 
-#include "../headers/caml_client.h"
-#include "../headers/caml_common.h"
-#include "../headers/utils.h"
-#include "../headers/protocol.h"
+#include "caml_client.h"
+#include "caml_common.h"
+#include "utils.h"
+#include "protocol.h"
 
 
 void on_ack(unsigned long correlationId){

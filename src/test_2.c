@@ -37,11 +37,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../headers/protocol.h"
-#include "../headers/protocol_common.h"
-#include "../headers/protocol_parser.h"
-#include "../headers/utils.h"
-#include "../headers/doubly_linked_list.h"
+#include "protocol.h"
+#include "protocol_common.h"
+#include "protocol_parser.h"
+#include "utils.h"
+#include "doubly_linked_list.h"
 
 int main(){
 

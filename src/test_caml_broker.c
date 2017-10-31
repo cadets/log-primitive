@@ -34,8 +34,8 @@
  *
  */
 
-#include "../headers/caml_broker.h"
-#include "../headers/caml_common.h"
+#include "caml_broker.h"
+#include "caml_common.h"
 
 int main(){
 

@@ -38,9 +38,10 @@
 
 #include <string.h>
 #include <stdio.h>
-#include "../headers/circular_queue.h"
-#include "../headers/caml_common.h"
-#include "../headers/utils.h"
+
+#include "circular_queue.h"
+#include "caml_common.h"
+#include "utils.h"
 
 extern mallocfunctiontype ilia_alloc;
 extern freefunctiontype ilia_free;

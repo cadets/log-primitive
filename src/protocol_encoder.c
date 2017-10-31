@@ -34,12 +34,12 @@
  *
  */
 
-#include "../headers/message.h"
-#include "../headers/protocol.h"
-#include "../headers/protocol_common.h"
 #include <string.h>
-
 #include <stdio.h>
+
+#include "message.h"
+#include "protocol.h"
+#include "protocol_common.h"
 
 extern int MESSAGESETSIZE_FIELD_SIZE;
 extern int NUM_SOR_FIELD_SIZE;

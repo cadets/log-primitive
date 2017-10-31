@@ -34,44 +34,80 @@
  *
  */
 
-#ifndef CAML_CLIENT_H
-#define CAML_CLIENT_H
-#define MAX_SIZE_HOSTNAME 16
+// The header file with the used utilities
 
-#include "pthread.h"
-#include "../headers/protocol.h"
-#include "../headers/protocol_common.h"
-#include "../headers/caml_common.h"
+#ifndef _UTILS_H
+#define _UTILS_H
 
-static int NUM_NOTIFIERS = 5;
-static int NUM_READERS   = 1;
-static int REQUESTS_PER_NOTIFIER = 10;
-static int NODE_POOL_SIZE = 128; // number of maximum outstanding un-acked messages
+#include <pthread.h>
+#include <dirent.h>
+#include "protocol_common.h"
+
+#define MAX_FILENAME_SIZE 30
 
 
-struct notifier_argument{
-    int index;
-    pthread_t* tid;
-    struct client_configuration *config;
+static int index_size_entry = 8;
+static int log_size_entry = 8;
+static int bytes_per_index_entry = 17;//index_size_entry + log_size_entry + 1;
+static int segments_per_partition = 64;
 
-    ack_function on_ack;
-    response_function on_response;
-};
-
-struct reader_argument{
-    int index;
-    pthread_t* tid;
-    struct client_configuration *config;
-
-    char hostname[MAX_SIZE_HOSTNAME];
-    int portnumber;
+enum topic_status{
+	UNKNOWN_TOPIC = 1 << 1,
+	LEADER_NOT_AVAILABLE = 1 << 2,
+	INVALID_TOPIC = 1 << 3,
+	TOPIC_AUTHORIZATION_FAILED = 1 << 4
 };
 
 
-typedef struct notifier_argument notifier_argument;
-typedef struct reader_argument reader_argument;
+struct segment{
+    // Maybe split into single seeker and single inserter? That way one should be able to insert and get silmultaniously
+    int _log;
+    int _index;
 
-void client_busyloop(const char *hostname, int portnumber, struct client_configuration* cc);
+    int log_position; // Current position in the log
+    int index_position; // Current offset position in the log
 
-int send_request(int server_id, enum request_type rt, int correlationId, char* clientId, int should_resend, int resend_timeout, ...);
+    pthread_mutex_t mtx;
+};
+
+typedef struct segment segment;
+
+struct partition{
+    struct partition* active_segment;
+    char* id;
+};
+
+struct utils_config{
+    char topics_folder[MAX_FILENAME_SIZE];
+};
+
+
+typedef struct partition partition;
+
+int alloc_big_file(int fd, long int offset, long int length);
+
+//Managing partitions
+int make_folder(const char* partition_name);
+int del_folder(const char* partition_name);
+
+// Managing segments
+segment* make_segment(long int start_offset, long int length, const char* partition_name);
+void close_segment(segment* s);
+
+// Managing messages
+int insert_message(segment* as, char* message, int msg_size);
+
+int get_message_by_offset(segment* as, int offset, void* saveto);
+int remove_directory(const char *path);
+
+#define PRIO_HIGH   1 << 1
+#define PRIO_NORMAL 1 << 2
+#define PRIO_LOW    1 << 3
+
+extern unsigned short PRIO_LOG;
+
+void debug(int priority, const char* format, ...);
+
+void lock_seg(struct segment* seg);
+void ulock_seg(struct segment* seg);
 #endif

@@ -34,8 +34,8 @@
  *
  */
 
-#ifndef PROTOCOL_H
-#define PROTOCOL_H
+#ifndef _PROTOCOL_H
+#define _PROTOCOL_H
 
 #define CLIENT_ID_SIZE 12
 #define KEY_SIZE 12

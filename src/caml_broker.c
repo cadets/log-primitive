@@ -49,17 +49,17 @@
 #include <strings.h>
 #include <sys/poll.h>
 
-#include "../headers/utils.h"
-#include "../headers/message.h"
-#include "../headers/processor.h"
-#include "../headers/protocol.h"
-#include "../headers/circular_queue.h"
-#include "../headers/doubly_linked_list.h"
-#include "../headers/caml_common.h"
-#include "../headers/caml_broker.h"
-#include "../headers/protocol.h"
-#include "../headers/protocol_parser.h"
-#include "../headers/protocol_encoder.h"
+#include "utils.h"
+#include "message.h"
+#include "processor.h"
+#include "protocol.h"
+#include "circular_queue.h"
+#include "doubly_linked_list.h"
+#include "caml_common.h"
+#include "caml_broker.h"
+#include "protocol.h"
+#include "protocol_parser.h"
+#include "protocol_encoder.h"
 
 extern int MAX_NUM_REQUESTS_PER_PROCESSOR; // Maximum outstanding requests per processor.
 extern int NUM_PROCESSORS; // Number of processors.

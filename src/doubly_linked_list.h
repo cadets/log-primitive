@@ -34,29 +34,45 @@
  *
  */
 
-#ifndef MESSAGE_H
-#define MESSAGE_H
-#include "../headers/protocol.h"
+#ifndef _DOUBLY_LINKED_LIST_H
+#define _DOUBLY_LINKED_LIST_H
 
-static int      clientId_field_size = 4;
-static int   overall_msg_field_size = 4;
-static int correlationId_field_size = 4;
-static int          type_field_size = 3;
+#include <stddef.h>
+#include <pthread.h>
 
-// Insert request variables.
-static int           crc_field_size = 20;
-static int           msg_field_size = 4;
+#include "utils.h"
 
-static int MTU = 2000;
-static int MSG_POOL_SIZE = 16;
+struct DLLNode{
+  void* val;
+  struct DLLNode *next;
+  struct DLLNode *prev;
+  int fd;
+};
 
-unsigned long get_crc(char* text_message, int message_size);
-void get_val(char** saveto, char* beg, int field_size);
-int get_int(char* beg, int field_size);
-long get_long(char* beg, int field_size);
+typedef struct DLLNode DLLNode;
 
-int read_msg(int fd, char** saveto);
+struct DLL{
+    int cur_num;
+    DLLNode *head;
+    DLLNode *last_valid;
+    size_t elem_size;
+    pthread_mutex_t mtx;
+};
 
-int wrap_with_size(struct ResponseMessage* rm, char** buf, char* send_out_buf, enum request_type rt);
+typedef struct DLL DLL;
+
+DLLNode* append_to_dll(DLL* dll, void* val, int val_size);
+void remove_from_dll(DLL* dll, DLLNode* ppcn);
+void print_dll(DLL* dll);
+DLL* allocate_dlls_per_num_processors(int top_arr_size, int low_arr_size);
+
+void preallocate_with(DLL* mdll, int top_arr_size, int low_arr_size, size_t alloc_size);
+DLLNode* borrow(DLL* pdll);
+void returnObj(DLL* pdll, DLLNode* pcn);
+void ulock_dll(DLL* pdll);
+void lock_dll(DLL* pdll);
+void lretu_dll(DLL* pool, DLLNode* obj);
+DLLNode* lboru_dll(DLL* pool);
+int lboru_dlls(DLLNode** nodes, int num_nodes, ...);
 
 #endif
