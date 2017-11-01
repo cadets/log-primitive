@@ -40,42 +40,38 @@
 #include "caml_common.h"
 #include "doubly_linked_list.h"
 
-struct bt_node{
-
-    void *val;
-	DLLNode* me;
-
+struct bt_node {
+	void *val;
+	DLLNode *me;
 	int height;
 	correlationId_t key;
-
-    struct bt_node *left;
-    struct bt_node *right;
-
-    int should_resend;
-    unsigned long last_sent, resend_timeout;
+	struct bt_node *left;
+	struct bt_node *right;
+	int should_resend;
+	unsigned long last_sent;
+	unsigned long resend_timeout;
 };
-
 typedef struct bt_node bt_node;
 
 struct bt_holder{
-    bt_node* bt;
-    pthread_mutex_t mtx;
+	bt_node *bt;
+	pthread_mutex_t mtx;
 };
-
 typedef struct bt_holder bt_holder;
 
-void init_bt_holder(struct bt_holder *h);
+extern void init_bt_holder(struct bt_holder *h);
 
-bt_node* new_node(correlationId_t key, DLLNode** dnode, void *grq);
-bt_node* insert(bt_node *node, correlationId_t key, DLLNode** dnode, void *grq);
+extern bt_node* new_node(correlationId_t key, DLLNode **dnode, void *grq);
+extern bt_node* insert(bt_node *node, correlationId_t key, DLLNode **dnode,
+	void *grq);
 
-bt_node *delete_node(bt_node *root, correlationId_t key);
-void print_bt(bt_node *root);
+extern bt_node * delete_node(bt_node *root, correlationId_t key);
+extern void print_bt(bt_node *root);
 
-int height(bt_node* n);
-bt_node* search(bt_node* root, correlationId_t key);
+extern int height(bt_node* n);
+extern bt_node* search(bt_node* root, correlationId_t key);
 
-void lock_bth(struct bt_holder* bth);
-void ulock_bth(struct bt_holder* bth);
+extern void lock_bth(struct bt_holder* bth);
+extern void ulock_bth(struct bt_holder* bth);
 
 #endif

@@ -40,8 +40,6 @@
 #include "message.h"
 #include "protocol.h"
 #include "protocol_common.h"
-#include <strings.h>
-#include <stdio.h>
 
 extern int MESSAGESETSIZE_FIELD_SIZE;
 extern int NUM_SOR_FIELD_SIZE;
@@ -138,45 +136,60 @@ extern int OFFSET_FETCH_RESPONSE_SIZE_FIELD_SIZE;
 extern int PARTITIONERRORCODE_FIELD_SIZE;
 extern int PORT_FIELD_SIZE;
 
-int parse_message(struct Message* inp, char *beg);
-int parse_messagesetelement(struct MessageSetElement* inp, char *beg);
-int parse_messageset(struct MessageSet* inp, char *beg);
-int parse_topicname(struct TopicName* inp, char *beg);
-int parse_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp, char *beg);
-int parse_metadatarequest(struct MetadataRequest* inp, char *beg);
-int parse_subsubproducerequest(struct SubSubProduceRequest* inp, char *beg);
-int parse_subproducerequest(struct SubProduceRequest* inp, char *beg);
-int parse_producerequest(struct ProduceRequest* inp, char *beg);
-int parse_fetchrequest(struct FetchRequest* inp, char *beg);
-int parse_offsetrequest(struct OffsetRequest* inp, char *beg);
-int parse_offsetcommitrequest(struct OffsetCommitRequest* inp, char *beg);
-int parse_offsetfetchrequest(struct OffsetFetchRequest* inp, char *beg);
-int parse_reqmessage(union ReqMessage* inp, char *beg, enum request_type rt);
-int parse_requestmessage(struct RequestMessage* inp, char *beg);
-int parse_broker(struct Broker* inp, char *beg);
-int parse_replica(struct Replica* inp, char *beg);
-int parse_isr(struct Isr* inp, char *beg);
-int parse_partitionmetadata(struct PartitionMetadata* inp, char *beg);
-int parse_topicmetadata(struct TopicMetadata* inp, char *beg);
-int parse_metadataresponse(struct MetadataResponse* inp, char *beg);
-int parse_subsubproduceresponse(struct SubSubProduceResponse* inp, char *beg);
-int parse_subproduceresponse(struct SubProduceResponse* inp, char *beg);
-int parse_produceresponse(struct ProduceResponse* inp, char *beg);
-int parse_subsubfetchresponse(struct subSubFetchResponse* inp, char *beg);
-int parse_subfetchresponse(struct subFetchResponse* inp, char *beg);
-int parse_fetchresponse(struct FetchResponse* inp, char *beg);
-int parse_offset(struct Offset* inp, char *beg);
-int parse_partitionoffsets(struct PartitionOffsets* inp, char *beg);
-int parse_suboffsetresponse(struct subOffsetResponse* inp, char *beg);
-int parse_offsetresponse(struct OffsetResponse* inp, char *beg);
-int parse_groupcoordinatorresponse(struct GroupCoordinatorResponse* inp, char *beg);
-int parse_subsuboffsetcommitresponse(struct subSubOffsetCommitResponse* inp, char *beg);
-int parse_suboffsetcommitresponse(struct subOffsetCommitResponse* inp, char *beg);
-int parse_offsetcommitresponse(struct OffsetCommitResponse* inp, char *beg);
-int parse_subsuboffsetfetchresponse(struct subSubOffsetFetchResponse* inp, char *beg);
-int parse_suboffsetfetchresponse(struct subOffsetFetchResponse* inp, char *beg);
-int parse_offsetfetchresponse(struct OffsetFetchResponse* inp, char *beg);
-int parse_resmessage(union ResMessage* inp, char *beg);
-int parse_responsemessage(struct ResponseMessage* inp, char *beg, enum response_type rt);
-enum request_type get_apikey(char* beg);
+extern int parse_message(struct Message* inp, char *beg);
+extern int parse_messagesetelement(struct MessageSetElement* inp, char *beg);
+extern int parse_messageset(struct MessageSet* inp, char *beg);
+extern int parse_topicname(struct TopicName* inp, char *beg);
+extern int parse_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp,
+	char *beg);
+extern int parse_metadatarequest(struct MetadataRequest* inp, char *beg);
+extern int parse_subsubproducerequest(struct SubSubProduceRequest* inp,
+	char *beg);
+extern int parse_subproducerequest(struct SubProduceRequest* inp, char *beg);
+extern int parse_producerequest(struct ProduceRequest* inp, char *beg);
+extern int parse_fetchrequest(struct FetchRequest* inp, char *beg);
+extern int parse_offsetrequest(struct OffsetRequest* inp, char *beg);
+extern int parse_offsetcommitrequest(struct OffsetCommitRequest* inp,
+	char *beg);
+extern int parse_offsetfetchrequest(struct OffsetFetchRequest* inp, char *beg);
+extern int parse_reqmessage(union ReqMessage* inp, char *beg,
+	enum request_type rt);
+extern int parse_requestmessage(struct RequestMessage* inp, char *beg);
+extern int parse_broker(struct Broker* inp, char *beg);
+extern int parse_replica(struct Replica* inp, char *beg);
+extern int parse_isr(struct Isr* inp, char *beg);
+extern int parse_partitionmetadata(struct PartitionMetadata* inp, char *beg);
+extern int parse_topicmetadata(struct TopicMetadata* inp, char *beg);
+extern int parse_metadataresponse(struct MetadataResponse* inp, char *beg);
+extern int parse_subsubproduceresponse(struct SubSubProduceResponse* inp,
+	char *beg);
+extern int parse_subproduceresponse(struct SubProduceResponse* inp, char *beg);
+extern int parse_produceresponse(struct ProduceResponse* inp, char *beg);
+extern int parse_subsubfetchresponse(struct subSubFetchResponse* inp,
+	char *beg);
+extern int parse_subfetchresponse(struct subFetchResponse* inp, char *beg);
+extern int parse_fetchresponse(struct FetchResponse* inp, char *beg);
+extern int parse_offset(struct Offset* inp, char *beg);
+extern int parse_partitionoffsets(struct PartitionOffsets* inp, char *beg);
+extern int parse_suboffsetresponse(struct subOffsetResponse* inp, char *beg);
+extern int parse_offsetresponse(struct OffsetResponse* inp, char *beg);
+extern int parse_groupcoordinatorresponse(struct GroupCoordinatorResponse* inp,
+	char *beg);
+extern int parse_subsuboffsetcommitresponse(
+	struct subSubOffsetCommitResponse* inp, char *beg);
+extern int parse_suboffsetcommitresponse(struct subOffsetCommitResponse* inp,
+	char *beg);
+extern int parse_offsetcommitresponse(struct OffsetCommitResponse* inp,
+	char *beg);
+extern int parse_subsuboffsetfetchresponse(
+	struct subSubOffsetFetchResponse* inp, char *beg);
+extern int parse_suboffsetfetchresponse(struct subOffsetFetchResponse* inp,
+	char *beg);
+extern int parse_offsetfetchresponse(struct OffsetFetchResponse* inp,
+	char *beg);
+extern int parse_resmessage(union ResMessage* inp, char *beg);
+extern int parse_responsemessage(struct ResponseMessage* inp, char *beg,
+	enum response_type rt);
+extern enum request_type get_apikey(char* beg);
+
 #endif

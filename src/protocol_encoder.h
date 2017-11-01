@@ -40,8 +40,6 @@
 #include "message.h"
 #include "protocol.h"
 #include "protocol_common.h"
-#include <strings.h>
-#include <stdio.h>
 
 extern int MESSAGESETSIZE_FIELD_SIZE;
 extern int NUM_SOR_FIELD_SIZE;
@@ -138,44 +136,59 @@ extern int OFFSET_FETCH_RESPONSE_SIZE_FIELD_SIZE;
 extern int PARTITIONERRORCODE_FIELD_SIZE;
 extern int PORT_FIELD_SIZE;
 
-int encode_message(struct Message* inp, char** st);
-int encode_messagesetelement(struct MessageSetElement* inp, char** st);
-int encode_messageset(struct MessageSet* inp, char** st);
-int encode_topicname(struct TopicName* inp, char** st);
-int encode_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp, char** st);
-int encode_metadatarequest(struct MetadataRequest* inp, char** st);
-int encode_subsubproducerequest(struct SubSubProduceRequest* inp, char** st);
-int encode_subproducerequest(struct SubProduceRequest* inp, char** st);
-int encode_producerequest(struct ProduceRequest* inp, char** st);
-int encode_fetchrequest(struct FetchRequest* inp, char** st);
-int encode_offsetrequest(struct OffsetRequest* inp, char** st);
-int encode_offsetcommitrequest(struct OffsetCommitRequest* inp, char** st);
-int encode_offsetfetchrequest(struct OffsetFetchRequest* inp, char** st);
-int encode_reqmessage(union ReqMessage* inp, char** st, enum request_type rt);
-int encode_requestmessage(struct RequestMessage* inp, char** st);
-int encode_broker(struct Broker* inp, char** st);
-int encode_replica(struct Replica* inp, char** st);
-int encode_isr(struct Isr* inp, char** st);
-int encode_partitionmetadata(struct PartitionMetadata* inp, char** st);
-int encode_topicmetadata(struct TopicMetadata* inp, char** st);
-int encode_metadataresponse(struct MetadataResponse* inp, char** st);
-int encode_subsubproduceresponse(struct SubSubProduceResponse* inp, char** st);
-int encode_subproduceresponse(struct SubProduceResponse* inp, char** st);
-int encode_produceresponse(struct ProduceResponse* inp, char** st);
-int encode_subsubfetchresponse(struct subSubFetchResponse* inp, char** st);
-int encode_subfetchresponse(struct subFetchResponse* inp, char** st);
-int encode_fetchresponse(struct FetchResponse* inp, char** st);
-int encode_offset(struct Offset* inp, char** st);
-int encode_partitionoffsets(struct PartitionOffsets* inp, char** st);
-int encode_suboffsetresponse(struct subOffsetResponse* inp, char** st);
-int encode_offsetresponse(struct OffsetResponse* inp, char** st);
-int encode_groupcoordinatorresponse(struct GroupCoordinatorResponse* inp, char** st);
-int encode_subsuboffsetcommitresponse(struct subSubOffsetCommitResponse* inp, char** st);
-int encode_suboffsetcommitresponse(struct subOffsetCommitResponse* inp, char** st);
-int encode_offsetcommitresponse(struct OffsetCommitResponse* inp, char** st);
-int encode_subsuboffsetfetchresponse(struct subSubOffsetFetchResponse* inp, char** st);
-int encode_suboffsetfetchresponse(struct subOffsetFetchResponse* inp, char** st);
-int encode_offsetfetchresponse(struct OffsetFetchResponse* inp, char** st);
-int encode_resmessage(union ResMessage* inp, char** st);
-int encode_responsemessage(struct ResponseMessage* inp, char** st, enum response_type rt);
+extern int encode_message(struct Message* inp, char** st);
+extern int encode_messagesetelement(struct MessageSetElement* inp, char** st);
+extern int encode_messageset(struct MessageSet* inp, char** st);
+extern int encode_topicname(struct TopicName* inp, char** st);
+extern int encode_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp,
+	char** st);
+extern int encode_metadatarequest(struct MetadataRequest* inp, char** st);
+extern int encode_subsubproducerequest(struct SubSubProduceRequest* inp,
+	char** st);
+extern int encode_subproducerequest(struct SubProduceRequest* inp, char** st);
+extern int encode_producerequest(struct ProduceRequest* inp, char** st);
+extern int encode_fetchrequest(struct FetchRequest* inp, char** st);
+extern int encode_offsetrequest(struct OffsetRequest* inp, char** st);
+extern int encode_offsetcommitrequest(struct OffsetCommitRequest* inp,
+	char** st);
+extern int encode_offsetfetchrequest(struct OffsetFetchRequest* inp, char** st);
+extern int encode_reqmessage(union ReqMessage* inp, char** st,
+	enum request_type rt);
+extern int encode_requestmessage(struct RequestMessage* inp, char** st);
+extern int encode_broker(struct Broker* inp, char** st);
+extern int encode_replica(struct Replica* inp, char** st);
+extern int encode_isr(struct Isr* inp, char** st);
+extern int encode_partitionmetadata(struct PartitionMetadata* inp, char** st);
+extern int encode_topicmetadata(struct TopicMetadata* inp, char** st);
+extern int encode_metadataresponse(struct MetadataResponse* inp, char** st);
+extern int encode_subsubproduceresponse(struct SubSubProduceResponse* inp,
+	char** st);
+extern int encode_subproduceresponse(struct SubProduceResponse* inp, char** st);
+extern int encode_produceresponse(struct ProduceResponse* inp, char** st);
+extern int encode_subsubfetchresponse(struct subSubFetchResponse* inp,
+	char** st);
+extern int encode_subfetchresponse(struct subFetchResponse* inp, char** st);
+extern int encode_fetchresponse(struct FetchResponse* inp, char** st);
+extern int encode_offset(struct Offset* inp, char** st);
+extern int encode_partitionoffsets(struct PartitionOffsets* inp, char** st);
+extern int encode_suboffsetresponse(struct subOffsetResponse* inp, char** st);
+extern int encode_offsetresponse(struct OffsetResponse* inp, char** st);
+extern int encode_groupcoordinatorresponse(
+	struct GroupCoordinatorResponse* inp, char** st);
+extern int encode_subsuboffsetcommitresponse(
+	struct subSubOffsetCommitResponse* inp, char** st);
+extern int encode_suboffsetcommitresponse(struct subOffsetCommitResponse* inp,
+	char** st);
+extern int encode_offsetcommitresponse(struct OffsetCommitResponse* inp,
+	char** st);
+extern int encode_subsuboffsetfetchresponse(
+	struct subSubOffsetFetchResponse* inp, char** st);
+extern int encode_suboffsetfetchresponse(struct subOffsetFetchResponse* inp,
+	char** st);
+extern int encode_offsetfetchresponse(struct OffsetFetchResponse* inp,
+	char** st);
+extern int encode_resmessage(union ResMessage* inp, char** st);
+extern int encode_responsemessage(struct ResponseMessage* inp, char** st,
+	enum response_type rt);
+
 #endif

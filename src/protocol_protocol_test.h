@@ -34,83 +34,127 @@
  *
  */
 
-void populate_message(struct Message* inmsg);
-int test_message(struct Message* inmsg, struct Message* outmsg);
-void populate_messagesetelement(struct MessageSetElement* inmsg);
-int test_messagesetelement(struct MessageSetElement* inmsg, struct MessageSetElement* outmsg);
-void populate_messageset(struct MessageSet* inmsg);
-int test_messageset(struct MessageSet* inmsg, struct MessageSet* outmsg);
-void populate_topicname(struct TopicName* inmsg);
-int test_topicname(struct TopicName* inmsg, struct TopicName* outmsg);
-void populate_groupcoordinatorrequest(struct GroupCoordinatorRequest* inmsg);
-int test_groupcoordinatorrequest(struct GroupCoordinatorRequest* inmsg, struct GroupCoordinatorRequest* outmsg);
-void populate_metadatarequest(struct MetadataRequest* inmsg);
-int test_metadatarequest(struct MetadataRequest* inmsg, struct MetadataRequest* outmsg);
-void populate_subsubproducerequest(struct SubSubProduceRequest* inmsg);
-int test_subsubproducerequest(struct SubSubProduceRequest* inmsg, struct SubSubProduceRequest* outmsg);
-void populate_subproducerequest(struct SubProduceRequest* inmsg);
-int test_subproducerequest(struct SubProduceRequest* inmsg, struct SubProduceRequest* outmsg);
-void populate_producerequest(struct ProduceRequest* inmsg);
-int test_producerequest(struct ProduceRequest* inmsg, struct ProduceRequest* outmsg);
-void populate_fetchrequest(struct FetchRequest* inmsg);
-int test_fetchrequest(struct FetchRequest* inmsg, struct FetchRequest* outmsg);
-void populate_offsetrequest(struct OffsetRequest* inmsg);
-int test_offsetrequest(struct OffsetRequest* inmsg, struct OffsetRequest* outmsg);
-void populate_offsetcommitrequest(struct OffsetCommitRequest* inmsg);
-int test_offsetcommitrequest(struct OffsetCommitRequest* inmsg, struct OffsetCommitRequest* outmsg);
-void populate_offsetfetchrequest(struct OffsetFetchRequest* inmsg);
-int test_offsetfetchrequest(struct OffsetFetchRequest* inmsg, struct OffsetFetchRequest* outmsg);
-void populate_reqmessage(union ReqMessage* inmsg);
-int test_reqmessage(union ReqMessage* inmsg, union ReqMessage* outmsg);
-void populate_requestmessage(struct RequestMessage* inmsg);
-int test_requestmessage(struct RequestMessage* inmsg, struct RequestMessage* outmsg);
-void populate_broker(struct Broker* inmsg);
-int test_broker(struct Broker* inmsg, struct Broker* outmsg);
-void populate_replica(struct Replica* inmsg);
-int test_replica(struct Replica* inmsg, struct Replica* outmsg);
-void populate_isr(struct Isr* inmsg);
-int test_isr(struct Isr* inmsg, struct Isr* outmsg);
-void populate_partitionmetadata(struct PartitionMetadata* inmsg);
-int test_partitionmetadata(struct PartitionMetadata* inmsg, struct PartitionMetadata* outmsg);
-void populate_topicmetadata(struct TopicMetadata* inmsg);
-int test_topicmetadata(struct TopicMetadata* inmsg, struct TopicMetadata* outmsg);
-void populate_metadataresponse(struct MetadataResponse* inmsg);
-int test_metadataresponse(struct MetadataResponse* inmsg, struct MetadataResponse* outmsg);
-void populate_subsubproduceresponse(struct subSubProduceResponse* inmsg);
-int test_subsubproduceresponse(struct subSubProduceResponse* inmsg, struct subSubProduceResponse* outmsg);
-void populate_subproduceresponse(struct subProduceResponse* inmsg);
-int test_subproduceresponse(struct subProduceResponse* inmsg, struct subProduceResponse* outmsg);
-void populate_produceresponse(struct ProduceResponse* inmsg);
-int test_produceresponse(struct ProduceResponse* inmsg, struct ProduceResponse* outmsg);
-void populate_subsubfetchresponse(struct subSubFetchResponse* inmsg);
-int test_subsubfetchresponse(struct subSubFetchResponse* inmsg, struct subSubFetchResponse* outmsg);
-void populate_subfetchresponse(struct subFetchResponse* inmsg);
-int test_subfetchresponse(struct subFetchResponse* inmsg, struct subFetchResponse* outmsg);
-void populate_fetchresponse(struct FetchResponse* inmsg);
-int test_fetchresponse(struct FetchResponse* inmsg, struct FetchResponse* outmsg);
-void populate_offset(struct Offset* inmsg);
-int test_offset(struct Offset* inmsg, struct Offset* outmsg);
-void populate_partitionoffsets(struct PartitionOffsets* inmsg);
-int test_partitionoffsets(struct PartitionOffsets* inmsg, struct PartitionOffsets* outmsg);
-void populate_suboffsetresponse(struct subOffsetResponse* inmsg);
-int test_suboffsetresponse(struct subOffsetResponse* inmsg, struct subOffsetResponse* outmsg);
-void populate_offsetresponse(struct OffsetResponse* inmsg);
-int test_offsetresponse(struct OffsetResponse* inmsg, struct OffsetResponse* outmsg);
-void populate_groupcoordinatorresponse(struct GroupCoordinatorResponse* inmsg);
-int test_groupcoordinatorresponse(struct GroupCoordinatorResponse* inmsg, struct GroupCoordinatorResponse* outmsg);
-void populate_subsuboffsetcommitresponse(struct subSubOffsetCommitResponse* inmsg);
-int test_subsuboffsetcommitresponse(struct subSubOffsetCommitResponse* inmsg, struct subSubOffsetCommitResponse* outmsg);
-void populate_suboffsetcommitresponse(struct subOffsetCommitResponse* inmsg);
-int test_suboffsetcommitresponse(struct subOffsetCommitResponse* inmsg, struct subOffsetCommitResponse* outmsg);
-void populate_offsetcommitresponse(struct OffsetCommitResponse* inmsg);
-int test_offsetcommitresponse(struct OffsetCommitResponse* inmsg, struct OffsetCommitResponse* outmsg);
-void populate_subsuboffsetfetchresponse(struct subSubOffsetFetchResponse* inmsg);
-int test_subsuboffsetfetchresponse(struct subSubOffsetFetchResponse* inmsg, struct subSubOffsetFetchResponse* outmsg);
-void populate_suboffsetfetchresponse(struct subOffsetFetchResponse* inmsg);
-int test_suboffsetfetchresponse(struct subOffsetFetchResponse* inmsg, struct subOffsetFetchResponse* outmsg);
-void populate_offsetfetchresponse(struct OffsetFetchResponse* inmsg);
-int test_offsetfetchresponse(struct OffsetFetchResponse* inmsg, struct OffsetFetchResponse* outmsg);
-void populate_resmessage(union ResMessage* inmsg);
-int test_resmessage(union ResMessage* inmsg, union ResMessage* outmsg);
-void populate_responsemessage(struct ResponseMessage* inmsg);
-int test_responsemessage(struct ResponseMessage* inmsg, struct ResponseMessage* outmsg);
+#ifndef _PROTOCOL_PROTOCOL_TEST_H
+#define _PROTOCOL_PROTOCOL_TEST_H
+
+extern void populate_message(struct Message* inmsg);
+extern int test_message(struct Message* inmsg, struct Message* outmsg);
+extern void populate_messagesetelement(struct MessageSetElement* inmsg);
+extern int test_messagesetelement(struct MessageSetElement* inmsg,
+	struct MessageSetElement* outmsg);
+extern void populate_messageset(struct MessageSet* inmsg);
+extern int test_messageset(struct MessageSet* inmsg, struct MessageSet* outmsg);
+extern void populate_topicname(struct TopicName* inmsg);
+extern int test_topicname(struct TopicName* inmsg, struct TopicName* outmsg);
+extern void populate_groupcoordinatorrequest(
+	struct GroupCoordinatorRequest* inmsg);
+extern int test_groupcoordinatorrequest(struct GroupCoordinatorRequest* inmsg,
+	struct GroupCoordinatorRequest* outmsg);
+extern void populate_metadatarequest(struct MetadataRequest* inmsg);
+extern int test_metadatarequest(struct MetadataRequest* inmsg,
+	struct MetadataRequest* outmsg);
+extern void populate_subsubproducerequest(struct SubSubProduceRequest* inmsg);
+extern int test_subsubproducerequest(struct SubSubProduceRequest* inmsg,
+	struct SubSubProduceRequest* outmsg);
+extern void populate_subproducerequest(struct SubProduceRequest* inmsg);
+extern int test_subproducerequest(struct SubProduceRequest* inmsg,
+	struct SubProduceRequest* outmsg);
+extern void populate_producerequest(struct ProduceRequest* inmsg);
+extern int test_producerequest(struct ProduceRequest* inmsg,
+	struct ProduceRequest* outmsg);
+extern void populate_fetchrequest(struct FetchRequest* inmsg);
+extern int test_fetchrequest(struct FetchRequest* inmsg,
+	struct FetchRequest* outmsg);
+extern void populate_offsetrequest(struct OffsetRequest* inmsg);
+extern int test_offsetrequest(struct OffsetRequest* inmsg,
+	struct OffsetRequest* outmsg);
+extern void populate_offsetcommitrequest(struct OffsetCommitRequest* inmsg);
+extern int test_offsetcommitrequest(struct OffsetCommitRequest* inmsg,
+	struct OffsetCommitRequest* outmsg);
+extern void populate_offsetfetchrequest(struct OffsetFetchRequest* inmsg);
+extern int test_offsetfetchrequest(struct OffsetFetchRequest* inmsg,
+	struct OffsetFetchRequest* outmsg);
+extern void populate_reqmessage(union ReqMessage* inmsg);
+extern int test_reqmessage(union ReqMessage* inmsg, union ReqMessage* outmsg);
+extern void populate_requestmessage(struct RequestMessage* inmsg);
+extern int test_requestmessage(struct RequestMessage* inmsg,
+	struct RequestMessage* outmsg);
+extern void populate_broker(struct Broker* inmsg);
+extern int test_broker(struct Broker* inmsg, struct Broker* outmsg);
+extern void populate_replica(struct Replica* inmsg);
+extern int test_replica(struct Replica* inmsg, struct Replica* outmsg);
+extern void populate_isr(struct Isr* inmsg);
+extern int test_isr(struct Isr* inmsg, struct Isr* outmsg);
+extern void populate_partitionmetadata(struct PartitionMetadata* inmsg);
+extern int test_partitionmetadata(struct PartitionMetadata* inmsg,
+	struct PartitionMetadata* outmsg);
+extern void populate_topicmetadata(struct TopicMetadata* inmsg);
+extern int test_topicmetadata(struct TopicMetadata* inmsg,
+	struct TopicMetadata* outmsg);
+extern void populate_metadataresponse(struct MetadataResponse* inmsg);
+extern int test_metadataresponse(struct MetadataResponse* inmsg,
+	struct MetadataResponse* outmsg);
+extern void populate_subsubproduceresponse(struct subSubProduceResponse* inmsg);
+extern int test_subsubproduceresponse(struct subSubProduceResponse* inmsg,
+	struct subSubProduceResponse* outmsg);
+extern void populate_subproduceresponse(struct subProduceResponse* inmsg);
+extern int test_subproduceresponse(struct subProduceResponse* inmsg,
+	struct subProduceResponse* outmsg);
+extern void populate_produceresponse(struct ProduceResponse* inmsg);
+extern int test_produceresponse(struct ProduceResponse* inmsg,
+	struct ProduceResponse* outmsg);
+extern void populate_subsubfetchresponse(struct subSubFetchResponse* inmsg);
+extern int test_subsubfetchresponse(struct subSubFetchResponse* inmsg,
+	struct subSubFetchResponse* outmsg);
+extern void populate_subfetchresponse(struct subFetchResponse* inmsg);
+extern int test_subfetchresponse(struct subFetchResponse* inmsg,
+	struct subFetchResponse* outmsg);
+extern void populate_fetchresponse(struct FetchResponse* inmsg);
+extern int test_fetchresponse(struct FetchResponse* inmsg,
+	struct FetchResponse* outmsg);
+extern void populate_offset(struct Offset* inmsg);
+extern int test_offset(struct Offset* inmsg, struct Offset* outmsg);
+extern void populate_partitionoffsets(struct PartitionOffsets* inmsg);
+extern int test_partitionoffsets(struct PartitionOffsets* inmsg,
+	struct PartitionOffsets* outmsg);
+extern void populate_suboffsetresponse(struct subOffsetResponse* inmsg);
+extern int test_suboffsetresponse(struct subOffsetResponse* inmsg,
+	struct subOffsetResponse* outmsg);
+extern void populate_offsetresponse(struct OffsetResponse* inmsg);
+extern int test_offsetresponse(struct OffsetResponse* inmsg, struct OffsetResponse* outmsg);
+extern void populate_groupcoordinatorresponse(
+	struct GroupCoordinatorResponse* inmsg);
+extern int test_groupcoordinatorresponse(
+	struct GroupCoordinatorResponse* inmsg,
+	struct GroupCoordinatorResponse* outmsg);
+extern void populate_subsuboffsetcommitresponse(
+	struct subSubOffsetCommitResponse* inmsg);
+extern int test_subsuboffsetcommitresponse(
+	struct subSubOffsetCommitResponse* inmsg,
+	struct subSubOffsetCommitResponse* outmsg);
+extern void populate_suboffsetcommitresponse(
+	struct subOffsetCommitResponse* inmsg);
+extern int test_suboffsetcommitresponse(struct subOffsetCommitResponse* inmsg,
+	struct subOffsetCommitResponse* outmsg);
+extern void populate_offsetcommitresponse(struct OffsetCommitResponse* inmsg);
+extern int test_offsetcommitresponse(struct OffsetCommitResponse* inmsg,
+	struct OffsetCommitResponse* outmsg);
+extern void populate_subsuboffsetfetchresponse(
+	struct subSubOffsetFetchResponse* inmsg);
+extern int test_subsuboffsetfetchresponse(
+	struct subSubOffsetFetchResponse* inmsg,
+	struct subSubOffsetFetchResponse* outmsg);
+extern void populate_suboffsetfetchresponse(
+	struct subOffsetFetchResponse* inmsg);
+extern int test_suboffsetfetchresponse(struct subOffsetFetchResponse* inmsg,
+	struct subOffsetFetchResponse* outmsg);
+extern void populate_offsetfetchresponse(struct OffsetFetchResponse* inmsg);
+extern int test_offsetfetchresponse(struct OffsetFetchResponse* inmsg,
+	struct OffsetFetchResponse* outmsg);
+extern void populate_resmessage(union ResMessage* inmsg);
+extern int test_resmessage(union ResMessage* inmsg, union ResMessage* outmsg);
+extern void populate_responsemessage(struct ResponseMessage* inmsg);
+extern int test_responsemessage(struct ResponseMessage* inmsg,
+	struct ResponseMessage* outmsg);
+
+#endif

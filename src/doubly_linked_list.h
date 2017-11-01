@@ -42,37 +42,34 @@
 
 #include "utils.h"
 
-struct DLLNode{
-  void* val;
-  struct DLLNode *next;
-  struct DLLNode *prev;
-  int fd;
+struct DLLNode {
+	void * val;
+	struct DLLNode * next;
+	struct DLLNode * prev;
+	int fd;
 };
-
 typedef struct DLLNode DLLNode;
 
-struct DLL{
-    int cur_num;
-    DLLNode *head;
-    DLLNode *last_valid;
-    size_t elem_size;
-    pthread_mutex_t mtx;
+struct DLL {
+	int cur_num;
+	DLLNode *head;
+	DLLNode *last_valid;
+	size_t elem_size;	
+	pthread_mutex_t mtx;
 };
-
 typedef struct DLL DLL;
 
-DLLNode* append_to_dll(DLL* dll, void* val, int val_size);
-void remove_from_dll(DLL* dll, DLLNode* ppcn);
-void print_dll(DLL* dll);
-DLL* allocate_dlls_per_num_processors(int top_arr_size, int low_arr_size);
-
-void preallocate_with(DLL* mdll, int top_arr_size, int low_arr_size, size_t alloc_size);
-DLLNode* borrow(DLL* pdll);
-void returnObj(DLL* pdll, DLLNode* pcn);
-void ulock_dll(DLL* pdll);
-void lock_dll(DLL* pdll);
-void lretu_dll(DLL* pool, DLLNode* obj);
-DLLNode* lboru_dll(DLL* pool);
-int lboru_dlls(DLLNode** nodes, int num_nodes, ...);
+extern DLLNode* append_to_dll(DLL* dll, void* val, int val_size);
+extern void remove_from_dll(DLL* dll, DLLNode* ppcn);
+extern void print_dll(DLL* dll);
+extern DLL* allocate_dlls_per_num_processors(int top_arr_size, int low_arr_size);
+extern void preallocate_with(DLL* mdll, int top_arr_size, int low_arr_size, size_t alloc_size);
+extern DLLNode* borrow(DLL* pdll);
+extern void returnObj(DLL* pdll, DLLNode* pcn);
+extern void ulock_dll(DLL* pdll);
+extern void lock_dll(DLL* pdll);
+extern void lretu_dll(DLL* pool, DLLNode* obj);
+extern DLLNode* lboru_dll(DLL* pool);
+extern int lboru_dlls(DLLNode** nodes, int num_nodes, ...);
 
 #endif

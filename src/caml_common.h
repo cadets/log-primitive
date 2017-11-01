@@ -53,7 +53,8 @@ typedef void* (*mallocfunctiontype)(unsigned long);
 typedef void (*freefunctiontype)(void*);
 
 typedef void (*ack_function)(unsigned long);
-typedef void (*response_function)(struct RequestMessage *rm, struct ResponseMessage *rs);
+typedef void (*response_function)(struct RequestMessage *rm,
+	struct ResponseMessage *rs);
 
 static mallocfunctiontype ilia_alloc = &malloc;
 static freefunctiontype ilia_free = &free;
@@ -61,27 +62,26 @@ static freefunctiontype ilia_free = &free;
 typedef int correlationId_t;
 
 enum broker_confs{
-    BROKER_SEND_ACKS= 1 << 1,
-    BROKER_FSYNC_ALWAYS= 1 << 2,
+	BROKER_SEND_ACKS= 1 << 1,
+	BROKER_FSYNC_ALWAYS= 1 << 2,
 };
 
 struct broker_configuration{
-    int fsync_thread_sleep_length;
-    int processor_thread_sleep_length;
-    int val;
+	int fsync_thread_sleep_length;
+	int processor_thread_sleep_length;
+	int val;
 };
 
 struct client_configuration{
-    int to_resend;
-    int resender_thread_sleep_length;
-    int request_notifier_thread_sleep_length;
-
-    int reconn_timeout;
-    int poll_timeout;
-
-    ack_function on_ack;
-    response_function on_response;
+	int to_resend;
+	int resender_thread_sleep_length;
+	int request_notifier_thread_sleep_length;
+	int reconn_timeout;
+	int poll_timeout;
+	ack_function on_ack;
+	response_function on_response;
 };
 
-void print_configuration(struct broker_configuration* bc);
+extern void print_configuration(struct broker_configuration *bc);
+
 #endif

@@ -37,9 +37,10 @@
 #ifndef _PROTOCOL_COMMON_H
 #define _PROTOCOL_COMMON_H
 
-#define MESSAGE_HOLDER_SIZE 1500
 #include "caml_common.h"
 #include "protocol.h"
+
+#define MESSAGE_HOLDER_SIZE 1500
 
 static int MESSAGESETSIZE_FIELD_SIZE= 12;
 static int NUM_SOR_FIELD_SIZE= 12;
@@ -136,12 +137,13 @@ static int OFFSET_FETCH_RESPONSE_SIZE_FIELD_SIZE= 4;
 static int PARTITIONERRORCODE_FIELD_SIZE= 12;
 static int PORT_FIELD_SIZE= 12;
 
-struct message_holder{
-    char buf[MESSAGE_HOLDER_SIZE];
-    int fd;
+struct message_holder {
+	char buf[MESSAGE_HOLDER_SIZE];
+	int fd;
 };
 
-correlationId_t get_corrid(char *beg);
-void build_req(struct RequestMessage* rq, enum request_type rt, int correlationId, char* clientId, va_list varlist);
+extern correlationId_t get_corrid(char *beg);
+extern void build_req(struct RequestMessage* rq, enum request_type rt,
+	int correlationId, char* clientId, va_list varlist);
 
 #endif
