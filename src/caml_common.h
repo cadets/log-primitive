@@ -41,6 +41,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "caml_memory.h"
 #include "protocol.h" 
 
 static int MAX_NUM_REQUESTS_PER_PROCESSOR  = 128; // Maximum outstanding requests per processor.
@@ -49,15 +50,10 @@ static int MAX_NUM_RESPONSES_PER_PROCESSOR = 128; // Maximum outstanding respons
 static int CONNECTIONS_PER_PROCESSOR       = 10; // Number of connections per processor.
 static int MAX_NUM_UNFSYNCED = 20; // Maximum number of unfsynced inserts
 
-typedef void* (*mallocfunctiontype)(unsigned long);
-typedef void (*freefunctiontype)(void*);
 
 typedef void (*ack_function)(unsigned long);
 typedef void (*response_function)(struct RequestMessage *rm,
 	struct ResponseMessage *rs);
-
-static mallocfunctiontype ilia_alloc = &malloc;
-static freefunctiontype ilia_free = &free;
 
 typedef int correlationId_t;
 
@@ -82,6 +78,6 @@ struct client_configuration{
 	response_function on_response;
 };
 
-extern void print_configuration(struct broker_configuration *bc);
+extern void	print_configuration(struct broker_configuration *);
 
 #endif

@@ -87,15 +87,13 @@
 
 segment* ptr_seg;
 
-extern mallocfunctiontype ilia_alloc;
-extern freefunctiontype ilia_free;
-
 extern unsigned short PRIO_LOG;
 
 // Adopted from http://www.doc.ic.ac.uk/~rn710/Installs/otp_src_17.0/erts/emulator/drivers/unix/unix_efile.c
 //
-int alloc_big_file(int fd, long int offset, long int length){
-
+int
+alloc_big_file(int fd, long int offset, long int length)
+{
 #if defined HAVE_FALLOCATE
     /* Linux specific, more efficient than posix_fallocate. */
     int ret;
@@ -156,29 +154,29 @@ int alloc_big_file(int fd, long int offset, long int length){
 static int
 call_posix_fallocate(int fd, Sint64 offset, Sint64 length)
 {
-    int ret;
+	int ret;
 
-    /*
-     * On Linux and Solaris for example, posix_fallocate() returns
-     * a positive error number on error and it does not set errno.
-     * On FreeBSD however (9.0 at least), it returns -1 on error
-     * and it sets errno.
-     */
-    do {
-        ret = posix_fallocate(fd, (off_t) offset, (off_t) length);
-        if (ret > 0) {
-            errno = ret;
-            ret = -1;
-        }
-    } while (ret != 0 && errno == EINTR);
+	/*
+	* On Linux and Solaris for example, posix_fallocate() returns
+	* a positive error number on error and it does not set errno.
+	* On FreeBSD however (9.0 at least), it returns -1 on error
+	* and it sets errno.
+	*/
+	do {
+		ret = posix_fallocate(fd, (off_t) offset, (off_t) length);
+		if (ret > 0) {
+			errno = ret;
+			ret = -1;
+		}
+	} while (ret != 0 && errno == EINTR);
 
-    return ret;
+	return ret;
 }
 #endif /* HAVE_POSIX_FALLOCATE */
 
-
 // Method used to create a partition folder
-int make_folder(const char* partition_name){
+int
+make_folder(const char* partition_name){
     struct stat st;
 
     if (stat(partition_name, &st) == -1) {
@@ -188,7 +186,8 @@ int make_folder(const char* partition_name){
     return -1;
 }
 
-int del_folder(const char* partition_name){
+int
+del_folder(const char* partition_name){
     struct stat st;
 
     if (stat(partition_name, &st) != -1) {
@@ -198,7 +197,8 @@ int del_folder(const char* partition_name){
     return -1;
 }
 
-int make_file(const char* partition_name, const char* filename){
+int
+make_file(const char* partition_name, const char* filename){
     char pathFile[128];
 
     sprintf(pathFile, "%s/%s", partition_name, filename );
@@ -207,8 +207,10 @@ int make_file(const char* partition_name, const char* filename){
 }
 
 //Method used to create the segment with its log and index files
-segment* make_segment(long int start_offset, long int length, const char* partition_name){
-
+segment*
+make_segment(long int start_offset, long int length,
+	const char* partition_name)
+{
     char temp[128];
     sprintf(temp, "%ld.log", start_offset);
     int log_file = make_file(partition_name, temp);
@@ -218,7 +220,7 @@ segment* make_segment(long int start_offset, long int length, const char* partit
     int index_file = make_file(partition_name, temp);
     alloc_big_file(index_file, 0,  length);
 
-    segment* seg = (segment*) ilia_alloc(sizeof(segment));
+    segment* seg = (segment*) distlog_alloc(sizeof(segment));
     seg->_log = log_file;
     seg->_index = index_file;
 
@@ -230,7 +232,9 @@ segment* make_segment(long int start_offset, long int length, const char* partit
 }
 
 //Method invoked when a new message gets recieved into a segment
-int insert_message(segment* as, char* message, int msg_size){
+int
+insert_message(segment* as, char* message, int msg_size)
+{
     debug(PRIO_HIGH, "Inserting into the log: '%s'\n", message);
 
     lseek(as->_log, 0, SEEK_END);
@@ -260,11 +264,14 @@ int insert_message(segment* as, char* message, int msg_size){
     }
 }
 
-segment* get_seg_by_offset(long offset){
-    return ptr_seg;
+segment* get_seg_by_offset(long offset)
+{
+	return ptr_seg;
 }
 
-int get_message_by_offset(segment* as, int offset, void* saveto){
+int
+get_message_by_offset(segment* as, int offset, void* saveto)
+{
     char buf[bytes_per_index_entry];
     char* bp = buf;
 
@@ -295,13 +302,16 @@ int get_message_by_offset(segment* as, int offset, void* saveto){
     return 0;
 }
 
-void close_segment(segment* s){
+void close_segment(segment* s)
+{
     close(s->_log);
     close(s->_index);
 }
 
 // adapted from https://stackoverflow.com/questions/2256945/removing-a-non-empty-directory-programmatically-in-c-or-c
-int remove_directory(const char *path){
+int
+remove_directory(const char *path)
+{
    DIR *d = opendir(path);
    size_t path_len = strlen(path);
    int r = -1;
@@ -363,24 +373,27 @@ int remove_directory(const char *path){
 }
 
 
-void debug(int priority, const char* format, ...){
-    va_list args;
+void
+debug(int priority, const char* format, ...)
+{
+	va_list args;
 
-    va_start(args, format);
+	va_start(args, format);
 
-    if(priority <= PRIO_LOG) vprintf(format, args);
+	if (priority <= PRIO_LOG)
+		vprintf(format, args);
 
-    va_end(args);
+	va_end(args);
 }
 
-void lock_seg(struct segment* seg){
-    pthread_mutex_lock(&seg->mtx);
+void
+lock_seg(struct segment* seg)
+{
+	pthread_mutex_lock(&seg->mtx);
 }
 
-void ulock_seg(struct segment* seg){
-    pthread_mutex_unlock(&seg->mtx);
+void
+ulock_seg(struct segment* seg)
+{
+	pthread_mutex_unlock(&seg->mtx);
 }
-
-
-
-

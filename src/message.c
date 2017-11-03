@@ -49,8 +49,9 @@
 
 extern segment ptr_seg;
 
-int read_msg(int fd, char** saveto){
-
+int
+read_msg(int fd, char **saveto)
+{
     char* buffer = *saveto;
 
     int ret = recv(fd, buffer, overall_msg_field_size, 0);
@@ -72,7 +73,9 @@ int read_msg(int fd, char** saveto){
 }
 
 
-unsigned long get_crc(char* text_message, int message_size){
+unsigned long
+get_crc(char* text_message, int message_size)
+{
     unsigned long crc = crc32(0L, Z_NULL, 0);
 
     const unsigned char* t = (const unsigned char*) text_message;
@@ -90,7 +93,8 @@ void get_val(char** saveto, char* beg, int field_size){
 
 // The logic is the following:
 // The message is followed by the size written in from of it.
-int get_int(char* beg, int field_size){
+int
+get_int(char* beg, int field_size){
     debug(PRIO_LOW, "GETTING INT FROM '%s' of size %d\n", beg, field_size);
     char temp[field_size+1];
     char* tt = temp;
@@ -102,8 +106,9 @@ int get_int(char* beg, int field_size){
     return i;
 }
 
-long get_long(char* beg, int field_size){
-
+long
+get_long(char * beg, int field_size)
+{
     debug(PRIO_LOW, "GETTING LONG FROM '%s' of size %d\n", beg, field_size);
     char temp[field_size+1];
     char* tt = temp;
@@ -115,15 +120,20 @@ long get_long(char* beg, int field_size){
     return i;
 }
 
-unsigned long toul(char* to){
+unsigned long
+toul(char * to)
+{
     unsigned long tcrc;
     sscanf(to, "%lu", &tcrc);
     return tcrc;
 }
 
-int wrap_with_size(struct ResponseMessage* rm, char** buf, char* send_out_buf, enum request_type rt){
-    int req_size = encode_responsemessage(rm, buf, match_requesttype(rt));
-    int fi = sprintf(send_out_buf, "%.*d%s", OVERALL_MSG_FIELD_SIZE, req_size+OVERALL_MSG_FIELD_SIZE, *buf);
-    return fi;
+int
+wrap_with_size(struct ResponseMessage *rm, char **buf, char *send_out_buf,
+	enum request_type rt)
+{
+	int req_size = encode_responsemessage(rm, buf, match_requesttype(rt));
+	int fi = sprintf(send_out_buf, "%.*d%s", OVERALL_MSG_FIELD_SIZE,
+		req_size+OVERALL_MSG_FIELD_SIZE, *buf);
+	return fi;
 }
-

@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2017 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -62,10 +63,48 @@
 #include "protocol_parser.h"
 #include "protocol_encoder.h"
 
-extern int NUM_NOTIFIERS; // Number of notifiers for the client.
-extern int NUM_READERS; // Number of readers for the client.
-extern int REQUESTS_PER_NOTIFIER; // Number of the requests in notifiers.
-extern int NODE_POOL_SIZE; // number of maximum outstanding un-acked messages
+static int connect_to_server(const char *, int);
+static void * reader_thread(void *);
+static void * resender_thread(void *);
+static void parse_server_answer(struct RequestMessage *,
+	struct ResponseMessage *, char *);
+static void * request_notifier_thread(void *);
+static void start_notifiers(struct client_configuration *);
+static void start_resender(struct client_configuration *);
+static int allocate_client_datastructures(struct client_configuration *);
+static void start_reader_threads(struct client_configuration *, in , ...);
+
+#define MAX_SIZE_HOSTNAME 16
+
+static int const NUM_NOTIFIERS = 5;
+static int const NUM_READERS   = 1;
+static int const REQUESTS_PER_NOTIFIER = 10;
+/* Maximum number of outstanding un-acked messages */
+static int const NODE_POOL_SIZE = 128; 
+
+struct notifier_argument {
+	int index;
+	pthread_t* tid;
+	struct client_configuration *config;
+	ack_function on_ack;
+	response_function on_response;
+};
+typedef struct notifier_argument notifier_argument_t;
+
+struct reader_argument {
+	int index;
+	pthread_t* tid;
+	struct client_configuration *config;
+	char hostname[MAX_SIZE_HOSTNAME];
+	int portnumber;
+};
+typedef struct reader_argument reader_argument_t;
+
+//extern int NUM_NOTIFIERS; // Number of notifiers for the client.
+//extern int NUM_READERS; // Number of readers for the client.
+//extern int REQUESTS_PER_NOTIFIER; // Number of the requests in notifiers.
+//extern int NODE_POOL_SIZE; // number of maximum outstanding un-acked messages
+
 extern int MSG_POOL_SIZE; // number of avalibale MEssage size elemets
 
 extern int MAX_NUM_REQUESTS_PER_PROCESSOR;
@@ -86,367 +125,446 @@ static pthread_t* resender;
 static int current_request_notifier = 0;
 static int running = 0;
 
-static notifier_argument *nas; // Array containing arguments to the notifier threads
-static reader_argument *resender_arg;
-static reader_argument *ras; //Array containing arguments to the reader threads
+static notifier_argument_t *nas; // Array containing arguments to the notifier threads
+static reader_argument_t *resender_arg;
+static reader_argument_t *ras; //Array containing arguments to the reader threads
 
 static bt_holder *un_ack_holder;
 static int num_readers;
 
-int connect_to_server(const char *hostname, int portnumber){
-    int sockfd;
-    struct sockaddr_in dest;
+static int
+connect_to_server(const char *hostname, int portnumber)
+{
+	int sockfd;
+	struct sockaddr_in dest;
 
-    if ( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0 ) return -1;
+	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+		return -1;
 
-    bzero(&dest, sizeof(dest));
-    dest.sin_family = AF_INET;
-    dest.sin_port = htons(portnumber);
+	bzero(&dest, sizeof(dest));
+	dest.sin_family = AF_INET;
+	dest.sin_port = htons(portnumber);
 
-    if ( inet_pton(AF_INET, hostname, &(dest.sin_addr)) == 0 ) return -2;
-    if ( connect(sockfd, (struct sockaddr*)&dest, sizeof(dest)) != 0 ) return -3;
+	if (inet_pton(AF_INET, hostname, &(dest.sin_addr)) == 0)
+		return -2;
+	if (connect(sockfd, (struct sockaddr*)&dest, sizeof(dest)) != 0)
+		return -3;
 
-    return sockfd;
+	return sockfd;
 }
 
-void* resender_thread(void *vargp){
-    reader_argument *ra = (reader_argument*) vargp;
+static void *
+resender_thread(void *vargp)
+{
+	reader_argument_t *ra = (reader_argument_t *) vargp;
 
-    sleep(1);
-    debug(PRIO_LOW, "Resender thread started\n");
+	sleep(1);
+	debug(PRIO_LOW, "Resender thread started\n");
 
-    unsigned long now;
+	unsigned long now;
 
-    int server_id_assign = 0;
-    while(running){
+	int server_id_assign = 0;
+	while (running) {
 
-        lock_dll(node_pool);
+		lock_dll(node_pool);
 
-        if(node_pool->last_valid){
-            debug(PRIO_LOW, "There is a node borrowed from the node pool. Need to check if needs resend.\n");
-            lock_bth(un_ack_holder);
-            lock_dll(request_pool);
+		if(node_pool->last_valid){
+			debug(PRIO_LOW, "There is a node borrowed from the "
+				"node pool. Need to check if needs resend.\n");
+			lock_bth(un_ack_holder);
+			lock_dll(request_pool);
 
-            //DLLNode *cur = node_pool->last_valid;
-            //while (cur){
-            DLLNode* cur = node_pool->last_valid;
-            while(cur){
-            //for(int i = 0; i < node_pool->cur_num; i++){
-                struct bt_node *btn = (struct bt_node*) cur->val;
-                debug(PRIO_NORMAL, "Checking the node with corr id: %d(%d) [%d in the node pool]\n", btn->key, ((struct RequestMessage*) ((DLLNode*) btn->val)->val)->CorrelationId, node_pool->cur_num);
-                debug(PRIO_NORMAL, "The request %p\n", btn->val);
+			//DLLNode *cur = node_pool->last_valid;
+			//while (cur){
+			DLLNode* cur = node_pool->last_valid;
+			while (cur) {
+				//for(int i = 0; i < node_pool->cur_num; i++){
+				struct bt_node *btn = (struct bt_node*) cur->val;
+				debug(PRIO_NORMAL, "Checking the node with corr id: %d(%d) [%d in the node pool]\n", btn->key, ((struct RequestMessage*) ((DLLNode*) btn->val)->val)->CorrelationId, node_pool->cur_num);
+				debug(PRIO_NORMAL, "The request %p\n", btn->val);
 
-                if(btn->should_resend){
-                    now = time(NULL);
-                    debug(PRIO_LOW, "Was sent %lu now is %lu. Resend when the difference is %lu. Current: %lu\n", btn->last_sent, now, btn->resend_timeout, now-btn->last_sent);
+				if (btn->should_resend) {
+					now = time(NULL);
+					debug(PRIO_LOW, "Was sent %lu now is %lu. Resend when the difference is %lu. Current: %lu\n", btn->last_sent, now, btn->resend_timeout, now-btn->last_sent);
 
-                    if((now - btn->last_sent) > btn->resend_timeout){
-                        debug(PRIO_NORMAL, "Resending....\n");
-                        btn->last_sent = time(NULL);
-                        DLLNode* rq = (DLLNode*)btn->val;
+					if((now - btn->last_sent) > btn->resend_timeout){
+						debug(PRIO_NORMAL, "Resending....\n");
+						btn->last_sent = time(NULL);
+						DLLNode* rq = (DLLNode*)btn->val;
 
-                        lock_cq(&send_out_queue[server_id_assign]);
-                        enqueue(&send_out_queue[server_id_assign], &rq, sizeof(DLLNode*));
-                        ulock_cq(&send_out_queue[server_id_assign]);
+						lock_cq(&send_out_queue[server_id_assign]);
+						enqueue(&send_out_queue[server_id_assign], &rq, sizeof(DLLNode*));
+						ulock_cq(&send_out_queue[server_id_assign]);
 
-                        server_id_assign = (server_id_assign + 1) % num_readers;
-                        debug(PRIO_LOW, "Done.\n");
-                    }
-                }
-                debug(PRIO_LOW, "From cur %p to prev %p\n", cur, cur->prev);
-                cur = cur->prev;
-            }
+						server_id_assign = (server_id_assign + 1) % num_readers;
+						debug(PRIO_LOW, "Done.\n");
+					}
+				}
+				debug(PRIO_LOW, "From cur %p to prev %p\n", cur, cur->prev);
+				cur = cur->prev;
+			}
 
-            ulock_bth(un_ack_holder);
-            ulock_dll(request_pool);
-        }
-        ulock_dll(node_pool);
-        debug(PRIO_NORMAL, "Resender thread is going to sleep for %d seconds\n", ra->config->resender_thread_sleep_length);
-        sleep(ra->config->resender_thread_sleep_length);
-    }
+			ulock_bth(un_ack_holder);
+			ulock_dll(request_pool);
+		}
+		ulock_dll(node_pool);
+		debug(PRIO_NORMAL, "Resender thread is going to sleep for %d "
+			"seconds\n", ra->config->resender_thread_sleep_length);
+		sleep(ra->config->resender_thread_sleep_length);
+	}
 
-    return NULL;
+	return NULL;
 }
 
+static void *
+reader_thread(void *vargp)
+{
+	int server_conn = -1, rv, msg_size;
+	char *pbuf = (char *) distlog_alloc(sizeof(char) * MTU);
+	char *send_out_buffer = (char *) distlog_alloc(sizeof(char) * MTU);
+	DLLNode *rm;
 
-void* reader_thread(void *vargp){
+	reader_argument_t *ra = (reader_argument_t *) vargp;
 
-    reader_argument* ra = (reader_argument*) vargp;
+	while (running) {
+		if (server_conn < 0) {
+			debug(PRIO_NORMAL, "No connection to server. "
+				"Attempting to connect to '%s:%d'\n",
+				ra->hostname, ra->portnumber);
+			server_conn = connect_to_server(ra->hostname,
+				ra->portnumber);
+			if (server_conn < 0) {
+				debug(PRIO_NORMAL, "Error connecting...\n");
+			}
 
-    int server_conn = -1, rv, msg_size;
-    char* pbuf = (char*) ilia_alloc(sizeof(char)*MTU);
-    char* send_out_buffer = (char*) ilia_alloc(sizeof(char)*MTU);
+			sleep(ra->config->reconn_timeout);
+			continue;
+		}
+		struct pollfd ufd;
+		ufd.fd = server_conn;
+		ufd.events = POLLIN;
 
-    DLLNode *rm;
+		rv = poll(&ufd, 1, ra->config->poll_timeout);
+		debug(PRIO_NORMAL, "Reader thread polling ... %d\n", rv);
+		if (rv == -1) {
+			debug(PRIO_HIGH, "Poll error...");
+			continue;
+		}
+		if (rv) {
+			msg_size = read_msg(ufd.fd, &pbuf);
+			if (msg_size > 0) {
+				int mnotif = (current_request_notifier + 1) % NUM_NOTIFIERS;
+				lock_cq(&request_notifiers[mnotif]);
 
-    while(running){
-        if (server_conn < 0){
-            debug(PRIO_NORMAL, "No connection to server. Attempting to connect to '%s:%d'\n", ra->hostname, ra->portnumber);
-            server_conn = connect_to_server(ra->hostname, ra->portnumber);
-            if(server_conn < 0){
-                debug(PRIO_NORMAL, "Error connecting...\n");
-            }
+				enqueue(&request_notifiers[mnotif], pbuf,
+					sizeof(char) * MTU);
 
-            sleep(ra->config->reconn_timeout);
-            continue;
-        }
-        struct pollfd ufd;
-        ufd.fd = server_conn;
-        ufd.events = POLLIN;
+				current_request_notifier = mnotif;
+				ulock_cq(&request_notifiers[mnotif]);
+			} else {
+				server_conn = -1;
+			}
+		}
 
-        rv = poll(&ufd, 1, ra->config->poll_timeout);
-        debug(PRIO_NORMAL, "Reader thread polling ... %d\n", rv);
-        if(rv == -1){ debug(PRIO_HIGH, "Poll error..."); continue; }
-        if(rv){
-            msg_size = read_msg(ufd.fd, &pbuf);
+		while (send_out_queue[ra->index].num_elems > 0) {
+			lock_cq(&send_out_queue[ra->index]);
+			int ind = dequeue(&send_out_queue[ra->index],
+				(void*) &rm, sizeof(DLLNode *));
+			ulock_cq(&send_out_queue[ra->index]);
 
-            if (msg_size > 0){
-                int mnotif = (current_request_notifier + 1) % NUM_NOTIFIERS;
-                lock_cq(&request_notifiers[mnotif]);
+			if (ind != -1) {
+				struct RequestMessage* mimi =
+					(struct RequestMessage*) rm->val;
+				debug(PRIO_LOW, "[%d]Dequeued request with address %p\n", ind, mimi);
+				int req_size = encode_requestmessage(
+					mimi, &pbuf);
+				int fi = sprintf(send_out_buffer, "%.*d%s", OVERALL_MSG_FIELD_SIZE, req_size+OVERALL_MSG_FIELD_SIZE, pbuf);
 
-                enqueue(&request_notifiers[mnotif], pbuf, sizeof(char)*MTU);
-
-                current_request_notifier = mnotif;
-                ulock_cq(&request_notifiers[mnotif]);
-            }else{
-                server_conn = -1;
-            }
-        }
-
-		while(send_out_queue[ra->index].num_elems > 0){
-            lock_cq(&send_out_queue[ra->index]);
-            int ind = dequeue(&send_out_queue[ra->index], (void*) &rm, sizeof(DLLNode*));
-            ulock_cq(&send_out_queue[ra->index]);
-
-            if(ind != -1){
-                struct RequestMessage* mimi = (struct RequestMessage*) rm->val;
-                debug(PRIO_LOW, "[%d]Dequeued request with address %p\n", ind, mimi);
-                int req_size = encode_requestmessage(mimi, &pbuf);
-                int fi = sprintf(send_out_buffer, "%.*d%s", OVERALL_MSG_FIELD_SIZE, req_size+OVERALL_MSG_FIELD_SIZE, pbuf);
-
-                debug(PRIO_NORMAL, "[%d]Sending: '%s'\n", ind, send_out_buffer);
-                send(server_conn, send_out_buffer, fi, 0);
-            }
-        }
-    }
-    return NULL;
+				debug(PRIO_NORMAL, "[%d]Sending: '%s'\n", ind, send_out_buffer);
+				send(server_conn, send_out_buffer, fi, 0);
+			}
+		}
+	}
+	return NULL;
 }
 
-
-void parse_server_answer(struct RequestMessage* req_m, struct ResponseMessage* res_m, char* pbuf){
-    clear_responsemessage(res_m, req_m->APIKey);
-    parse_responsemessage(res_m, pbuf, match_requesttype(req_m->APIKey));
+static void
+parse_server_answer(struct RequestMessage* req_m,
+	struct ResponseMessage* res_m, char* pbuf)
+{
+	clear_responsemessage(res_m, req_m->APIKey);
+	parse_responsemessage(res_m, pbuf, match_requesttype(req_m->APIKey));
 }
 
-void* request_notifier_thread(void *vargp){
-    notifier_argument* na = (notifier_argument*) vargp;
-    char* pbuf = (char*) ilia_alloc(sizeof(char)*MTU); //TODO move this guy to the allocations
+static void *
+request_notifier_thread(void *vargp)
+{
+	notifier_argument_t *na = (notifier_argument_t *) vargp;
+	char *pbuf = (char *) distlog_alloc(sizeof(char) * MTU); //TODO move this guy to the allocations
 
-    debug(PRIO_LOW, "Requester thread with id %d started...\n", na->index);
+	debug(PRIO_LOW, "Requester thread with id %d started...\n", na->index);
 
-    while(running){
-        if(request_notifiers[na->index].num_elems > 0){
-            DLLNode* rt = lboru_dll(response_pool);
-            debug(PRIO_LOW, "The pool[%d] last valid after %p was borrowed: %p\n", response_pool->cur_num, rt, response_pool->last_valid);
+	while (running) {
+		if (request_notifiers[na->index].num_elems > 0) {
+			DLLNode* rt = lboru_dll(response_pool);
+			debug(PRIO_LOW, "The pool[%d] last valid after %p "
+				"was borrowed: %p\n", response_pool->cur_num,
+				rt, response_pool->last_valid);
 
-            if(rt){
-                lock_cq(&request_notifiers[na->index]);
-                int ind = dequeue(&request_notifiers[na->index], (void*) pbuf, sizeof(char)*MTU);
-                ulock_cq(&request_notifiers[na->index]);
+			if (rt) {
+				lock_cq(&request_notifiers[na->index]);
+				int ind = dequeue(
+					&request_notifiers[na->index],
+					(void*) pbuf, sizeof(char)*MTU);
+				ulock_cq(&request_notifiers[na->index]);
 
-                if(ind != -1){
-                    lock_bth(un_ack_holder);
-                    lock_dll(node_pool);
+				if (ind != -1) {
+					lock_bth(un_ack_holder);
+					lock_dll(node_pool);
 
-                    debug(PRIO_NORMAL, "Requester[%d] got the following message '%s'\n", na->index, pbuf);
-                    correlationId_t message_corr_id = get_corrid(pbuf);
+					debug(PRIO_NORMAL, "Requester[%d] "
+						"got the following message "
+						"'%s'\n", na->index, pbuf);
+					correlationId_t message_corr_id =
+						get_corrid(pbuf);
 
-                    print_bt(un_ack_holder->bt);
-                    bt_node *bn = search(un_ack_holder->bt, message_corr_id);
-                    debug(PRIO_NORMAL, "Requested: %d Gotten: %d\n", message_corr_id, bn->key);
-                    debug(PRIO_LOW, "CorrId of the message: %d\n", message_corr_id);
+					print_bt(un_ack_holder->bt);
+					bt_node *bn = search(un_ack_holder->bt,
+						message_corr_id);
+					debug(PRIO_NORMAL, "Requested: %d "
+						"Gotten: %d\n",
+						message_corr_id, bn->key);
+					debug(PRIO_LOW, "CorrId of the "
+						"message: %d\n",
+						message_corr_id);
 
-                    if(bn){
-                        debug(PRIO_NORMAL, "Found the un_acked node\n");
-                        DLLNode* req_n = (DLLNode*) bn->val;
-                        struct RequestMessage  *req_m = (struct RequestMessage*)  req_n->val;
-                        struct ResponseMessage *res_m = (struct ResponseMessage*) rt->val;
+					if (bn) {
+						debug(PRIO_NORMAL, "Found the un_acked node\n");
+						DLLNode* req_n = (DLLNode*) bn->val;
+						struct RequestMessage  *req_m = (struct RequestMessage*)  req_n->val;
+						struct ResponseMessage *res_m = (struct ResponseMessage*) rt->val;
 
-                        parse_server_answer(req_m, res_m, pbuf);
-                        
-                        na->on_ack(res_m->CorrelationId);
-                        na->on_response(req_m, res_m);
-                        debug(PRIO_NORMAL, "Got acknowledged: %d\n", res_m->CorrelationId);
-                        debug(PRIO_NORMAL, "Returning Binary Tree object %p\n", bn->me);
+						parse_server_answer(req_m, res_m, pbuf);
 
-                        lretu_dll(request_pool, (DLLNode*) bn->val);
-                        returnObj(node_pool, (DLLNode*) bn->me);
-                        lretu_dll(response_pool, rt);
-                        bn->me = NULL;
-                        bn->val = NULL;
+						na->on_ack(res_m->CorrelationId);
+						na->on_response(req_m, res_m);
+						debug(PRIO_NORMAL, "Got acknowledged: %d\n", res_m->CorrelationId);
+						debug(PRIO_NORMAL, "Returning Binary Tree object %p\n", bn->me);
 
-                        un_ack_holder->bt = delete_node(un_ack_holder->bt, message_corr_id);
-                        printf("After deleting\n");
-                        print_bt(un_ack_holder->bt);
-                    }else{
-                        debug(PRIO_LOW, "Not found the un_acked node\n");
-                        print_bt(un_ack_holder->bt);
-                        lretu_dll(response_pool, rt);
-                    }
-                    ulock_dll(node_pool);
-                    ulock_bth(un_ack_holder);
-                }else{
-                    lretu_dll(response_pool, rt);
-                }
-            }else{
-                debug(PRIO_HIGH, "Cant borrow a response to send stuff off\n");
-            }
-        }
-        sleep(na->config->request_notifier_thread_sleep_length);
-    }
-    return NULL;
+						lretu_dll(request_pool, (DLLNode*) bn->val);
+						returnObj(node_pool, (DLLNode*) bn->me);
+						lretu_dll(response_pool, rt);
+						bn->me = NULL;
+						bn->val = NULL;
+
+						un_ack_holder->bt = delete_node(un_ack_holder->bt, message_corr_id);
+						printf("After deleting\n");
+						print_bt(un_ack_holder->bt);
+						} else {
+						debug(PRIO_LOW, "Not found the un_acked node\n");
+						print_bt(un_ack_holder->bt);
+						lretu_dll(response_pool, rt);
+					}
+					ulock_dll(node_pool);
+					ulock_bth(un_ack_holder);
+				} else {
+					lretu_dll(response_pool, rt);
+				}
+			} else {
+				debug(PRIO_HIGH, "Cant borrow a response "
+					"to send stuff off\n");
+			}
+		}
+		sleep(na->config->request_notifier_thread_sleep_length);
+	}
+	return NULL;
 }
 
-void start_notifiers(struct client_configuration *cc){
-    for(int i=0; i < NUM_NOTIFIERS; i++){
-        nas[i].index = i;
-        nas[i].tid   = NULL;
-        nas[i].config = cc;
-        nas[i].on_ack = cc->on_ack;
-        nas[i].on_response = cc->on_response;
+static void
+start_notifiers(struct client_configuration *cc)
+{
+	for (int i=0; i < NUM_NOTIFIERS; i++){
+		nas[i].index = i;
+		nas[i].tid   = NULL;
+		nas[i].config = cc;
+		nas[i].on_ack = cc->on_ack;
+		nas[i].on_response = cc->on_response;
 
-        pthread_create(&notifiers[i], NULL, request_notifier_thread, &nas[i]);
-        nas[i].tid = &notifiers[i];
-    }
+		pthread_create(&notifiers[i], NULL, request_notifier_thread,
+			&nas[i]);
+		nas[i].tid = &notifiers[i];
+	}
 }
 
-void start_resender(struct client_configuration *cc){
-    resender_arg->index=0;
-    resender_arg->tid = NULL;
-    resender_arg->config = cc;
-    pthread_create(resender, NULL, resender_thread, resender_arg);
-    resender_arg->tid = resender;
+static void
+start_resender(struct client_configuration *cc)
+{
+	resender_arg->index = 0;
+	resender_arg->tid = NULL;
+	resender_arg->config = cc;
+	pthread_create(resender, NULL, resender_thread, resender_arg);
+	resender_arg->tid = resender;
 }
 
-int allocate_client_datastructures(struct client_configuration* cc){
-    //TODO: need to add the error checking somewhere here
-    un_ack_holder = (struct bt_holder*) ilia_alloc(sizeof(struct bt_holder));
-    un_ack_holder->bt = NULL;
-    init_bt_holder(un_ack_holder);
+static int
+allocate_client_datastructures(struct client_configuration* cc)
+{
+	//TODO: need to add the error checking somewhere here
+	un_ack_holder = (struct bt_holder*) distlog_alloc(
+		sizeof(struct bt_holder));
+	un_ack_holder->bt = NULL;
+	init_bt_holder(un_ack_holder);
 
-    nas = (notifier_argument*) ilia_alloc(sizeof(notifier_argument)*NUM_NOTIFIERS);
-    ras = (reader_argument*) ilia_alloc(sizeof(reader_argument)*NUM_READERS);
-    notifiers = (pthread_t*) ilia_alloc(sizeof(pthread_t)*NUM_NOTIFIERS);
-    readers = (pthread_t*) ilia_alloc(sizeof(pthread_t)*NUM_READERS);
+	nas = (notifier_argument_t *) distlog_alloc(
+		sizeof(notifier_argument_t) * NUM_NOTIFIERS);
+	notifiers = (pthread_t *) distlog_alloc(
+		sizeof(pthread_t)*NUM_NOTIFIERS);
 
-    request_notifiers = allocate_circ_queue_per_num_processors(NUM_NOTIFIERS, REQUESTS_PER_NOTIFIER, sizeof(char)*MTU);
-    send_out_queue = allocate_circ_queue_per_num_processors(NUM_NOTIFIERS, REQUESTS_PER_NOTIFIER, sizeof(DLLNode*));
+	readers = (pthread_t *) distlog_alloc(
+		sizeof(pthread_t) * NUM_READERS);
+	ras = (reader_argument_t *) distlog_alloc(
+		sizeof(reader_argument_t) * NUM_READERS);
 
-    request_pool = allocate_dlls_per_num_processors(1, MAX_NUM_REQUESTS_PER_PROCESSOR);
-    preallocate_with(request_pool, 1, MAX_NUM_REQUESTS_PER_PROCESSOR, sizeof(struct RequestMessage));
+	request_notifiers = allocate_circ_queue_per_num_processors(
+		NUM_NOTIFIERS, REQUESTS_PER_NOTIFIER, sizeof(char) * MTU);
+	send_out_queue = allocate_circ_queue_per_num_processors(
+		NUM_NOTIFIERS, REQUESTS_PER_NOTIFIER, sizeof(DLLNode *));
 
-    if(cc->to_resend){
-        node_pool = allocate_dlls_per_num_processors(1, NODE_POOL_SIZE);
-        preallocate_with(node_pool, 1, NODE_POOL_SIZE, sizeof(struct bt_node));
-        resender_arg = (reader_argument*) ilia_alloc(sizeof(reader_argument));
-        resender = (pthread_t*) ilia_alloc(sizeof(pthread_t));
-    }
+	request_pool = allocate_dlls_per_num_processors(1,
+		MAX_NUM_REQUESTS_PER_PROCESSOR);
+	preallocate_with(request_pool, 1, MAX_NUM_REQUESTS_PER_PROCESSOR,
+		sizeof(struct RequestMessage));
 
-    response_pool = allocate_dlls_per_num_processors(1, MAX_NUM_RESPONSES_PER_PROCESSOR);
-    preallocate_with(response_pool, 1, MAX_NUM_RESPONSES_PER_PROCESSOR, sizeof(struct ResponseMessage));
+	if (cc->to_resend) {
+		node_pool = allocate_dlls_per_num_processors(1, NODE_POOL_SIZE);
+		preallocate_with(node_pool, 1, NODE_POOL_SIZE,
+			sizeof(struct bt_node));
+		resender_arg = (reader_argument_t *) distlog_alloc(
+			sizeof(reader_argument_t));
+		resender = (pthread_t*) distlog_alloc(sizeof(pthread_t));
+	}
 
-    return 1;
+	response_pool = allocate_dlls_per_num_processors(1,
+		MAX_NUM_RESPONSES_PER_PROCESSOR);
+	preallocate_with(response_pool, 1, MAX_NUM_RESPONSES_PER_PROCESSOR,
+		sizeof(struct ResponseMessage));
+
+	return 1;
 }
 
-void start_reader_threads(struct client_configuration *cc, int num, ...){
+static void
+start_reader_threads(struct client_configuration *cc, int num, ...)
+{
+	va_list argvars;
+	va_start(argvars, num);
 
-     va_list argvars;
-     va_start(argvars, num);
-     num_readers = MIN(NUM_READERS, num);
+	num_readers = MIN(NUM_READERS, num);
 
-     for(int i=0; i < num_readers; i++){
-        ras[i].index = i;
-        ras[i].tid   = NULL;
-        ras[i].config = cc;
+	for (int i = 0; i < num_readers; i++) {
+		ras[i].index = i;
+		ras[i].tid = NULL;
+		ras[i].config = cc;
 
-        char* thost = va_arg(argvars, char*);
-        memcpy(ras[i].hostname, thost, strlen(thost));
-        ras[i].portnumber = va_arg(argvars, int);
+		char *thost = va_arg(argvars, char*);
+		memcpy(ras[i].hostname, thost, strlen(thost));
+		ras[i].portnumber = va_arg(argvars, int);
 
-        pthread_create(&readers[i], NULL, reader_thread, &ras[i]);
-        nas[i].tid = &readers[i];
-    }
-    va_end(argvars);
+		pthread_create(&readers[i], NULL, reader_thread, &ras[i]);
+		ras[i].tid = &readers[i];
+	}
+
+	va_end(argvars);
 }
 
-void client_busyloop(const char *hostname, int portnumber, struct client_configuration* cc){
+void
+client_busyloop(const char *hostname, int portnumber,
+	struct client_configuration* cc)
+{
+	int ret;
 
-    int ret = allocate_client_datastructures(cc);
-    if(ret > 0){
-        debug(PRIO_NORMAL, "Finished allocation...\n");
-        running = 1;
+	ret  = allocate_client_datastructures(cc);
+	if (ret > 0) {
+		debug(PRIO_NORMAL, "Finished allocation...\n");
+		running = 1;
 
-        start_notifiers(cc);
-        start_reader_threads(cc, 1, hostname, portnumber);
-        start_resender(cc);
-    }
+		start_notifiers(cc);
+		start_reader_threads(cc, 1, hostname, portnumber);
+		start_resender(cc);
+	}
 }
 
-int send_request(int server_id, enum request_type rt, correlationId_t correlationId, char* clientId, int should_resend, int resend_timeout, ...){
+int
+send_request(int server_id, enum request_type rt,
+	correlationId_t correlation_id, char* client_id, int should_resend,
+	int resend_timeout, ...)
+{
+	va_list ap;
+	int result = 0;
 
-    debug(PRIO_LOW, "User requested to send a message with correlation id of %d\n", correlationId);
-    va_list ap;
-    va_start(ap, resend_timeout);
+	debug(PRIO_LOW, "User requested to send a message "
+		"with correlation id of %d\n", correlation_id);
 
-    DLLNode *rq = lboru_dll(request_pool);
+	va_start(ap, resend_timeout);
 
-    int result = 0;
+	DLLNode *rq = lboru_dll(request_pool);
+	if (rq) {
+		lock_dll(node_pool);
+		DLLNode *dnode = borrow(node_pool);
+		if (dnode) {
+			lock_bth(un_ack_holder);
+			lock_cq(&send_out_queue[server_id]);
 
-    if(rq){
-        lock_dll(node_pool);
-        DLLNode *dnode = borrow(node_pool);
-        if(dnode){
-            lock_bth(un_ack_holder);
-            lock_cq(&send_out_queue[server_id]);
+			struct RequestMessage *trq =
+				(struct RequestMessage*) rq->val;
+			debug(PRIO_LOW, "Requested rm (DLL: %p) "
+				"(RequestMessage: %p)\n", rq, trq);
+			debug(PRIO_LOW, "Building req \n");
 
-            struct RequestMessage *trq = (struct RequestMessage*) rq->val;
-            debug(PRIO_LOW, "Requested rm (DLL: %p) (RequestMessage: %p)\n", rq, trq);
-            debug(PRIO_LOW, "Building req \n");
+			clear_requestmessage(trq, rt);
+			build_req(trq, rt, correlation_id, client_id, ap);
+			debug(PRIO_LOW, "Done\n");
 
-            clear_requestmessage(trq, rt);
-            build_req(trq, rt, correlationId, clientId, ap);
-            debug(PRIO_LOW, "Done\n");
+			if( (trq->APIKey == REQUEST_FETCH) ||
+				((trq->APIKey == REQUEST_PRODUCE) &&
+				(trq->rm.produce_request.RequiredAcks))) {
+				struct bt_node *btn = (struct bt_node*) dnode->val;
+				btn->should_resend = should_resend;
+				btn->resend_timeout = resend_timeout;
+				btn->last_sent = time(NULL);
 
-            if( (trq->APIKey == REQUEST_FETCH) || ((trq->APIKey == REQUEST_PRODUCE) && (trq->rm.produce_request.RequiredAcks))){
-                struct bt_node *btn = (struct bt_node*) dnode->val;
-                btn->should_resend = should_resend;
-                btn->resend_timeout = resend_timeout;
-                btn->last_sent = time(NULL);
-
-                debug(PRIO_NORMAL, "Inserting into the tree with key %d\n", correlationId);
-                un_ack_holder->bt = insert(un_ack_holder->bt, correlationId, &dnode, rq);
-				debug(PRIO_NORMAL, "Key of the request %d when the user submitted is %d\n", ((struct RequestMessage*) rq->val)->CorrelationId, correlationId);
-				debug(PRIO_NORMAL, "The key recorded: %d\n", ((struct bt_node*)dnode->val)->key);
-                debug(PRIO_NORMAL, "Done\n");
-            }else{
+				debug(PRIO_NORMAL, "Inserting into the tree "
+					"with key %d\n", correlation_id);
+				un_ack_holder->bt = insert(un_ack_holder->bt,
+					correlation_id, &dnode, rq);
+				debug(PRIO_NORMAL, "Key of the request %d "
+					"when the user submitted is %d\n",
+					((struct RequestMessage*) rq->val)->CorrelationId,
+					correlation_id);
+				debug(PRIO_NORMAL, "The key recorded: %d\n",
+					((struct bt_node*)dnode->val)->key);
+				debug(PRIO_NORMAL, "Done\n");
+			} else {
 				returnObj(node_pool, dnode);
 			}
 
-            enqueue(&send_out_queue[server_id], &rq, sizeof(DLLNode*));
-            result = 1;
+			enqueue(&send_out_queue[server_id], &rq,
+				sizeof(DLLNode *));
+			result = 1;
 
-            ulock_cq(&send_out_queue[server_id]);
-            ulock_dll(node_pool);
-            ulock_bth(un_ack_holder);
-        }else{
-            lretu_dll(request_pool, rq);
-            ulock_dll(node_pool);
-        }
-    }else{
-        debug(PRIO_LOW, "Error borrowing the request to perform user send\n");
-    }
+			ulock_cq(&send_out_queue[server_id]);
+			ulock_dll(node_pool);
+			ulock_bth(un_ack_holder);
+		} else {
+			lretu_dll(request_pool, rq);
+			ulock_dll(node_pool);
+		}
+	} else {
+        	debug(PRIO_LOW,
+			"Error borrowing the request to perform user send\n");
+	}
 
-    debug(PRIO_LOW, "User request finished\n");
-    va_end(ap);
-    return result;
+	debug(PRIO_LOW, "User request finished\n");
+	va_end(ap);
+
+	return result;
 }

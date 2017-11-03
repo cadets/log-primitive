@@ -41,6 +41,57 @@
 #include "protocol.h"
 #include "protocol_common.h"
 
+static int encode_message(struct Message* inp, char** st);
+static int encode_messagesetelement(struct MessageSetElement* inp, char** st);
+static int encode_messageset(struct MessageSet* inp, char** st);
+static int encode_topicname(struct TopicName* inp, char** st);
+static int encode_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp,
+	char** st);
+static int encode_metadatarequest(struct MetadataRequest* inp, char** st);
+static int encode_subsubproducerequest(struct SubSubProduceRequest* inp,
+	char** st);
+static int encode_subproducerequest(struct SubProduceRequest* inp, char** st);
+static int encode_producerequest(struct ProduceRequest* inp, char** st);
+static int encode_fetchrequest(struct FetchRequest* inp, char** st);
+static int encode_offsetrequest(struct OffsetRequest* inp, char** st);
+static int encode_offsetcommitrequest(struct OffsetCommitRequest* inp,
+	char** st);
+static int encode_offsetfetchrequest(struct OffsetFetchRequest* inp, char** st);
+static int encode_reqmessage(union ReqMessage* inp, char** st,
+	enum request_type rt);
+static int encode_broker(struct Broker* inp, char** st);
+static int encode_replica(struct Replica* inp, char** st);
+static int encode_isr(struct Isr* inp, char** st);
+static int encode_partitionmetadata(struct PartitionMetadata* inp, char** st);
+static int encode_topicmetadata(struct TopicMetadata* inp, char** st);
+static int encode_metadataresponse(struct MetadataResponse* inp, char** st);
+static int encode_subsubproduceresponse(struct SubSubProduceResponse* inp,
+	char** st);
+static int encode_subproduceresponse(struct SubProduceResponse* inp, char** st);
+static int encode_produceresponse(struct ProduceResponse* inp, char** st);
+static int encode_subsubfetchresponse(struct subSubFetchResponse* inp,
+	char** st);
+static int encode_subfetchresponse(struct subFetchResponse* inp, char** st);
+static int encode_fetchresponse(struct FetchResponse* inp, char** st);
+static int encode_offset(struct Offset* inp, char** st);
+static int encode_partitionoffsets(struct PartitionOffsets* inp, char** st);
+static int encode_suboffsetresponse(struct subOffsetResponse* inp, char** st);
+static int encode_offsetresponse(struct OffsetResponse* inp, char** st);
+static int encode_groupcoordinatorresponse(
+	struct GroupCoordinatorResponse* inp, char** st);
+static int encode_subsuboffsetcommitresponse(
+	struct subSubOffsetCommitResponse* inp, char** st);
+static int encode_suboffsetcommitresponse(struct subOffsetCommitResponse* inp,
+	char** st);
+static int encode_offsetcommitresponse(struct OffsetCommitResponse* inp,
+	char** st);
+static int encode_subsuboffsetfetchresponse(
+	struct subSubOffsetFetchResponse* inp, char** st);
+static int encode_suboffsetfetchresponse(struct subOffsetFetchResponse* inp,
+	char** st);
+static int encode_offsetfetchresponse(struct OffsetFetchResponse* inp,
+	char** st);
+
 extern int MESSAGESETSIZE_FIELD_SIZE;
 extern int NUM_SOR_FIELD_SIZE;
 extern int NUM_PARTITIONS_FIELD_SIZE;
@@ -136,14 +187,17 @@ extern int OFFSET_FETCH_RESPONSE_SIZE_FIELD_SIZE;
 extern int PARTITIONERRORCODE_FIELD_SIZE;
 extern int PORT_FIELD_SIZE;
 
-int encode_message(struct Message* inp, char** st){
+static int
+encode_message(struct Message* inp, char** st)
+{
 	char *saveto = *st;
 	const char* format="%.*lu%.*lu%.*d%.*d%s%.*d%s";
 	return sprintf(saveto, format, CRC_FIELD_SIZE, inp->CRC, TIMESTAMP_FIELD_SIZE, inp->Timestamp, inp->Attributes < 0? ATTRIBUTES_FIELD_SIZE-1 : ATTRIBUTES_FIELD_SIZE, inp->Attributes, KEY_SIZE_FIELD_SIZE, strlen(inp->key), inp->key, VALUE_SIZE_FIELD_SIZE, strlen(inp->value), inp->value);
 }
 
-
-int encode_messagesetelement(struct MessageSetElement* inp, char** st){
+static int
+encode_messagesetelement(struct MessageSetElement* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_message[MTU], *temp_message_ptr=temp_message;
 	bzero(temp_message, MTU);
@@ -152,8 +206,9 @@ int encode_messagesetelement(struct MessageSetElement* inp, char** st){
 	return sprintf(saveto, format, inp->Offset < 0? OFFSET_FIELD_SIZE-1 : OFFSET_FIELD_SIZE, inp->Offset, inp->MessageSize < 0? MESSAGESIZE_FIELD_SIZE-1 : MESSAGESIZE_FIELD_SIZE, inp->MessageSize, temp_message);
 }
 
-
-int encode_messageset(struct MessageSet* inp, char** st){
+static int
+encode_messageset(struct MessageSet* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_elems[MTU];
 	char final_var_elems[MTU];
@@ -171,21 +226,26 @@ int encode_messageset(struct MessageSet* inp, char** st){
 }
 
 
-int encode_topicname(struct TopicName* inp, char** st){
+static int
+encode_topicname(struct TopicName* inp, char** st)
+{
 	char *saveto = *st;
 	const char* format="%.*d%s";
 	return sprintf(saveto, format, TOPICNAME_SIZE_FIELD_SIZE, strlen(inp->TopicName), inp->TopicName);
 }
 
 
-int encode_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp, char** st){
+static int
+encode_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp, char** st)
+{
 	char *saveto = *st;
 	const char* format="%.*d%s";
 	return sprintf(saveto, format, GROUPID_SIZE_FIELD_SIZE, strlen(inp->GroupId), inp->GroupId);
 }
 
-
-int encode_metadatarequest(struct MetadataRequest* inp, char** st){
+static int
+encode_metadatarequest(struct MetadataRequest* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_topicnames[MTU];
 	char final_var_topicnames[MTU];
@@ -202,8 +262,9 @@ int encode_metadatarequest(struct MetadataRequest* inp, char** st){
 	return sprintf(saveto, format, TOPICNAMES_SIZE_FIELD_SIZE, inp->NUM_TOPICS, final_var_topicnames);
 }
 
-
-int encode_subsubproducerequest(struct SubSubProduceRequest* inp, char** st){
+static int
+encode_subsubproducerequest(struct SubSubProduceRequest* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_mset[MTU], *temp_mset_ptr=temp_mset;
 	bzero(temp_mset, MTU);
@@ -212,8 +273,9 @@ int encode_subsubproducerequest(struct SubSubProduceRequest* inp, char** st){
 	return sprintf(saveto, format, inp->Partition < 0? PARTITION_FIELD_SIZE-1 : PARTITION_FIELD_SIZE, inp->Partition, inp->MessageSetSize < 0? MESSAGESETSIZE_FIELD_SIZE-1 : MESSAGESETSIZE_FIELD_SIZE, inp->MessageSetSize, temp_mset);
 }
 
-
-int encode_subproducerequest(struct SubProduceRequest* inp, char** st){
+static int
+encode_subproducerequest(struct SubProduceRequest* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_topicname[MTU], *temp_topicname_ptr=temp_topicname;
 	bzero(temp_topicname, MTU);
@@ -225,8 +287,9 @@ int encode_subproducerequest(struct SubProduceRequest* inp, char** st){
 	return sprintf(saveto, format, temp_topicname, temp_sspr);
 }
 
-
-int encode_producerequest(struct ProduceRequest* inp, char** st){
+static int
+encode_producerequest(struct ProduceRequest* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_spr[MTU], *temp_spr_ptr=temp_spr;
 	bzero(temp_spr, MTU);
@@ -235,8 +298,9 @@ int encode_producerequest(struct ProduceRequest* inp, char** st){
 	return sprintf(saveto, format, inp->RequiredAcks < 0? REQUIREDACKS_FIELD_SIZE-1 : REQUIREDACKS_FIELD_SIZE, inp->RequiredAcks, inp->Timeout < 0? TIMEOUT_FIELD_SIZE-1 : TIMEOUT_FIELD_SIZE, inp->Timeout, temp_spr);
 }
 
-
-int encode_fetchrequest(struct FetchRequest* inp, char** st){
+static int
+encode_fetchrequest(struct FetchRequest* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_topicname[MTU], *temp_topicname_ptr=temp_topicname;
 	bzero(temp_topicname, MTU);
@@ -245,8 +309,8 @@ int encode_fetchrequest(struct FetchRequest* inp, char** st){
 	return sprintf(saveto, format, inp->ReplicaId < 0? REPLICAID_FIELD_SIZE-1 : REPLICAID_FIELD_SIZE, inp->ReplicaId, inp->MaxWaitTime < 0? MAXWAITTIME_FIELD_SIZE-1 : MAXWAITTIME_FIELD_SIZE, inp->MaxWaitTime, inp->MinBytes < 0? MINBYTES_FIELD_SIZE-1 : MINBYTES_FIELD_SIZE, inp->MinBytes, temp_topicname, inp->Partition < 0? PARTITION_FIELD_SIZE-1 : PARTITION_FIELD_SIZE, inp->Partition, inp->FetchOffset < 0? FETCHOFFSET_FIELD_SIZE-1 : FETCHOFFSET_FIELD_SIZE, inp->FetchOffset, inp->MaxBytes < 0? MAXBYTES_FIELD_SIZE-1 : MAXBYTES_FIELD_SIZE, inp->MaxBytes);
 }
 
-
-int encode_offsetrequest(struct OffsetRequest* inp, char** st){
+static int encode_offsetrequest(struct OffsetRequest* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_topicname[MTU], *temp_topicname_ptr=temp_topicname;
 	bzero(temp_topicname, MTU);
@@ -255,8 +319,9 @@ int encode_offsetrequest(struct OffsetRequest* inp, char** st){
 	return sprintf(saveto, format, inp->RepolicaId < 0? REPOLICAID_FIELD_SIZE-1 : REPOLICAID_FIELD_SIZE, inp->RepolicaId, temp_topicname, inp->Partition < 0? PARTITION_FIELD_SIZE-1 : PARTITION_FIELD_SIZE, inp->Partition, inp->Time < 0? TIME_FIELD_SIZE-1 : TIME_FIELD_SIZE, inp->Time);
 }
 
-
-int encode_offsetcommitrequest(struct OffsetCommitRequest* inp, char** st){
+static int
+encode_offsetcommitrequest(struct OffsetCommitRequest* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_topicname[MTU], *temp_topicname_ptr=temp_topicname;
 	bzero(temp_topicname, MTU);
@@ -265,8 +330,9 @@ int encode_offsetcommitrequest(struct OffsetCommitRequest* inp, char** st){
 	return sprintf(saveto, format, CONSUMERGROUPID_SIZE_FIELD_SIZE, strlen(inp->ConsumerGroupId), inp->ConsumerGroupId, inp->ConsumerGroupGenerationId < 0? CONSUMERGROUPGENERATIONID_FIELD_SIZE-1 : CONSUMERGROUPGENERATIONID_FIELD_SIZE, inp->ConsumerGroupGenerationId, inp->ConsumerId < 0? CONSUMERID_FIELD_SIZE-1 : CONSUMERID_FIELD_SIZE, inp->ConsumerId, temp_topicname, inp->Partition < 0? PARTITION_FIELD_SIZE-1 : PARTITION_FIELD_SIZE, inp->Partition, inp->Offset < 0? OFFSET_FIELD_SIZE-1 : OFFSET_FIELD_SIZE, inp->Offset, inp->Timestamp < 0? TIMESTAMP_FIELD_SIZE-1 : TIMESTAMP_FIELD_SIZE, inp->Timestamp, METADATA_SIZE_FIELD_SIZE, strlen(inp->Metadata), inp->Metadata);
 }
 
-
-int encode_offsetfetchrequest(struct OffsetFetchRequest* inp, char** st){
+static int
+encode_offsetfetchrequest(struct OffsetFetchRequest* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_topicname[MTU], *temp_topicname_ptr=temp_topicname;
 	bzero(temp_topicname, MTU);
@@ -275,8 +341,8 @@ int encode_offsetfetchrequest(struct OffsetFetchRequest* inp, char** st){
 	return sprintf(saveto, format, CONSUMERGROUPID_SIZE_FIELD_SIZE, strlen(inp->ConsumerGroupId), inp->ConsumerGroupId, temp_topicname, inp->Partition < 0? PARTITION_FIELD_SIZE-1 : PARTITION_FIELD_SIZE, inp->Partition);
 }
 
-
-int encode_reqmessage(union ReqMessage* inp, char** st, enum request_type rt){
+static int encode_reqmessage(union ReqMessage* inp, char** st, enum request_type rt)
+{
 	char *saveto = *st;
 	char temp [MTU], *temp_ptr = temp;
 	bzero(temp, MTU);
@@ -294,8 +360,9 @@ int encode_reqmessage(union ReqMessage* inp, char** st, enum request_type rt){
 	return sprintf(saveto, format, temp);
 }
 
-
-int encode_requestmessage(struct RequestMessage* inp, char** st){
+int
+encode_requestmessage(struct RequestMessage* inp, char** st)
+{
 	char *saveto = *st;
 	const char* format="%.*d%.*d%.*d%.*d%s%s";
 
@@ -305,29 +372,33 @@ int encode_requestmessage(struct RequestMessage* inp, char** st){
 	return sprintf(saveto, format, inp->APIKey < 0? APIKEY_FIELD_SIZE-1 : APIKEY_FIELD_SIZE, inp->APIKey, inp->APIVersion < 0? APIVERSION_FIELD_SIZE-1 : APIVERSION_FIELD_SIZE, inp->APIVersion, inp->CorrelationId < 0? CORRELATIONID_FIELD_SIZE-1 : CORRELATIONID_FIELD_SIZE, inp->CorrelationId, CLIENTID_SIZE_FIELD_SIZE, strlen(inp->ClientId), inp->ClientId, temp);
 }
 
-
-int encode_broker(struct Broker* inp, char** st){
+static int
+encode_broker(struct Broker* inp, char** st)
+{
 	char *saveto = *st;
 	const char* format="%.*d%.*d%s%.*d";
 	return sprintf(saveto, format, inp->NodeId < 0? NODEID_FIELD_SIZE-1 : NODEID_FIELD_SIZE, inp->NodeId, HOST_SIZE_FIELD_SIZE, strlen(inp->Host), inp->Host, inp->Port < 0? PORT_FIELD_SIZE-1 : PORT_FIELD_SIZE, inp->Port);
 }
 
-
-int encode_replica(struct Replica* inp, char** st){
+static int
+encode_replica(struct Replica* inp, char** st)
+{
 	char *saveto = *st;
 	const char* format="%.*d";
 	return sprintf(saveto, format, inp->Replica < 0? REPLICA_FIELD_SIZE-1 : REPLICA_FIELD_SIZE, inp->Replica);
 }
 
-
-int encode_isr(struct Isr* inp, char** st){
+static int encode_isr(struct Isr* inp, char** st)
+{
 	char *saveto = *st;
 	const char* format="%.*d";
 	return sprintf(saveto, format, inp->Isr < 0? ISR_FIELD_SIZE-1 : ISR_FIELD_SIZE, inp->Isr);
 }
 
-
-int encode_partitionmetadata(struct PartitionMetadata* inp, char** st){
+static int
+encode_partitionmetadata(struct PartitionMetadata* inp, char** st
+)
+{
 	char *saveto = *st;
 	char temp_replicas[MTU];
 	char final_var_replicas[MTU];
@@ -356,7 +427,9 @@ int encode_partitionmetadata(struct PartitionMetadata* inp, char** st){
 }
 
 
-int encode_topicmetadata(struct TopicMetadata* inp, char** st){
+static int
+encode_topicmetadata(struct TopicMetadata* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_topicname[MTU], *temp_topicname_ptr=temp_topicname;
 	bzero(temp_topicname, MTU);
@@ -377,7 +450,9 @@ int encode_topicmetadata(struct TopicMetadata* inp, char** st){
 }
 
 
-int encode_metadataresponse(struct MetadataResponse* inp, char** st){
+static int
+encode_metadataresponse(struct MetadataResponse* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_brokers[MTU];
 	char final_var_brokers[MTU];
@@ -395,14 +470,18 @@ int encode_metadataresponse(struct MetadataResponse* inp, char** st){
 }
 
 
-int encode_subsubproduceresponse(struct SubSubProduceResponse* inp, char** st){
+static int
+encode_subsubproduceresponse(struct SubSubProduceResponse* inp, char** st)
+{
 	char *saveto = *st;
 	const char* format="%.*d%.*d%.*ld%.*ld";
 	return sprintf(saveto, format, inp->Partition < 0? PARTITION_FIELD_SIZE-1 : PARTITION_FIELD_SIZE, inp->Partition, inp->ErrorCode < 0? ERRORCODE_FIELD_SIZE-1 : ERRORCODE_FIELD_SIZE, inp->ErrorCode, inp->Offset < 0? OFFSET_FIELD_SIZE-1 : OFFSET_FIELD_SIZE, inp->Offset, inp->Timestamp < 0? TIMESTAMP_FIELD_SIZE-1 : TIMESTAMP_FIELD_SIZE, inp->Timestamp);
 }
 
 
-int encode_subproduceresponse(struct SubProduceResponse* inp, char** st){
+static int
+encode_subproduceresponse(struct SubProduceResponse* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_topicname[MTU], *temp_topicname_ptr=temp_topicname;
 	bzero(temp_topicname, MTU);
@@ -423,7 +502,9 @@ int encode_subproduceresponse(struct SubProduceResponse* inp, char** st){
 }
 
 
-int encode_produceresponse(struct ProduceResponse* inp, char** st){
+static int
+encode_produceresponse(struct ProduceResponse* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_spr[MTU];
 	char final_var_spr[MTU];
@@ -441,7 +522,9 @@ int encode_produceresponse(struct ProduceResponse* inp, char** st){
 }
 
 
-int encode_subsubfetchresponse(struct subSubFetchResponse* inp, char** st){
+static int
+encode_subsubfetchresponse(struct subSubFetchResponse* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_messageset[MTU], *temp_messageset_ptr=temp_messageset;
 	bzero(temp_messageset, MTU);
@@ -451,7 +534,9 @@ int encode_subsubfetchresponse(struct subSubFetchResponse* inp, char** st){
 }
 
 
-int encode_subfetchresponse(struct subFetchResponse* inp, char** st){
+static int
+encode_subfetchresponse(struct subFetchResponse* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_topicname[MTU], *temp_topicname_ptr=temp_topicname;
 	bzero(temp_topicname, MTU);
@@ -472,7 +557,9 @@ int encode_subfetchresponse(struct subFetchResponse* inp, char** st){
 }
 
 
-int encode_fetchresponse(struct FetchResponse* inp, char** st){
+static int
+encode_fetchresponse(struct FetchResponse* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_sfr[MTU];
 	char final_var_sfr[MTU];
@@ -490,14 +577,16 @@ int encode_fetchresponse(struct FetchResponse* inp, char** st){
 }
 
 
-int encode_offset(struct Offset* inp, char** st){
+static int encode_offset(struct Offset* inp, char** st){
 	char *saveto = *st;
 	const char* format="%.*ld";
 	return sprintf(saveto, format, inp->Offset < 0? OFFSET_FIELD_SIZE-1 : OFFSET_FIELD_SIZE, inp->Offset);
 }
 
 
-int encode_partitionoffsets(struct PartitionOffsets* inp, char** st){
+static int
+encode_partitionoffsets(struct PartitionOffsets* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_offsets[MTU];
 	char final_var_offsets[MTU];
@@ -515,7 +604,9 @@ int encode_partitionoffsets(struct PartitionOffsets* inp, char** st){
 }
 
 
-int encode_suboffsetresponse(struct subOffsetResponse* inp, char** st){
+static int
+encode_suboffsetresponse(struct subOffsetResponse* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_topicname[MTU], *temp_topicname_ptr=temp_topicname;
 	bzero(temp_topicname, MTU);
@@ -536,7 +627,9 @@ int encode_suboffsetresponse(struct subOffsetResponse* inp, char** st){
 }
 
 
-int encode_offsetresponse(struct OffsetResponse* inp, char** st){
+static int
+encode_offsetresponse(struct OffsetResponse* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_sor[MTU];
 	char final_var_sor[MTU];
@@ -554,21 +647,27 @@ int encode_offsetresponse(struct OffsetResponse* inp, char** st){
 }
 
 
-int encode_groupcoordinatorresponse(struct GroupCoordinatorResponse* inp, char** st){
+static int
+encode_groupcoordinatorresponse(struct GroupCoordinatorResponse* inp,
+	char** st)
+{
 	char *saveto = *st;
 	const char* format="%.*d%.*d%.*d%s%.*d";
 	return sprintf(saveto, format, inp->ErrorCode < 0? ERRORCODE_FIELD_SIZE-1 : ERRORCODE_FIELD_SIZE, inp->ErrorCode, inp->CorrdinatorId < 0? CORRDINATORID_FIELD_SIZE-1 : CORRDINATORID_FIELD_SIZE, inp->CorrdinatorId, CORRDINATORHOST_SIZE_FIELD_SIZE, strlen(inp->CorrdinatorHost), inp->CorrdinatorHost, inp->CorrdinatorPort < 0? CORRDINATORPORT_FIELD_SIZE-1 : CORRDINATORPORT_FIELD_SIZE, inp->CorrdinatorPort);
 }
 
-
-int encode_subsuboffsetcommitresponse(struct subSubOffsetCommitResponse* inp, char** st){
+static int
+encode_subsuboffsetcommitresponse(struct subSubOffsetCommitResponse* inp,
+	char** st)
+{
 	char *saveto = *st;
 	const char* format="%.*d%.*d";
 	return sprintf(saveto, format, inp->Partition < 0? PARTITION_FIELD_SIZE-1 : PARTITION_FIELD_SIZE, inp->Partition, inp->ErrorCode < 0? ERRORCODE_FIELD_SIZE-1 : ERRORCODE_FIELD_SIZE, inp->ErrorCode);
 }
 
-
-int encode_suboffsetcommitresponse(struct subOffsetCommitResponse* inp, char** st){
+static int
+encode_suboffsetcommitresponse(struct subOffsetCommitResponse* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_topicname[MTU], *temp_topicname_ptr=temp_topicname;
 	bzero(temp_topicname, MTU);
@@ -588,8 +687,9 @@ int encode_suboffsetcommitresponse(struct subOffsetCommitResponse* inp, char** s
 	return sprintf(saveto, format, temp_topicname, SSOCR_SIZE_FIELD_SIZE, inp->NUM_SSOCR, final_var_ssocr);
 }
 
-
-int encode_offsetcommitresponse(struct OffsetCommitResponse* inp, char** st){
+static int
+encode_offsetcommitresponse(struct OffsetCommitResponse* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_socr[MTU];
 	char final_var_socr[MTU];
@@ -607,14 +707,19 @@ int encode_offsetcommitresponse(struct OffsetCommitResponse* inp, char** st){
 }
 
 
-int encode_subsuboffsetfetchresponse(struct subSubOffsetFetchResponse* inp, char** st){
+static int
+encode_subsuboffsetfetchresponse(struct subSubOffsetFetchResponse* inp,
+	char** st)
+{
 	char *saveto = *st;
 	const char* format="%.*d%.*ld%.*d%s%.*d";
 	return sprintf(saveto, format, inp->Partition < 0? PARTITION_FIELD_SIZE-1 : PARTITION_FIELD_SIZE, inp->Partition, inp->Offset < 0? OFFSET_FIELD_SIZE-1 : OFFSET_FIELD_SIZE, inp->Offset, METADATA_SIZE_FIELD_SIZE, strlen(inp->Metadata), inp->Metadata, inp->ErrorCode < 0? ERRORCODE_FIELD_SIZE-1 : ERRORCODE_FIELD_SIZE, inp->ErrorCode);
 }
 
 
-int encode_suboffsetfetchresponse(struct subOffsetFetchResponse* inp, char** st){
+static int
+encode_suboffsetfetchresponse(struct subOffsetFetchResponse* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_topicname[MTU], *temp_topicname_ptr=temp_topicname;
 	bzero(temp_topicname, MTU);
@@ -635,7 +740,9 @@ int encode_suboffsetfetchresponse(struct subOffsetFetchResponse* inp, char** st)
 }
 
 
-int encode_offsetfetchresponse(struct OffsetFetchResponse* inp, char** st){
+static int
+encode_offsetfetchresponse(struct OffsetFetchResponse* inp, char** st)
+{
 	char *saveto = *st;
 	char temp_sofr[MTU];
 	char final_var_sofr[MTU];
@@ -652,7 +759,9 @@ int encode_offsetfetchresponse(struct OffsetFetchResponse* inp, char** st){
 	return sprintf(saveto, format, SOFR_SIZE_FIELD_SIZE, inp->NUM_SUB_OFR, final_var_sofr);
 }
 
-int encode_resmessage(union ResMessage* inp, char** st, enum response_type rt){
+int
+encode_resmessage(union ResMessage* inp, char** st, enum response_type rt)
+{
 	char *saveto = *st;
 	char temp [MTU], *temp_ptr = temp;
 	bzero(temp, MTU);
@@ -670,8 +779,10 @@ int encode_resmessage(union ResMessage* inp, char** st, enum response_type rt){
 	return sprintf(saveto, format, temp);
 }
 
-
-int encode_responsemessage(struct ResponseMessage* inp, char** st, enum response_type rt){
+int
+encode_responsemessage(struct ResponseMessage* inp, char** st,
+	enum response_type rt)
+{
 	char *saveto = *st;
 	char temp_rm[MTU], *temp_rm_ptr=temp_rm;
 	bzero(temp_rm, MTU);

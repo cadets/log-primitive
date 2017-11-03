@@ -52,14 +52,12 @@ static int           msg_field_size = 4;
 static int MTU = 2000;
 static int MSG_POOL_SIZE = 16;
 
-extern unsigned long get_crc(char * text_message, int message_size);
-extern long get_long(char * beg, int field_size);
-extern int get_int(char * beg, int field_size);
-extern void get_val(char ** saveto, char * beg, int field_size);
-
-extern int read_msg(int fd, char** saveto);
-
-extern int wrap_with_size(struct ResponseMessage * rm, char ** buf,
-	char * send_out_buf, enum request_type rt);
+extern unsigned long	get_crc(char *, int);
+extern long	get_long(char *, int);
+extern int	get_int(char *, int);
+extern void	get_val(char **, char *, int);
+extern int	read_msg(int, char **);
+extern int	wrap_with_size(struct ResponseMessage *, char **, char *,
+	enum request_type);
 
 #endif

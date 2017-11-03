@@ -354,10 +354,10 @@ struct ResponseMessage{
 	union ResMessage rm;
 };
 
-extern enum response_type match_requesttype(enum request_type rt);
-extern void clear_responsemessage(struct ResponseMessage* rm,
-	enum request_type rt);
-extern void clear_requestmessage(struct RequestMessage* rm,
-	enum request_type rt);
+extern enum	response_type match_requesttype(enum request_type);
+extern void	clear_responsemessage(struct ResponseMessage *,
+	enum request_type);
+extern void	clear_requestmessage(struct RequestMessage *,
+	enum request_type);
 
 #endif

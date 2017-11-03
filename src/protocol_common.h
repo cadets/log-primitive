@@ -142,8 +142,8 @@ struct message_holder {
 	int fd;
 };
 
-extern correlationId_t get_corrid(char *beg);
-extern void build_req(struct RequestMessage* rq, enum request_type rt,
-	int correlationId, char* clientId, va_list varlist);
+extern correlationId_t	get_corrid(char *);
+extern void	build_req(struct RequestMessage *, enum request_type,
+	int, char *, va_list);
 
 #endif

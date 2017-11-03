@@ -37,12 +37,15 @@
 #include "caml_broker.h"
 #include "caml_common.h"
 
-int main(){
+int
+main()
+{
+	struct broker_configuration* bc = (struct broker_configuration*) malloc(sizeof(struct broker_configuration));
+	bc->fsync_thread_sleep_length = 5;
+	bc->processor_thread_sleep_length = 5;
+    	bc->val = 0;
 
-    struct broker_configuration* bc = (struct broker_configuration*) malloc(sizeof(struct broker_configuration));
-    bc->fsync_thread_sleep_length = 5;
-    bc->processor_thread_sleep_length = 5;
-    bc->val = 0;
+	broker_busyloop(9999, "test_partition", bc);
 
-    broker_busyloop(9999, "test_partition", bc);
+	return 1;
 }

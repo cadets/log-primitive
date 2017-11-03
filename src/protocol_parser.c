@@ -136,7 +136,9 @@ extern int OFFSET_FETCH_RESPONSE_SIZE_FIELD_SIZE;
 extern int PARTITIONERRORCODE_FIELD_SIZE;
 extern int PORT_FIELD_SIZE;
 
-int parse_message(struct Message* inp, char *beg){
+int
+parse_message(struct Message* inp, char *beg)
+{
 	unsigned long temp_var_crc = get_long(beg, CRC_FIELD_SIZE);
 	inp->CRC = temp_var_crc;
 	unsigned long temp_var_timestamp = get_long(beg+CRC_FIELD_SIZE, TIMESTAMP_FIELD_SIZE);
@@ -161,7 +163,10 @@ int parse_messagesetelement(struct MessageSetElement* inp, char *beg){
 	int parsed_size_message = parse_message(&inp->Message, beg+OFFSET_FIELD_SIZE+MESSAGESIZE_FIELD_SIZE);
 	return OFFSET_FIELD_SIZE+MESSAGESIZE_FIELD_SIZE+parsed_size_message;
 }
-int parse_messageset(struct MessageSet* inp, char *beg){
+
+int
+parse_messageset(struct MessageSet* inp, char *beg)
+{
 	int read_var_elems = get_int(beg, ELEMS_SIZE_FIELD_SIZE);
 	struct MessageSetElement* krya_elems = inp->Elems;
 	int temp_elems = 0;
@@ -171,21 +176,30 @@ int parse_messageset(struct MessageSet* inp, char *beg){
 	inp->NUM_ELEMS = read_var_elems;
 	return ELEMS_SIZE_FIELD_SIZE+temp_elems;
 }
-int parse_topicname(struct TopicName* inp, char *beg){
+
+int
+parse_topicname(struct TopicName* inp, char *beg)
+{
 	int read_var_topicname = get_int(beg, TOPICNAME_SIZE_FIELD_SIZE);
 	char* krya_topicname = inp->TopicName;
 	get_val(&krya_topicname, beg+TOPICNAME_SIZE_FIELD_SIZE, read_var_topicname);
 	krya_topicname[read_var_topicname] = '\0';
 	return TOPICNAME_SIZE_FIELD_SIZE+read_var_topicname;
 }
-int parse_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp, char *beg){
+
+int
+parse_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp, char *beg)
+{
 	int read_var_groupid = get_int(beg, GROUPID_SIZE_FIELD_SIZE);
 	char* krya_groupid = inp->GroupId;
 	get_val(&krya_groupid, beg+GROUPID_SIZE_FIELD_SIZE, read_var_groupid);
 	krya_groupid[read_var_groupid] = '\0';
 	return GROUPID_SIZE_FIELD_SIZE+read_var_groupid;
 }
-int parse_metadatarequest(struct MetadataRequest* inp, char *beg){
+
+int
+parse_metadatarequest(struct MetadataRequest* inp, char *beg)
+{
 	int read_var_topicnames = get_int(beg, TOPICNAMES_SIZE_FIELD_SIZE);
 	struct TopicName* krya_topicnames = inp->TopicNames;
 	int temp_topicnames = 0;
@@ -195,7 +209,10 @@ int parse_metadatarequest(struct MetadataRequest* inp, char *beg){
 	inp->NUM_TOPICS = read_var_topicnames;
 	return TOPICNAMES_SIZE_FIELD_SIZE+temp_topicnames;
 }
-int parse_subsubproducerequest(struct SubSubProduceRequest* inp, char *beg){
+
+int
+parse_subsubproducerequest(struct SubSubProduceRequest* inp, char *beg)
+{
 	int temp_var_partition = get_int(beg, PARTITION_FIELD_SIZE);
 	inp->Partition = temp_var_partition;
 	int temp_var_messagesetsize = get_int(beg+PARTITION_FIELD_SIZE, MESSAGESETSIZE_FIELD_SIZE);
@@ -203,12 +220,18 @@ int parse_subsubproducerequest(struct SubSubProduceRequest* inp, char *beg){
 	int parsed_size_messageset = parse_messageset(&inp->mset, beg+PARTITION_FIELD_SIZE+MESSAGESETSIZE_FIELD_SIZE);
 	return PARTITION_FIELD_SIZE+MESSAGESETSIZE_FIELD_SIZE+parsed_size_messageset;
 }
-int parse_subproducerequest(struct SubProduceRequest* inp, char *beg){
+
+int
+parse_subproducerequest(struct SubProduceRequest* inp, char *beg)
+{
 	int parsed_size_topicname = parse_topicname(&inp->TopicName, beg);
 	int parsed_size_subsubproducerequest = parse_subsubproducerequest(&inp->sspr, beg+parsed_size_topicname);
 	return parsed_size_topicname+parsed_size_subsubproducerequest;
 }
-int parse_producerequest(struct ProduceRequest* inp, char *beg){
+
+int
+parse_producerequest(struct ProduceRequest* inp, char *beg)
+{
 	int temp_var_requiredacks = get_int(beg, REQUIREDACKS_FIELD_SIZE);
 	inp->RequiredAcks = temp_var_requiredacks;
 	int temp_var_timeout = get_int(beg+REQUIREDACKS_FIELD_SIZE, TIMEOUT_FIELD_SIZE);
@@ -216,7 +239,10 @@ int parse_producerequest(struct ProduceRequest* inp, char *beg){
 	int parsed_size_subproducerequest = parse_subproducerequest(&inp->spr, beg+REQUIREDACKS_FIELD_SIZE+TIMEOUT_FIELD_SIZE);
 	return REQUIREDACKS_FIELD_SIZE+TIMEOUT_FIELD_SIZE+parsed_size_subproducerequest;
 }
-int parse_fetchrequest(struct FetchRequest* inp, char *beg){
+
+int
+parse_fetchrequest(struct FetchRequest* inp, char *beg)
+{
 	int temp_var_replicaid = get_int(beg, REPLICAID_FIELD_SIZE);
 	inp->ReplicaId = temp_var_replicaid;
 	int temp_var_maxwaittime = get_int(beg+REPLICAID_FIELD_SIZE, MAXWAITTIME_FIELD_SIZE);
@@ -232,7 +258,10 @@ int parse_fetchrequest(struct FetchRequest* inp, char *beg){
 	inp->MaxBytes = temp_var_maxbytes;
 	return REPLICAID_FIELD_SIZE+MAXWAITTIME_FIELD_SIZE+MINBYTES_FIELD_SIZE+parsed_size_topicname+PARTITION_FIELD_SIZE+FETCHOFFSET_FIELD_SIZE+MAXBYTES_FIELD_SIZE;
 }
-int parse_offsetrequest(struct OffsetRequest* inp, char *beg){
+
+int
+parse_offsetrequest(struct OffsetRequest* inp, char *beg)
+{
 	int temp_var_repolicaid = get_int(beg, REPOLICAID_FIELD_SIZE);
 	inp->RepolicaId = temp_var_repolicaid;
 	int parsed_size_topicname = parse_topicname(&inp->TopicName, beg+REPOLICAID_FIELD_SIZE);
@@ -242,7 +271,10 @@ int parse_offsetrequest(struct OffsetRequest* inp, char *beg){
 	inp->Time = temp_var_time;
 	return REPOLICAID_FIELD_SIZE+parsed_size_topicname+PARTITION_FIELD_SIZE+TIME_FIELD_SIZE;
 }
-int parse_offsetcommitrequest(struct OffsetCommitRequest* inp, char *beg){
+
+int
+parse_offsetcommitrequest(struct OffsetCommitRequest* inp, char *beg)
+{
 	int read_var_consumergroupid = get_int(beg, CONSUMERGROUPID_SIZE_FIELD_SIZE);
 	char* krya_consumergroupid = inp->ConsumerGroupId;
 	get_val(&krya_consumergroupid, beg+CONSUMERGROUPID_SIZE_FIELD_SIZE, read_var_consumergroupid);
@@ -290,11 +322,15 @@ int parse_reqmessage(union ReqMessage* inp, char *beg, enum request_type rt){
 	return siz;
 }
 
-enum request_type get_apikey(char* beg){
+enum request_type
+get_apikey(char* beg)
+{
     return (enum request_type) get_int(beg, APIKEY_FIELD_SIZE);
 }
 
-int parse_requestmessage(struct RequestMessage* inp, char *beg){
+int
+parse_requestmessage(struct RequestMessage* inp, char *beg)
+{
 	int temp_var_apikey = get_int(beg, APIKEY_FIELD_SIZE);
 	inp->APIKey = (enum request_type)temp_var_apikey;
 	int temp_var_apiversion = get_int(beg+APIKEY_FIELD_SIZE, APIVERSION_FIELD_SIZE);
@@ -309,7 +345,9 @@ int parse_requestmessage(struct RequestMessage* inp, char *beg){
 	return APIKEY_FIELD_SIZE+APIVERSION_FIELD_SIZE+CORRELATIONID_FIELD_SIZE+CLIENTID_SIZE_FIELD_SIZE+read_var_clientid+msiz;
 }
 
-int parse_broker(struct Broker* inp, char *beg){
+int
+parse_broker(struct Broker* inp, char *beg)
+{
 	int temp_var_nodeid = get_int(beg, NODEID_FIELD_SIZE);
 	inp->NodeId = temp_var_nodeid;
 	int read_var_host = get_int(beg+NODEID_FIELD_SIZE, HOST_SIZE_FIELD_SIZE);
@@ -320,17 +358,26 @@ int parse_broker(struct Broker* inp, char *beg){
 	inp->Port = temp_var_port;
 	return NODEID_FIELD_SIZE+HOST_SIZE_FIELD_SIZE+read_var_host+PORT_FIELD_SIZE;
 }
-int parse_replica(struct Replica* inp, char *beg){
+
+int
+parse_replica(struct Replica* inp, char *beg)
+{
 	int temp_var_replica = get_int(beg, REPLICA_FIELD_SIZE);
 	inp->Replica = temp_var_replica;
 	return REPLICA_FIELD_SIZE;
 }
-int parse_isr(struct Isr* inp, char *beg){
+
+int
+parse_isr(struct Isr* inp, char *beg)
+{
 	int temp_var_isr = get_int(beg, ISR_FIELD_SIZE);
 	inp->Isr = temp_var_isr;
 	return ISR_FIELD_SIZE;
 }
-int parse_partitionmetadata(struct PartitionMetadata* inp, char *beg){
+
+int
+parse_partitionmetadata(struct PartitionMetadata* inp, char *beg)
+{
 	int temp_var_partitionerrorcode = get_int(beg, PARTITIONERRORCODE_FIELD_SIZE);
 	inp->PartitionErrorCode = temp_var_partitionerrorcode;
 	int temp_var_partitionid = get_int(beg+PARTITIONERRORCODE_FIELD_SIZE, PARTITIONID_FIELD_SIZE);
@@ -353,7 +400,10 @@ int parse_partitionmetadata(struct PartitionMetadata* inp, char *beg){
 	inp->NUM_Isrs = read_var_isr;
 	return PARTITIONERRORCODE_FIELD_SIZE+PARTITIONID_FIELD_SIZE+LEADER_FIELD_SIZE+REPLICAS_SIZE_FIELD_SIZE+temp_replicas+ISR_FIELD_SIZE+temp_isr;
 }
-int parse_topicmetadata(struct TopicMetadata* inp, char *beg){
+
+int
+parse_topicmetadata(struct TopicMetadata* inp, char *beg)
+{
 	int temp_var_topicerrorcode = get_int(beg, TOPICERRORCODE_FIELD_SIZE);
 	inp->TopicErrorCode = temp_var_topicerrorcode;
 	int parsed_size_topicname = parse_topicname(&inp->TopicName, beg+TOPICERRORCODE_FIELD_SIZE);
@@ -366,7 +416,10 @@ int parse_topicmetadata(struct TopicMetadata* inp, char *beg){
 	inp->NUM_PARTITIONS = read_var_partitionmetadatas;
 	return TOPICERRORCODE_FIELD_SIZE+parsed_size_topicname+PARTITIONMETADATAS_SIZE_FIELD_SIZE+temp_partitionmetadatas;
 }
-int parse_metadataresponse(struct MetadataResponse* inp, char *beg){
+
+int
+parse_metadataresponse(struct MetadataResponse* inp, char *beg)
+{
 	int read_var_brokers = get_int(beg, BROKERS_SIZE_FIELD_SIZE);
 	struct Broker* krya_brokers = inp->Brokers;
 	int temp_brokers = 0;
@@ -376,7 +429,10 @@ int parse_metadataresponse(struct MetadataResponse* inp, char *beg){
 	inp->NUM_BROKERS = read_var_brokers;
 	return BROKERS_SIZE_FIELD_SIZE+temp_brokers;
 }
-int parse_subsubproduceresponse(struct SubSubProduceResponse* inp, char *beg){
+
+int
+parse_subsubproduceresponse(struct SubSubProduceResponse* inp, char *beg)
+{
 	int temp_var_partition = get_int(beg, PARTITION_FIELD_SIZE);
 	inp->Partition = temp_var_partition;
 	int temp_var_errorcode = get_int(beg+PARTITION_FIELD_SIZE, ERRORCODE_FIELD_SIZE);
@@ -387,7 +443,10 @@ int parse_subsubproduceresponse(struct SubSubProduceResponse* inp, char *beg){
 	inp->Timestamp = temp_var_timestamp;
 	return PARTITION_FIELD_SIZE+ERRORCODE_FIELD_SIZE+OFFSET_FIELD_SIZE+TIMESTAMP_FIELD_SIZE;
 }
-int parse_subproduceresponse(struct SubProduceResponse* inp, char *beg){
+
+int
+parse_subproduceresponse(struct SubProduceResponse* inp, char *beg)
+{
 	int parsed_size_topicname = parse_topicname(&inp->TopicName, beg);
 	int read_var_sspr = get_int(beg+parsed_size_topicname, SSPR_SIZE_FIELD_SIZE);
 	struct SubSubProduceResponse* krya_sspr = inp->sspr;
@@ -398,7 +457,10 @@ int parse_subproduceresponse(struct SubProduceResponse* inp, char *beg){
 	inp->NUM_SUBSUB = read_var_sspr;
 	return parsed_size_topicname+SSPR_SIZE_FIELD_SIZE+temp_sspr;
 }
-int parse_produceresponse(struct ProduceResponse* inp, char *beg){
+
+int
+parse_produceresponse(struct ProduceResponse* inp, char *beg)
+{
 	int read_var_spr = get_int(beg, SPR_SIZE_FIELD_SIZE);
 	struct SubProduceResponse* krya_spr = inp->spr;
 	int temp_spr = 0;
@@ -410,7 +472,10 @@ int parse_produceresponse(struct ProduceResponse* inp, char *beg){
 	inp->ThrottleTime = temp_var_throttletime;
 	return SPR_SIZE_FIELD_SIZE+temp_spr+THROTTLETIME_FIELD_SIZE;
 }
-int parse_subsubfetchresponse(struct subSubFetchResponse* inp, char *beg){
+
+int
+parse_subsubfetchresponse(struct subSubFetchResponse* inp, char *beg)
+{
 	int temp_var_partition = get_int(beg, PARTITION_FIELD_SIZE);
 	inp->Partition = temp_var_partition;
 	int temp_var_errorcode = get_int(beg+PARTITION_FIELD_SIZE, ERRORCODE_FIELD_SIZE);
@@ -422,7 +487,10 @@ int parse_subsubfetchresponse(struct subSubFetchResponse* inp, char *beg){
 	int parsed_size_messageset = parse_messageset(&inp->MessageSet, beg+PARTITION_FIELD_SIZE+ERRORCODE_FIELD_SIZE+HIGHWAYMARKOFFSET_FIELD_SIZE+MESSAGESETSIZE_FIELD_SIZE);
 	return PARTITION_FIELD_SIZE+ERRORCODE_FIELD_SIZE+HIGHWAYMARKOFFSET_FIELD_SIZE+MESSAGESETSIZE_FIELD_SIZE+parsed_size_messageset;
 }
-int parse_subfetchresponse(struct subFetchResponse* inp, char *beg){
+
+int
+parse_subfetchresponse(struct subFetchResponse* inp, char *beg)
+{
 	int parsed_size_topicname = parse_topicname(&inp->TopicName, beg);
 	int read_var_ssfr = get_int(beg+parsed_size_topicname, SSFR_SIZE_FIELD_SIZE);
 	struct subSubFetchResponse* krya_ssfr = inp->ssfr;
@@ -445,12 +513,18 @@ int parse_fetchresponse(struct FetchResponse* inp, char *beg){
 	inp->ThrottleTime = temp_var_throttletime;
 	return SFR_SIZE_FIELD_SIZE+temp_sfr+THROTTLETIME_FIELD_SIZE;
 }
-int parse_offset(struct Offset* inp, char *beg){
+
+int
+parse_offset(struct Offset* inp, char *beg)
+{
 	long temp_var_offset = get_long(beg, OFFSET_FIELD_SIZE);
 	inp->Offset = temp_var_offset;
 	return OFFSET_FIELD_SIZE;
 }
-int parse_partitionoffsets(struct PartitionOffsets* inp, char *beg){
+
+int
+parse_partitionoffsets(struct PartitionOffsets* inp, char *beg)
+{
 	int temp_var_partition = get_int(beg, PARTITION_FIELD_SIZE);
 	inp->Partition = temp_var_partition;
 	int temp_var_errorcode = get_int(beg+PARTITION_FIELD_SIZE, ERRORCODE_FIELD_SIZE);
@@ -466,7 +540,10 @@ int parse_partitionoffsets(struct PartitionOffsets* inp, char *beg){
 	inp->NUM_OFFSETS = read_var_offsets;
 	return PARTITION_FIELD_SIZE+ERRORCODE_FIELD_SIZE+TIMESTAMP_FIELD_SIZE+OFFSETS_SIZE_FIELD_SIZE+temp_offsets;
 }
-int parse_suboffsetresponse(struct subOffsetResponse* inp, char *beg){
+
+int
+parse_suboffsetresponse(struct subOffsetResponse* inp, char *beg)
+{
 	int parsed_size_topicname = parse_topicname(&inp->TopicName, beg);
 	int read_var_partitionoffsets = get_int(beg+parsed_size_topicname, PARTITIONOFFSETS_SIZE_FIELD_SIZE);
 	struct PartitionOffsets* krya_partitionoffsets = inp->PartitionOffsets;
@@ -477,7 +554,10 @@ int parse_suboffsetresponse(struct subOffsetResponse* inp, char *beg){
 	inp->NUM_PARTS = read_var_partitionoffsets;
 	return parsed_size_topicname+PARTITIONOFFSETS_SIZE_FIELD_SIZE+temp_partitionoffsets;
 }
-int parse_offsetresponse(struct OffsetResponse* inp, char *beg){
+
+int
+parse_offsetresponse(struct OffsetResponse* inp, char *beg)
+{
 	int read_var_sor = get_int(beg, SOR_SIZE_FIELD_SIZE);
 	struct subOffsetResponse* krya_sor = inp->sor;
 	int temp_sor = 0;
@@ -487,7 +567,10 @@ int parse_offsetresponse(struct OffsetResponse* inp, char *beg){
 	inp->NUM_SOR = read_var_sor;
 	return SOR_SIZE_FIELD_SIZE+temp_sor;
 }
-int parse_groupcoordinatorresponse(struct GroupCoordinatorResponse* inp, char *beg){
+
+int
+parse_groupcoordinatorresponse(struct GroupCoordinatorResponse* inp, char *beg)
+{
 	int temp_var_errorcode = get_int(beg, ERRORCODE_FIELD_SIZE);
 	inp->ErrorCode = temp_var_errorcode;
 	int temp_var_corrdinatorid = get_int(beg+ERRORCODE_FIELD_SIZE, CORRDINATORID_FIELD_SIZE);
@@ -500,14 +583,21 @@ int parse_groupcoordinatorresponse(struct GroupCoordinatorResponse* inp, char *b
 	inp->CorrdinatorPort = temp_var_corrdinatorport;
 	return ERRORCODE_FIELD_SIZE+CORRDINATORID_FIELD_SIZE+CORRDINATORHOST_SIZE_FIELD_SIZE+read_var_corrdinatorhost+CORRDINATORPORT_FIELD_SIZE;
 }
-int parse_subsuboffsetcommitresponse(struct subSubOffsetCommitResponse* inp, char *beg){
+
+int
+parse_subsuboffsetcommitresponse(struct subSubOffsetCommitResponse* inp,
+	char *beg)
+{
 	int temp_var_partition = get_int(beg, PARTITION_FIELD_SIZE);
 	inp->Partition = temp_var_partition;
 	int temp_var_errorcode = get_int(beg+PARTITION_FIELD_SIZE, ERRORCODE_FIELD_SIZE);
 	inp->ErrorCode = temp_var_errorcode;
 	return PARTITION_FIELD_SIZE+ERRORCODE_FIELD_SIZE;
 }
-int parse_suboffsetcommitresponse(struct subOffsetCommitResponse* inp, char *beg){
+
+int
+parse_suboffsetcommitresponse(struct subOffsetCommitResponse* inp, char *beg)
+{
 	int parsed_size_topicname = parse_topicname(&inp->TopicName, beg);
 	int read_var_ssocr = get_int(beg+parsed_size_topicname, SSOCR_SIZE_FIELD_SIZE);
 	struct subSubOffsetCommitResponse* krya_ssocr = inp->ssocr;
@@ -518,7 +608,10 @@ int parse_suboffsetcommitresponse(struct subOffsetCommitResponse* inp, char *beg
 	inp->NUM_SSOCR = read_var_ssocr;
 	return parsed_size_topicname+SSOCR_SIZE_FIELD_SIZE+temp_ssocr;
 }
-int parse_offsetcommitresponse(struct OffsetCommitResponse* inp, char *beg){
+
+int
+parse_offsetcommitresponse(struct OffsetCommitResponse* inp, char *beg)
+{
 	int read_var_socr = get_int(beg, SOCR_SIZE_FIELD_SIZE);
 	struct subOffsetCommitResponse* krya_socr = inp->socr;
 	int temp_socr = 0;
@@ -528,7 +621,11 @@ int parse_offsetcommitresponse(struct OffsetCommitResponse* inp, char *beg){
 	inp->NUM_SUB_OCR = read_var_socr;
 	return SOCR_SIZE_FIELD_SIZE+temp_socr;
 }
-int parse_subsuboffsetfetchresponse(struct subSubOffsetFetchResponse* inp, char *beg){
+
+int
+parse_subsuboffsetfetchresponse(struct subSubOffsetFetchResponse* inp,
+	char *beg)
+{
 	int temp_var_partition = get_int(beg, PARTITION_FIELD_SIZE);
 	inp->Partition = temp_var_partition;
 	long temp_var_offset = get_long(beg+PARTITION_FIELD_SIZE, OFFSET_FIELD_SIZE);
@@ -541,7 +638,10 @@ int parse_subsuboffsetfetchresponse(struct subSubOffsetFetchResponse* inp, char 
 	inp->ErrorCode = temp_var_errorcode;
 	return PARTITION_FIELD_SIZE+OFFSET_FIELD_SIZE+METADATA_SIZE_FIELD_SIZE+read_var_metadata+ERRORCODE_FIELD_SIZE;
 }
-int parse_suboffsetfetchresponse(struct subOffsetFetchResponse* inp, char *beg){
+
+int
+parse_suboffsetfetchresponse(struct subOffsetFetchResponse* inp, char *beg)
+{
 	int parsed_size_topicname = parse_topicname(&inp->TopicName, beg);
 	int read_var_ssofr = get_int(beg+parsed_size_topicname, SSOFR_SIZE_FIELD_SIZE);
 	struct subSubOffsetFetchResponse* krya_ssofr = inp->ssofr;
@@ -552,7 +652,10 @@ int parse_suboffsetfetchresponse(struct subOffsetFetchResponse* inp, char *beg){
 	inp->NUM_SSOFR = read_var_ssofr;
 	return parsed_size_topicname+SSOFR_SIZE_FIELD_SIZE+temp_ssofr;
 }
-int parse_offsetfetchresponse(struct OffsetFetchResponse* inp, char *beg){
+
+int
+parse_offsetfetchresponse(struct OffsetFetchResponse* inp, char *beg)
+{
 	int read_var_sofr = get_int(beg, SOFR_SIZE_FIELD_SIZE);
 	struct subOffsetFetchResponse* krya_sofr = inp->sofr;
 	int temp_sofr = 0;
@@ -562,7 +665,10 @@ int parse_offsetfetchresponse(struct OffsetFetchResponse* inp, char *beg){
 	inp->NUM_SUB_OFR = read_var_sofr;
 	return SOFR_SIZE_FIELD_SIZE+temp_sofr;
 }
-int parse_resmessage(union ResMessage* inp, char *beg, enum response_type rt){
+
+int
+parse_resmessage(union ResMessage* inp, char *beg, enum response_type rt)
+{
 	int siz = 0;
 
 	switch(rt){
@@ -577,7 +683,11 @@ int parse_resmessage(union ResMessage* inp, char *beg, enum response_type rt){
 
 	return siz;
 }
-int parse_responsemessage(struct ResponseMessage* inp, char *beg, enum response_type rt){
+
+int
+parse_responsemessage(struct ResponseMessage* inp, char *beg,
+	enum response_type rt)
+{
 	int temp_var_correlationid = get_int(beg, CORRELATIONID_FIELD_SIZE);
 	inp->CorrelationId = temp_var_correlationid;
 	int parsed_size_resmessage = parse_resmessage(&inp->rm, beg+CORRELATIONID_FIELD_SIZE, rt);

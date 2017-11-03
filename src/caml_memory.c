@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2017 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,5 +35,9 @@
  *
  */
 
+#include <stdlib.h>
+
 #include "caml_memory.h"
 
+const distlog_malloc_func_t distlog_alloc = &malloc;
+const distlog_free_func_t distlog_free = &free;

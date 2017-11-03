@@ -59,19 +59,14 @@ struct bt_holder{
 };
 typedef struct bt_holder bt_holder;
 
-extern void init_bt_holder(struct bt_holder *h);
-
-extern bt_node* new_node(correlationId_t key, DLLNode **dnode, void *grq);
-extern bt_node* insert(bt_node *node, correlationId_t key, DLLNode **dnode,
-	void *grq);
-
-extern bt_node * delete_node(bt_node *root, correlationId_t key);
-extern void print_bt(bt_node *root);
-
-extern int height(bt_node* n);
-extern bt_node* search(bt_node* root, correlationId_t key);
-
-extern void lock_bth(struct bt_holder* bth);
-extern void ulock_bth(struct bt_holder* bth);
+extern void	init_bt_holder(struct bt_holder *);
+extern bt_node *	new_node(correlationId_t, DLLNode **, void *);
+extern bt_node *	insert(bt_node *, correlationId_t, DLLNode **, void *);
+extern bt_node *	delete_node(bt_node *, correlationId_t);
+extern void	print_bt(bt_node *);
+extern int	height(bt_node *);
+extern bt_node*	search(bt_node *, correlationId_t);
+extern void	lock_bth(struct bt_holder*);
+extern void 	ulock_bth(struct bt_holder*);
 
 #endif

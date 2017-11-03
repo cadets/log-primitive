@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2017 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,12 +35,13 @@
  *
  */
 
-#ifndef CAML_COMMON_H
-#define CAML_COMMON_H
+#ifndef _CAML_MEMORY_H
+#define _CAML_MEMORY_H
 
-#include "caml_common.h"
+typedef void* (* distlog_malloc_func_t)(unsigned long);
+typedef void (* distlog_free_func_t)(void *);
 
-extern mallocfunctiontype ilia_alloc;
-extern freefunctiontype ilia_free;
+extern const distlog_malloc_func_t distlog_alloc;
+extern const distlog_free_func_t distlog_free;
 
 #endif

@@ -43,11 +43,9 @@
 #include "caml_common.h"
 #include "utils.h"
 
-extern mallocfunctiontype ilia_alloc;
-extern freefunctiontype ilia_free;
-
-DLLNode* append_to_dll(DLL* pdll, void* val, int val_size){
-   
+DLLNode *
+append_to_dll(DLL* pdll, void* val, int val_size)
+{
     DLLNode* mnode = borrow(pdll);
     if(!mnode){
         debug(PRIO_NORMAL, "Could not borrow :(\n");
@@ -59,7 +57,9 @@ DLLNode* append_to_dll(DLL* pdll, void* val, int val_size){
     return mnode;
 }
 
-void print_dll(DLL* dll){
+void
+print_dll(DLL* dll)
+{
     printf("Contents of dll[%d %p]: ", dll->cur_num, dll->last_valid);
     if(dll->head && dll->last_valid){
         DLLNode* cur = dll->head;
@@ -71,72 +71,88 @@ void print_dll(DLL* dll){
     printf("\n");
 }
 
-DLL* allocate_dlls_per_num_processors(int top_arr_size, int low_arr_size){
-    DLL* dll_ptr       = (DLL*)      ilia_alloc(sizeof(DLL)      * top_arr_size);
-    DLLNode** dlls_ptr = (DLLNode**) ilia_alloc(sizeof(DLLNode*) * top_arr_size);
-    for(int i = 0; i< top_arr_size; i++)
-           dlls_ptr[i] = (DLLNode*) ilia_alloc(sizeof(DLLNode)*low_arr_size);
+DLL *
+allocate_dlls_per_num_processors(int top_arr_size, int low_arr_size)
+{
+	DLL* dll_ptr = (DLL*) distlog_alloc(sizeof(DLL) * top_arr_size);
+	DLLNode** dlls_ptr = (DLLNode**) distlog_alloc(
+		sizeof(DLLNode*) * top_arr_size);
 
-    for(int i = 0; i < top_arr_size; i++){
-        dll_ptr[i].head = &dlls_ptr[i][0];
-        dll_ptr[i].last_valid = NULL;
-        dll_ptr[i].cur_num = 0;
+	for (int i = 0; i < top_arr_size; i++)
+		dlls_ptr[i] = (DLLNode*) distlog_alloc(
+			sizeof(DLLNode) * low_arr_size);
 
-        if (pthread_mutex_init(&dll_ptr[i].mtx, NULL) != 0){
-            debug(PRIO_HIGH, "DLL mutex init failed\n");
-        }
+	for(int i = 0; i < top_arr_size; i++){
+		dll_ptr[i].head = &dlls_ptr[i][0];
+ 		dll_ptr[i].last_valid = NULL;
+ 		dll_ptr[i].cur_num = 0;
 
-        for(int j = 0; j < low_arr_size; j++){
-            if(j > 0){
-                dlls_ptr[i][j].prev = &dlls_ptr[i][j-1];
-            }else{
-                dlls_ptr[i][j].prev = NULL;
-            }
+		if (pthread_mutex_init(&dll_ptr[i].mtx, NULL) != 0){
+			debug(PRIO_HIGH, "DLL mutex init failed\n");
+		}
 
-            if(j <= low_arr_size-1){
-                dlls_ptr[i][j].next = &dlls_ptr[i][j+1];
-            }else{
-                dlls_ptr[i][j].next = NULL;
-            }
-        }
-    }
-    return dll_ptr;
+ 		for (int j = 0; j < low_arr_size; j++) {
+			if (j > 0) {
+				dlls_ptr[i][j].prev = &dlls_ptr[i][j-1];
+			} else {
+				dlls_ptr[i][j].prev = NULL;
+			}
+
+			if (j <= low_arr_size-1) {
+				dlls_ptr[i][j].next = &dlls_ptr[i][j+1];
+			} else {
+				dlls_ptr[i][j].next = NULL;
+			}
+		}	
+	}
+	return dll_ptr;
 }
 
-void preallocate_with(DLL* mdll, int top_arr_size, int low_arr_size, size_t alloc_size){
+void
+preallocate_with(DLL* mdll, int top_arr_size, int low_arr_size,
+	size_t alloc_size)
+{
     mdll->elem_size = alloc_size;
     for(int i =0; i < top_arr_size; i++){
         for(int j =0; j < low_arr_size; j++){
-            mdll[i].head[j].val = ilia_alloc(alloc_size);
+            mdll[i].head[j].val = distlog_alloc(alloc_size);
             bzero(mdll[i].head[j].val, alloc_size);
         }
     }
 }
 
 void lock_dll(DLL* pdll){
-    pthread_mutex_lock(&pdll->mtx);
+	pthread_mutex_lock(&pdll->mtx);
 }
 
-void ulock_dll(DLL* pdll){
-    pthread_mutex_unlock(&pdll->mtx);
+void
+ulock_dll(DLL* pdll)
+{
+	pthread_mutex_unlock(&pdll->mtx);
 }
 
-void lretu_dll(DLL* pool, DLLNode* obj){
-    lock_dll(pool);
-    returnObj(pool, obj);
-    ulock_dll(pool);
+void
+lretu_dll(DLL* pool, DLLNode* obj)
+{
+	lock_dll(pool);
+	returnObj(pool, obj);
+	ulock_dll(pool);
 }
 
-DLLNode* lboru_dll(DLL* pool){
-    DLLNode* dln;
-    lock_dll(pool);
-    dln = borrow(pool);
-    ulock_dll(pool);
-    return dln;
+DLLNode *
+lboru_dll(DLL* pool)
+{
+	DLLNode *dln;
+
+	lock_dll(pool);
+	dln = borrow(pool);
+	ulock_dll(pool);
+	return dln;
 }
 
-DLLNode* borrow(DLL* pdll){
-
+DLLNode *
+borrow(DLL* pdll)
+{
     if(!pdll->last_valid){
         pdll->cur_num = 1;
         pdll->last_valid = pdll->head;
@@ -156,14 +172,18 @@ DLLNode* borrow(DLL* pdll){
     return pdll->last_valid;
 }
 
-void removeNode(DLLNode* pcn){
+void
+removeNode(DLLNode* pcn)
+{
     if(pcn->prev){
         pcn->prev->next = pcn->next;
     }
     pcn->next->prev = pcn->prev;
 }
 
-void insert_after(DLLNode* pcn, DLLNode* after){
+void
+insert_after(DLLNode* pcn, DLLNode* after)
+{
     if(after->next){
         DLLNode* after_next = after->next;
         
@@ -177,8 +197,9 @@ void insert_after(DLLNode* pcn, DLLNode* after){
     }
 }
 
-void returnObj(DLL* pdll, DLLNode* pcn){
-
+void
+returnObj(DLL* pdll, DLLNode* pcn)
+{
     if(!pdll->last_valid){ debug(PRIO_HIGH, "Attempting to return a node that was not borrowed\n"); return;}
 
     pdll->cur_num--;
@@ -202,7 +223,9 @@ void returnObj(DLL* pdll, DLLNode* pcn){
     debug(PRIO_LOW, "Last_valid now at : %p (%d)\n", pdll->last_valid, pdll->cur_num);
 }
 
-int lboru_dlls(DLLNode** nodes, int num_nodes, ...){
+int
+lboru_dlls(DLLNode** nodes, int num_nodes, ...)
+{
     va_list argvars;
     va_start(argvars, num_nodes);
 

@@ -59,17 +59,17 @@ struct DLL {
 };
 typedef struct DLL DLL;
 
-extern DLLNode* append_to_dll(DLL* dll, void* val, int val_size);
-extern void remove_from_dll(DLL* dll, DLLNode* ppcn);
-extern void print_dll(DLL* dll);
-extern DLL* allocate_dlls_per_num_processors(int top_arr_size, int low_arr_size);
-extern void preallocate_with(DLL* mdll, int top_arr_size, int low_arr_size, size_t alloc_size);
-extern DLLNode* borrow(DLL* pdll);
-extern void returnObj(DLL* pdll, DLLNode* pcn);
-extern void ulock_dll(DLL* pdll);
-extern void lock_dll(DLL* pdll);
-extern void lretu_dll(DLL* pool, DLLNode* obj);
-extern DLLNode* lboru_dll(DLL* pool);
-extern int lboru_dlls(DLLNode** nodes, int num_nodes, ...);
+extern DLLNode *	append_to_dll(DLL *, void *, int);
+extern void	remove_from_dll(DLL *, DLLNode *);
+extern void	print_dll(DLL *);
+extern DLL *	allocate_dlls_per_num_processors(int, int);
+extern void	preallocate_with(DLL *, int, int, size_t);
+extern DLLNode *	borrow(DLL *);
+extern void	returnObj(DLL *, DLLNode *);
+extern void	ulock_dll(DLL *);
+extern void	lock_dll(DLL *);
+extern void	lretu_dll(DLL *, DLLNode *);
+extern DLLNode *	lboru_dll(DLL *);
+extern int	lboru_dlls(DLLNode **, int, ...);
 
 #endif

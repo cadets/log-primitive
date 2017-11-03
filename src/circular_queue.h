@@ -50,13 +50,12 @@ struct CircularQueue{
 };
 typedef struct CircularQueue CircularQueue;
 
-extern void create_circular_queue(CircularQueue* pcq, int size);
-extern int enqueue(CircularQueue* pcq, void* elem, size_t elem_size);
-extern int dequeue(CircularQueue* pcq, void* saveto, size_t elem_size);
-extern void display_queue(CircularQueue* cq);
-extern CircularQueue* allocate_circ_queue_per_num_processors(int top_arr_size,
-	int low_arr_size, int arr_elem_size);
-extern void lock_cq(CircularQueue* cq);
-extern void ulock_cq(CircularQueue* cq);
+extern void	create_circular_queue(CircularQueue *, int);
+extern int	enqueue(CircularQueue *, void *, size_t);
+extern int	dequeue(CircularQueue *, void *, size_t);
+extern void	display_queue(CircularQueue *);
+extern CircularQueue *	allocate_circ_queue_per_num_processors(int, int, int);
+extern void	lock_cq(CircularQueue *);
+extern void	ulock_cq(CircularQueue *);
 
 #endif

@@ -78,21 +78,20 @@ struct utils_config{
 	char topics_folder[MAX_FILENAME_SIZE];
 };
 
-extern int alloc_big_file(int fd, long int offset, long int length);
+extern int	alloc_big_file(int, long int, long int);
 
 // Managing partitions
-extern int make_folder(const char* partition_name);
-extern int del_folder(const char* partition_name);
+extern int	make_folder(const char *);
+extern int	del_folder(const char *);
 
 // Managing segments
-extern segment* make_segment(long int start_offset, long int length,
-	const char* partition_name);
-extern void close_segment(segment* s);
+extern segment* make_segment(long int, long int, const char *);
+extern void	close_segment(segment *);
 
 // Managing messages
-extern int insert_message(segment* as, char* message, int msg_size);
-extern int get_message_by_offset(segment* as, int offset, void* saveto);
-extern int remove_directory(const char *path);
+extern int	insert_message(segment *, char *, int);
+extern int	get_message_by_offset(segment *, int, void *);
+extern int	remove_directory(const char *);
 
 #define PRIO_HIGH   1 << 1
 #define PRIO_NORMAL 1 << 2
@@ -100,9 +99,8 @@ extern int remove_directory(const char *path);
 
 extern unsigned short PRIO_LOG;
 
-extern void debug(int priority, const char* format, ...);
-
-extern void lock_seg(struct segment* seg);
-extern void ulock_seg(struct segment* seg);
+extern void	debug(int, const char *, ...);
+extern void	lock_seg(struct segment *);
+extern void	ulock_seg(struct segment *);
 
 #endif
