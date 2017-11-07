@@ -51,40 +51,27 @@
 
 #include "utils.h"
 #include "message.h"
-#include "processor.h"
 #include "protocol.h"
 #include "circular_queue.h"
 #include "doubly_linked_list.h"
-#include "caml_common.h"
 #include "caml_broker.h"
+#include "caml_common.h"
+#include "caml_memory.h"
 #include "protocol.h"
 #include "protocol_parser.h"
 #include "protocol_encoder.h"
 
-extern int MAX_NUM_REQUESTS_PER_PROCESSOR; // Maximum outstanding requests per processor.
-extern int NUM_PROCESSORS; // Number of processors.
-extern int MAX_NUM_RESPONSES_PER_PROCESSOR; // Maximum outstanding responses per processor.
-extern int CONNECTIONS_PER_PROCESSOR; // Number of connections per processor.
-extern int MAX_NUM_UNFSYNCED; // Maximum number of unfsynced inserts
 
-static DLL* threadid_to_array_of_connections;
-static DLL* request_pool;
-static DLL* response_pool;
-static DLL* un_fsynced; // responses which are unsynced
+struct processor_argument {
+	int index;
+	pthread_t * tid;
+	struct broker_configuration * config;
+};
+typedef struct processor_argument processor_argument;
 
-static pthread_t *created_threads, *fsy_thread;
-static processor_argument *pas, *fsy;
-
-static CircularQueue* threadid_to_array_of_requests;
-
-static int running = 0;
-
-unsigned short PRIO_LOG = PRIO_NORMAL;
-
-static segment* ptr_seg;
 
 static void msend(int fd, char *, int);
-static int server_handle(DLLNode *, DLLNode *, int);
+static int broker_handle(DLLNode *, DLLNode *, int);
 static int assign_to_processor(int, int);
 static int free_datastructures();
 static int allocate_broker_datastructures(struct broker_configuration *);
@@ -96,211 +83,277 @@ static void * dl_fsync_thread(void *);
 static void start_fsync_thread(struct broker_configuration *);
 static void close_listening_socket(int);
 static void dl_signal_handler(int);
+static int handle_request_produce(DLLNode *, struct ResponseMessage *,
+    struct RequestMessage *);
+static int handle_request_fetch(struct ResponseMessage *, struct RequestMessage *);
+
+static DLL *threadid_to_array_of_connections;
+static DLL *request_pool;
+static DLL *response_pool;
+static DLL *un_fsynced; // responses which are unsynced
+
+static pthread_t *created_threads;
+static pthread_t *fsy_thread;
+static processor_argument *pas;
+static processor_argument *fsy;
+
+static CircularQueue *threadid_to_array_of_requests;
+
+unsigned short PRIO_LOG = PRIO_NORMAL;
+
+static segment* ptr_seg;
 
 static void
 msend(int fd, char * buf, int buf_size)
 {
+
 	debug(PRIO_NORMAL, "Sending: '%s'\n", buf);
 	send(fd, buf, buf_size, 0);
 }
 
+
 static int
-server_handle(DLLNode *req_p, DLLNode *res_p, int thread_index)
+broker_handle(DLLNode *req_p, DLLNode *res_p, int thread_index)
 {
 	struct ResponseMessage *res_ph;
 	struct RequestMessage  *req_ph = (struct RequestMessage*) req_p->val;
 
-	if(res_p){
-		res_ph = (struct ResponseMessage*) res_p->val;
-		res_p->fd = req_p->fd;
-		clear_responsemessage(res_ph, req_ph->APIKey);
-		res_ph->CorrelationId = req_ph->CorrelationId;
-	}
+	ASSERT(req_p != NULL);
+	ASSERT(res_p != NULL);
+
+	res_ph = (struct ResponseMessage*) res_p->val;
+	res_p->fd = req_p->fd;
+	clear_responsemessage(res_ph, req_ph->APIKey);
+	res_ph->CorrelationId = req_ph->CorrelationId;
 
 	debug(PRIO_NORMAL, "CorrelationId: %d ClientID: %s\n",
-		req_ph->CorrelationId, req_ph->ClientId);
-	switch(req_ph->APIKey){
+	    req_ph->CorrelationId, req_ph->ClientId);
+	switch(req_ph->APIKey) {
 	case REQUEST_PRODUCE:;
-		char* current_topic_name =
-			req_ph->rm.produce_request.spr.TopicName.TopicName;
-		debug(PRIO_NORMAL,
-			"Inserting messages into the topicname '%s'\n",
-			current_topic_name);
-
-		if (res_p) {
-                int topic_name_len = strlen(current_topic_name);
-                debug(PRIO_NORMAL, "There is a response needed [%d]\n", req_ph->CorrelationId);
-
-                int current_subreply = res_ph->rm.produce_response.NUM_SUB; // Get the current subproduce
-
-                struct SubProduceResponse *current_spr = &(res_ph->rm.produce_response.spr[current_subreply]);
-                res_ph->rm.produce_response.NUM_SUB++; // Say that you have occupied a cell in the subproduce
-                char* ttn = current_spr->TopicName.TopicName;
-                debug(PRIO_LOW, "starting copying...\n");
-                memcpy(ttn, current_topic_name, topic_name_len);
-                debug(PRIO_LOW, "Done...\n");
-                current_spr->NUM_SUBSUB = req_ph->rm.produce_request.spr.sspr.mset.NUM_ELEMS;
-
-                for(int i=0; i< req_ph->rm.produce_request.spr.sspr.mset.NUM_ELEMS; i++){
-                    struct Message *tmsg = &req_ph->rm.produce_request.spr.sspr.mset.Elems[i].Message;
-                    debug(PRIO_LOW, "\tMessage: '%s'\n", tmsg->value);
-                    int slen = strlen(tmsg->value);
-
-                    struct SubSubProduceResponse* curr_sspr = &current_spr->sspr[i];
-                    curr_sspr->Timestamp = time(NULL);
-                    int curr_repl = 0;
-                    unsigned long mycrc = get_crc(tmsg->value, slen);
-
-                    if (tmsg->CRC == mycrc){ // Checking to see if the crcs match
-                        lock_seg(ptr_seg);
-                        int ret = insert_message(ptr_seg, tmsg->value, slen);
-                        ulock_seg(ptr_seg);
-                        curr_repl |= CRC_MATCH;
-                        if(ret > 0){
-                            curr_repl |= INSERT_SUCCESS;
-                            curr_sspr->Offset = ret;
-                        }else{
-                            curr_repl |= INSERT_ERROR;
-                        }
-                    }else{
-                        curr_repl |= CRC_NOT_MATCH;
-                        debug(PRIO_LOW, "The CRCs do not match for msg: '%s'\n", tmsg->value);
-                    }
-
-                    curr_sspr->ErrorCode = curr_repl;
-                    curr_sspr->Partition = 1; // TODO: implement the proper partitions
-                }
-		} else {
-			debug(PRIO_LOW, "There is no response needed\n");
-			for (int i = 0; i < req_ph->rm.produce_request.spr.sspr.mset.NUM_ELEMS; i++) {
-				struct Message *tmsg = &req_ph->rm.produce_request.spr.sspr.mset.Elems[i].Message;
-				int slen = strlen(tmsg->value);
-
-				unsigned long mycrc = get_crc(tmsg->value, slen);
-
-				if (tmsg->CRC == mycrc) { // Checking to see if the crcs match
-					lock_seg(ptr_seg);
-					insert_message(ptr_seg, tmsg->value, slen);
-					ulock_seg(ptr_seg);
-				}
-			}
-		}
+		debug(PRIO_NORMAL, "Got a request_process message\n");
+		handle_request_produce(res_p, res_ph, req_ph);
 		break;
 	case REQUEST_OFFSET_COMMIT:
 		break;
 	case REQUEST_OFFSET:
 		break;
 	case REQUEST_FETCH:
-            debug(PRIO_NORMAL, "Got a request_fetch message\n");
-
-            res_ph = (struct ResponseMessage*) res_p->val;
-
-            struct FetchResponse* curfres = &res_ph->rm.fetch_response;
-            struct FetchRequest* curfreq = &req_ph->rm.fetch_request;
-
-            debug(PRIO_NORMAL, "Request: %p Response: %p\n", req_ph, res_ph);
-
-            current_topic_name = curfreq->TopicName.TopicName;
-            int topic_name_len = strlen(current_topic_name);
-            debug(PRIO_NORMAL, "The associated topic name is: %s\n", current_topic_name);
-
-            debug(PRIO_NORMAL, "Fetching messages from %s starting at offset %ld\n", curfreq->TopicName.TopicName, curfreq->FetchOffset);
-
-            long handle_start = time(NULL);
-
-            int bytes_so_far = 0;
-            long current_offset = curfreq->FetchOffset;
-
-            curfres->NUM_SFR = 0; //Currently the only supported mode
-            int csfr = 0, cssfr = 0, curm = 0, first_time = 1;
-            while((time(NULL) - handle_start)<curfreq->MaxWaitTime){
-                if(first_time){
-                    debug(PRIO_NORMAL, "The first time for the given configuration:\n\tcsfr: %d\n\tcssfr: %d\n\tcurm: %d\n", csfr, cssfr, curm);
-                    memcpy(curfres->sfr[csfr].TopicName.TopicName, current_topic_name, topic_name_len);
-                    curfres->ThrottleTime = 0; //TODO: IMPLEMENT IF NEEDED
-                    curfres->sfr[csfr].ssfr[cssfr].HighwayMarkOffset = 0;//TODO: implement getting the last possible offset
-                    curfres->sfr[csfr].ssfr[cssfr].Partition = 0;
-                    first_time = 0;
-                }
-
-                if(curm == MAX_SET_SIZE){
-                    debug(PRIO_NORMAL, "The current message has reached the upper boundary of %d\n", MAX_SET_SIZE);
-                    cssfr += 1;
-                    curm = 0;
-                    first_time = 1;
-                    continue;
-                }
-
-                if(cssfr == MAX_SUB_SUB_FETCH_SIZE){
-                    cssfr = 0;
-                    curm  = 0;
-                    csfr  += 1;
-                    first_time = 1;
-                    continue;
-                }
-
-                if(csfr == MAX_SUB_FETCH_SIZE){
-                    debug(PRIO_HIGH, "Fetch response has reached its maximum size\n");
-                    break;
-                }
-                struct MessageSetElement *mse = &curfres->sfr[csfr].ssfr[cssfr].MessageSet.Elems[curm];
-                mse->Message.Attributes = 0;
-
-                int msglen = get_message_by_offset(ptr_seg, current_offset, mse->Message.value);
-
-                if(msglen < 0){
-                    mse->Message.Attributes = msglen;
-                }
-                
-                if(msglen == 0){
-                    debug(PRIO_NORMAL, "No message for a given offset(%lu) found. Stopping here meaning it is the end\n", current_offset); 
-                    break;
-                }
-    
-                debug(PRIO_NORMAL, "Found a message %s for offset %d\n", mse->Message.value, current_offset);
-                curfres->NUM_SFR = csfr+1;
-                curfres->sfr[csfr].NUM_SSFR = cssfr+1;
-                curfres->sfr[csfr].ssfr[cssfr].MessageSet.NUM_ELEMS = curm+1;
-
-                mse->Offset = current_offset;
-                mse->Message.Timestamp = time(NULL);
-                mse->Message.CRC = get_crc(mse->Message.value, msglen);
-
-                bytes_so_far += msglen >= 0 ? msglen : 0;
-                curm += 1;
-                current_offset += 1;
-
-                if(bytes_so_far >=curfreq->MaxBytes){
-                    break;
-                }
-            }
-
-            if(bytes_so_far < curfreq->MinBytes){
-                // Do not send anything
-                return 0;
-            }
-
-			break;
-		case REQUEST_OFFSET_FETCH:
-			break;
-		case REQUEST_METADATA:
-			break;
-		case REQUEST_GROUP_COORDINATOR:
-			break;
+		debug(PRIO_NORMAL, "Got a request_fetch message\n");
+		// TODO: handle return codes properly
+		if (handle_request_fetch(res_ph, req_ph) == 0) {
+			return 0;
+		}
+		break;
+	case REQUEST_OFFSET_FETCH:
+		break;
+	case REQUEST_METADATA:
+		break;
+	case REQUEST_GROUP_COORDINATOR:
+		break;
 	}
-	debug(PRIO_LOW, "Finished server_handle\n");
+	debug(PRIO_LOW, "Finished broker_handle\n");
 	return 1;
+}
+
+static int
+handle_request_fetch(struct ResponseMessage *res_ph,
+    struct RequestMessage *req_ph)
+{
+	struct FetchResponse *curfres = &res_ph->rm.fetch_response;
+	struct FetchRequest *curfreq = &req_ph->rm.fetch_request;
+
+	debug(PRIO_NORMAL, "Request: %p Response: %p\n", req_ph, res_ph);
+
+	char * current_topic_name = curfreq->TopicName.TopicName;
+	int topic_name_len = strlen(current_topic_name);
+	debug(PRIO_NORMAL, "The associated topic name is: %s\n",
+	    current_topic_name);
+
+	debug(PRIO_NORMAL,
+	    "Fetching messages from %s starting at offset %ld\n",
+	    curfreq->TopicName.TopicName, curfreq->FetchOffset);
+
+	long handle_start = time(NULL);
+
+	int bytes_so_far = 0;
+	long current_offset = curfreq->FetchOffset;
+
+	curfres->NUM_SFR = 0; //Currently the only supported mode
+	int csfr = 0, cssfr = 0, curm = 0, first_time = 1;
+	while ((time(NULL) - handle_start) < curfreq->MaxWaitTime) {
+		if (first_time) {
+			debug(PRIO_NORMAL, "The first time for the given configuration:\n\tcsfr: %d\n\tcssfr: %d\n\tcurm: %d\n", csfr, cssfr, curm);
+			memcpy(curfres->sfr[csfr].TopicName.TopicName,
+				current_topic_name, topic_name_len);
+			curfres->ThrottleTime = 0; //TODO: IMPLEMENT IF NEEDED
+			curfres->sfr[csfr].ssfr[cssfr].HighwayMarkOffset = 0;//TODO: implement getting the last possible offset
+			curfres->sfr[csfr].ssfr[cssfr].Partition = 0;
+			first_time = 0;
+		}
+
+		if(curm == MAX_SET_SIZE){
+			debug(PRIO_NORMAL,
+				"The current message has reached the "
+				"upper boundary of %d\n", MAX_SET_SIZE);
+			cssfr += 1;
+			curm = 0;
+			first_time = 1;
+			continue;
+		}
+
+		if(cssfr == MAX_SUB_SUB_FETCH_SIZE){
+			cssfr = 0;
+			curm  = 0;
+			csfr  += 1;
+			first_time = 1;
+			continue;
+		}
+
+		if(csfr == MAX_SUB_FETCH_SIZE){
+			debug(PRIO_HIGH,
+				"Fetch response has reached its maximum "
+				"size\n");
+			break;
+		}
+		struct MessageSetElement *mse =
+			&curfres->sfr[csfr].ssfr[cssfr].MessageSet.Elems[curm];
+		mse->Message.Attributes = 0;
+
+		int msglen = get_message_by_offset(ptr_seg,
+			current_offset, mse->Message.value);
+
+		if(msglen < 0){
+			mse->Message.Attributes = msglen;
+		}
+
+		if(msglen == 0){
+			debug(PRIO_NORMAL,
+				"No message for a given offset(%lu) "
+				"found. Stopping here meaning it is the "
+				"end\n", current_offset); 
+			break;
+		}
+
+		debug(PRIO_NORMAL, "Found a message %s "
+			"for offset %d\n", mse->Message.value,
+			current_offset);
+		curfres->NUM_SFR = csfr+1;
+		curfres->sfr[csfr].NUM_SSFR = cssfr+1;
+		curfres->sfr[csfr].ssfr[cssfr].MessageSet.NUM_ELEMS =
+			curm+1;
+
+		mse->Offset = current_offset;
+		mse->Message.Timestamp = time(NULL);
+		mse->Message.CRC = get_crc(mse->Message.value, msglen);
+
+		bytes_so_far += msglen >= 0 ? msglen : 0;
+		curm += 1;
+		current_offset += 1;
+
+		if (bytes_so_far >=curfreq->MaxBytes) {
+			break;
+		}
+	}
+
+	if (bytes_so_far < curfreq->MinBytes) {
+		// Do not send anything
+		return 0;
+	}
+}
+
+static int
+handle_request_produce(DLLNode *res_p, struct ResponseMessage *res_ph,
+    struct RequestMessage *req_ph)
+{
+	char * current_topic_name =
+	    req_ph->rm.produce_request.spr.TopicName.TopicName;
+	debug(PRIO_NORMAL,
+		"Inserting messages into the topicname '%s'\n",
+		current_topic_name);
+
+	if (res_p) {
+		int topic_name_len = strlen(current_topic_name);
+		debug(PRIO_NORMAL, "There is a response needed [%d]\n",
+		    req_ph->CorrelationId);
+
+		int current_subreply =
+		    res_ph->rm.produce_response.NUM_SUB; // Get the current subproduce
+
+		struct SubProduceResponse *current_spr =
+		    &(res_ph->rm.produce_response.spr[current_subreply]);
+		res_ph->rm.produce_response.NUM_SUB++; // Say that you have occupied a cell in the subproduce
+		char* ttn = current_spr->TopicName.TopicName;
+		debug(PRIO_LOW, "starting copying...\n");
+		memcpy(ttn, current_topic_name, topic_name_len);
+		debug(PRIO_LOW, "Done...\n");
+		current_spr->NUM_SUBSUB =
+			req_ph->rm.produce_request.spr.sspr.mset.NUM_ELEMS;
+
+		for (int i = 0; i < req_ph->rm.produce_request.spr.sspr.mset.NUM_ELEMS; i++) {
+			struct Message *tmsg =
+				&req_ph->rm.produce_request.spr.sspr.mset.Elems[i].Message;
+			debug(PRIO_LOW, "\tMessage: '%s'\n",
+				tmsg->value);
+			int slen = strlen(tmsg->value);
+
+			struct SubSubProduceResponse *curr_sspr =
+				&current_spr->sspr[i];
+			curr_sspr->Timestamp = time(NULL);
+			int curr_repl = 0;
+			unsigned long mycrc =
+				get_crc(tmsg->value, slen);
+
+			if (tmsg->CRC == mycrc) { // Checking to see if the crcs match
+				lock_seg(ptr_seg);
+				int ret = insert_message(ptr_seg, tmsg->value, slen);
+				ulock_seg(ptr_seg);
+				curr_repl |= CRC_MATCH;
+				if (ret > 0) {
+					curr_repl |= INSERT_SUCCESS;
+					curr_sspr->Offset = ret;
+				} else {
+					curr_repl |= INSERT_ERROR;
+				}
+			} else {
+				curr_repl |= CRC_NOT_MATCH;
+				debug(PRIO_LOW, "The CRCs do not match for msg: '%s'\n", tmsg->value);
+			}
+
+			curr_sspr->ErrorCode = curr_repl;
+			curr_sspr->Partition = 1; // TODO: implement the proper partitions
+		}
+	} else {
+		debug(PRIO_LOW, "There is no response needed\n");
+		for (int i = 0;
+			i < req_ph->rm.produce_request.spr.sspr.mset.NUM_ELEMS;
+			i++) {
+			struct Message *tmsg =
+			    &req_ph->rm.produce_request.spr.sspr.mset.Elems[i].Message;
+			int slen = strlen(tmsg->value);
+
+			unsigned long mycrc =
+				get_crc(tmsg->value, slen);
+
+			if (tmsg->CRC == mycrc) { // Checking to see if the crcs match
+				lock_seg(ptr_seg);
+				insert_message(ptr_seg, tmsg->value, slen);
+				ulock_seg(ptr_seg);
+			}
+		}
+	}
+	return 0;
 }
 
 static int
 assign_to_processor(int processorid, int conn_fd)
 {
-	DLLNode* pcn = lboru_dll(
-		&threadid_to_array_of_connections[processorid]);
+	DLLNode* pcn;
+
+	pcn  = lboru_dll(&threadid_to_array_of_connections[processorid]);
 	if (pcn) {
 		memcpy(pcn->val, &conn_fd, sizeof(int));
 		debug(PRIO_LOW, "Enqueued %d fd into the connections queue\n",
-			*((int*)pcn->val));
+		    *((int*)pcn->val));
 		print_dll(&threadid_to_array_of_connections[processorid]);
 		return 1;
 	}
@@ -310,8 +363,11 @@ assign_to_processor(int processorid, int conn_fd)
 static int
 free_datastructures()
 {
-	for (int i = 0; i< NUM_PROCESSORS; i++){
-		distlog_free(threadid_to_array_of_connections[i].head);
+	int processor_it;
+
+	for (processor_it = 0; processor_it < NUM_PROCESSORS; processor_it++) {
+		distlog_free(
+		    threadid_to_array_of_connections[processor_it].head);
 	}
 	distlog_free(threadid_to_array_of_connections);
 
@@ -326,44 +382,42 @@ free_datastructures()
 static int
 allocate_broker_datastructures(struct broker_configuration *conf)
 {
-	pas = (processor_argument*) distlog_alloc(
-		sizeof(processor_argument) * NUM_PROCESSORS);
-	created_threads = (pthread_t*) distlog_alloc(
-		sizeof(pthread_t) * NUM_PROCESSORS);
+
+	pas = (processor_argument *) distlog_alloc(
+	    sizeof(processor_argument) * NUM_PROCESSORS);
+	created_threads = (pthread_t *) distlog_alloc(
+	    sizeof(pthread_t) * NUM_PROCESSORS);
 
 	threadid_to_array_of_connections = allocate_dlls_per_num_processors(
-		NUM_PROCESSORS, CONNECTIONS_PER_PROCESSOR);
+	    NUM_PROCESSORS, CONNECTIONS_PER_PROCESSOR);
 	preallocate_with(threadid_to_array_of_connections, NUM_PROCESSORS,
-		CONNECTIONS_PER_PROCESSOR, sizeof(int));
+	    CONNECTIONS_PER_PROCESSOR, sizeof(int));
 
 	request_pool = allocate_dlls_per_num_processors(NUM_PROCESSORS,
-		MAX_NUM_REQUESTS_PER_PROCESSOR);
+	    MAX_NUM_REQUESTS_PER_PROCESSOR);
 	preallocate_with(request_pool, NUM_PROCESSORS,
-		MAX_NUM_REQUESTS_PER_PROCESSOR, sizeof(struct RequestMessage));
+	    MAX_NUM_REQUESTS_PER_PROCESSOR, sizeof(struct RequestMessage));
 
 	response_pool = allocate_dlls_per_num_processors(NUM_PROCESSORS,
-		MAX_NUM_RESPONSES_PER_PROCESSOR);
+	    MAX_NUM_RESPONSES_PER_PROCESSOR);
 	preallocate_with(response_pool, NUM_PROCESSORS,
-		MAX_NUM_RESPONSES_PER_PROCESSOR,
-		sizeof(struct ResponseMessage));
+	    MAX_NUM_RESPONSES_PER_PROCESSOR, sizeof(struct ResponseMessage));
 
-	threadid_to_array_of_requests =
-		allocate_circ_queue_per_num_processors(NUM_PROCESSORS,
-			MAX_NUM_REQUESTS_PER_PROCESSOR,
-			sizeof(DLLNode*));
+	threadid_to_array_of_requests = allocate_circ_queue_per_num_processors(
+	    NUM_PROCESSORS, MAX_NUM_REQUESTS_PER_PROCESSOR, sizeof(DLLNode *));
 	//threadid_to_array_of_responses = allocate_circ_queue_per_num_processors(NUM_PROCESSORS,
 	//                                                                        MAX_NUM_RESPONSES_PER_PROCESSOR,
 	//                                                                        sizeof(DLLNode*));
 
 	if (!(conf->val & BROKER_FSYNC_ALWAYS)) {
-		fsy = (processor_argument*) distlog_alloc(
-			sizeof(struct processor_argument));
-		fsy_thread = (pthread_t*) distlog_alloc(sizeof(pthread_t));
+		fsy = (processor_argument *) distlog_alloc(
+		    sizeof(struct processor_argument));
+		fsy_thread = (pthread_t *) distlog_alloc(sizeof(pthread_t));
 
 		un_fsynced = allocate_dlls_per_num_processors(1,
-			MAX_NUM_UNFSYNCED);
+		    MAX_NUM_UNFSYNCED);
 		preallocate_with(un_fsynced, 1, MAX_NUM_UNFSYNCED,
-			sizeof(DLLNode**));
+		    sizeof(DLLNode **));
 	}
 
 	return 0;
@@ -372,8 +426,8 @@ allocate_broker_datastructures(struct broker_configuration *conf)
 static int
 init_listening_socket(int portnumber)
 {
-	int sockfd;
 	struct sockaddr_in self;
+	int sockfd;
 
 	/*---Create streaming socket---*/
 	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
@@ -386,7 +440,7 @@ init_listening_socket(int portnumber)
 	self.sin_addr.s_addr = INADDR_ANY;
 
 	/*---Assign a port number to the socket---*/
-	if (bind(sockfd, (struct sockaddr*)&self, sizeof(self)) != 0)
+	if (bind(sockfd, (struct sockaddr *) &self, sizeof(self)) != 0)
 		return -2;
 
 	/*---Make it a "listening socket"---*/
@@ -397,29 +451,30 @@ init_listening_socket(int portnumber)
 }
 
 static void
-accept_loop(int sockfd, struct broker_configuration* conf)
+accept_loop(int sockfd, struct broker_configuration *conf)
 {
 	int current_processor_id = 0;
-	running = 1;
+        int running = 1;
 
 	while (running) {
 		int clientfd, ret;
 		struct sockaddr_in client_addr;
 		socklen_t addrlen = sizeof(client_addr);
 		clientfd = accept(sockfd, (struct sockaddr *) &client_addr,
-			&addrlen);
-		if(clientfd < 0){
-		    running=0;
-		    return;
+		    &addrlen);
+		if (clientfd < 0) {
+			running=0;
+			return;
 		}
 		ret = assign_to_processor(current_processor_id, clientfd);
-		debug(PRIO_NORMAL,
-			"%s:%d connected and assigned to processor number %d\n",
-			 inet_ntoa(client_addr.sin_addr),
-			ntohs(client_addr.sin_port), current_processor_id);
 		if (ret > 0) {
+			debug(PRIO_NORMAL, "%s:%d connected "
+			    "and assigned to processor number %d\n",
+			    inet_ntoa(client_addr.sin_addr),
+			    ntohs(client_addr.sin_port),
+			    current_processor_id);
 		    current_processor_id =
-			(current_processor_id+1) % NUM_PROCESSORS;
+			(current_processor_id + 1) % NUM_PROCESSORS;
 		}
 	}
 }
@@ -428,27 +483,32 @@ static void *
 dl_processor_thread(void *vargp)
 {
 	processor_argument* pa = (processor_argument*) vargp;
+	DLL *mydll = &threadid_to_array_of_connections[pa->index];
+	DLLNode *temp;
+	int msg_size;
+	int old_cancel_state;
+	int rv;
+	char buffer[MTU], *pbuf = buffer;
+	char send_out_buf[MTU];
 
-	sleep(1);
 	debug(PRIO_LOW, "Processor thread with id %d started...\n", pa->index);
 
-	char buffer[MTU], *pbuf = buffer, send_out_buf[MTU];
+	/* Defer cancellation of the thread until the cancellation point 
+	 * pthread_testcancel(). This ensures that thread ins't cancelled until
+	 * outstanding requests have been processed.
+	 */	
+	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
 
-	DLLNode* temp;
+	for (;;) {
+		pthread_testcancel();
 
-	int rv, msg_size;
-
-	DLL* mydll = &threadid_to_array_of_connections[pa->index];
-
-	while (running) {
 		int mynum = mydll->cur_num;
-
 		if (mynum > 0) {
 			struct pollfd ufds[mynum];
 
-			DLLNode* cur = mydll->head;
-			for (int i=0; i < mynum; i++) {
-				ufds[i].fd = *((int*)cur->val);
+			DLLNode *cur = mydll->head;
+			for (int i = 0; i < mynum; i++) {
+				ufds[i].fd = *((int *) cur->val);
 				ufds[i].events = POLLIN;// | POLLPRI;
 				cur = cur->next;
 			}
@@ -457,20 +517,20 @@ dl_processor_thread(void *vargp)
 			debug(PRIO_NORMAL, "[%d] Polling... %d\n",
 				pa->index, rv);
 
-			if (rv == -1){
+			if (rv == -1) {
 				debug(PRIO_HIGH, "POLL ERROR\n");
 				exit(-1);
 			}
 
 			if (rv != 0) {
 				cur = mydll->head;
-				DLLNode* next = NULL;
+				DLLNode *next = NULL;
 				for (int i = 0;
 					(i < mynum) && (i != mydll->cur_num);
 					i++) {
 					next = cur->next;
 					if (ufds[i].revents & POLLIN) {
-						DLLNode* rm =
+						DLLNode *rm =
 							lboru_dll(request_pool);
 
 						if (!rm) {
@@ -482,89 +542,111 @@ dl_processor_thread(void *vargp)
 							continue;
 						}
 
-                        msg_size = read_msg(ufds[i].fd, &pbuf);
-                        if(msg_size > 0){
-                            debug(PRIO_LOW, "Enqueuing: '%s'\n", pbuf);
+						msg_size = read_msg(ufds[i].fd,
+							&pbuf);
+						if (msg_size > 0) {
+							debug(PRIO_LOW, "Enqueuing: '%s'\n", pbuf);
 
-                            struct RequestMessage *trq = (struct RequestMessage*) rm->val;
+							struct RequestMessage *trq = (struct RequestMessage*) rm->val;
 
-                            clear_requestmessage(trq, get_apikey(pbuf));
-                            parse_requestmessage(trq , pbuf);
-                            rm->fd = ufds[i].fd;
+							clear_requestmessage(trq, get_apikey(pbuf));
+							parse_requestmessage(trq , pbuf);
+							rm->fd = ufds[i].fd;
+							
+							lock_cq(&threadid_to_array_of_requests[pa->index]);
+							enqueue(&threadid_to_array_of_requests[pa->index], &rm, sizeof(DLLNode *));
+							ulock_cq(&threadid_to_array_of_requests[pa->index]);
+						} else {
+							//This is the disconnect. Maybe need to clean the
+							//responses to this guy. Not sure how to do that
+							//yet. TODO: decide
+							lretu_dll(&threadid_to_array_of_connections[pa->index], cur);
+							lretu_dll(request_pool, rm);
+						}
+					}
+					cur = next;
+				}
+			}
+		}
 
-                            lock_cq(&threadid_to_array_of_requests[pa->index]);
-                            enqueue(&threadid_to_array_of_requests[pa->index], &rm, sizeof(DLLNode*));
-                            ulock_cq(&threadid_to_array_of_requests[pa->index]);
-                        }else{
-                            //This is the disconnect. Maybe need to clean the
-                            //responses to this guy. Not sure how to do that
-                            //yet. TODO: decide
-                            lretu_dll(&threadid_to_array_of_connections[pa->index], cur);
-                            lretu_dll(request_pool, rm);
-                        }
-                    }
-                    cur = next;
-                }
-            }
-        }
+		if (threadid_to_array_of_requests[pa->index].front != -1) {
+			int bnodes_size = 2;
+			int ret;
+			DLLNode * bnodes[bnodes_size];
 
-		if(threadid_to_array_of_requests[pa->index].front != -1){
-            int bnodes_size = 2;
-            DLLNode* bnodes[bnodes_size];
-            int ret = lboru_dlls(bnodes, bnodes_size, un_fsynced, response_pool);
-            if(!ret) continue;
-            DLLNode **unfs  = &bnodes[0], **res_p = &bnodes[1];
+			ret = lboru_dlls(bnodes, bnodes_size, un_fsynced,
+			    response_pool);
+			if (!ret)
+				continue;
+			DLLNode **unfs  = &bnodes[0], **res_p = &bnodes[1];
 
-            debug(PRIO_LOW, "Successfully borrowed %p %p %p\n", *unfs, *res_p, (*res_p)->val);
+			debug(PRIO_LOW, "Successfully borrowed %p %p %p\n",
+			    *unfs, *res_p, (*res_p)->val);
 
-            lock_cq(&threadid_to_array_of_requests[pa->index]);
-            int ind = dequeue(&threadid_to_array_of_requests[pa->index], (void**) &temp, sizeof(DLLNode*));
-            ulock_cq(&threadid_to_array_of_requests[pa->index]);
+			lock_cq(&threadid_to_array_of_requests[pa->index]);
+			int ind = dequeue(
+			    &threadid_to_array_of_requests[pa->index],
+			    (void**) &temp, sizeof(DLLNode*));
+			ulock_cq(&threadid_to_array_of_requests[pa->index]);
 
-            if (ind != -1){
-                struct RequestMessage* rmsg = ((struct RequestMessage* )temp->val);
-                if(pa->config->val&BROKER_FSYNC_ALWAYS){lretu_dll(un_fsynced,*unfs);unfs=NULL;}
-                if((rmsg->APIKey == REQUEST_PRODUCE) && (!rmsg->rm.produce_request.RequiredAcks)){lretu_dll(response_pool,*res_p);res_p=NULL;}
+			if (ind != -1) {
+				struct RequestMessage* rmsg =
+				    (struct RequestMessage *) temp->val;
+				if (pa->config->val & BROKER_FSYNC_ALWAYS) {
+					lretu_dll(un_fsynced, *unfs);
+					unfs=NULL;
+				}
 
-                int sh = server_handle(temp, *res_p, pa->index);
-                debug(PRIO_NORMAL, "Server handle finished with code %d\n", sh);
-                debug(PRIO_NORMAL, "Response %p\n", res_p);
-                if (sh > 0){
-                    if(pa->config->val & BROKER_FSYNC_ALWAYS){
-                        lock_seg(ptr_seg);
-                        fsync(ptr_seg->_log);
-                        fsync(ptr_seg->_index);
-                        ulock_seg(ptr_seg);
+				if ((rmsg->APIKey == REQUEST_PRODUCE) &&
+					(!rmsg->rm.produce_request.RequiredAcks)){
+					lretu_dll(response_pool, *res_p);
+					res_p=NULL;
+				}
 
-                        if(res_p){
-                            struct ResponseMessage* myres = (struct ResponseMessage*) (*res_p)->val;
-                            int fi = wrap_with_size(myres, &pbuf, send_out_buf, rmsg->APIKey);
-                            msend((*res_p)->fd, send_out_buf, fi);
+				int sh = broker_handle(temp, *res_p,
+				    pa->index);
+				debug(PRIO_NORMAL, "broker_handle finished with code %d\n", sh);
+				debug(PRIO_NORMAL, "Response %p\n", res_p);
+				if (sh > 0) {
+					if(pa->config->val &
+					    BROKER_FSYNC_ALWAYS) {
+						lock_seg(ptr_seg);
+						fsync(ptr_seg->_log);
+						fsync(ptr_seg->_index);
+						ulock_seg(ptr_seg);
 
-                            lretu_dll(response_pool, *res_p);
-                            lretu_dll(request_pool, temp);
-                        }
+						if (res_p) {
+						    struct ResponseMessage* myres = (struct ResponseMessage*) (*res_p)->val;
+						    int fi = wrap_with_size(myres, &pbuf, send_out_buf, rmsg->APIKey);
+						    msend((*res_p)->fd, send_out_buf, fi);
+
+						    lretu_dll(response_pool,
+							*res_p);
+						    lretu_dll(request_pool,
+							temp);
+						}
 						if(unfs)
 							lretu_dll(un_fsynced,
-								*unfs);
+							    *unfs);
 					} else {
-						if(res_p){
-						    debug(PRIO_NORMAL, "Setting the unfsynched node %p\n", unfs);
-						    (*unfs)->fd = rmsg->APIKey;
-						    memcpy(&((*unfs)->val), res_p, sizeof(DLLNode*));
-						    debug(PRIO_NORMAL, "Copied into the unfs: %p %p\n", (*unfs)->val, *res_p);
-						    debug(PRIO_NORMAL, "Done\n");
+						if(res_p) {
+							debug(PRIO_NORMAL, "Setting the unfsynched node %p\n", unfs);
+							(*unfs)->fd =
+							    rmsg->APIKey;
+							memcpy(&((*unfs)->val), res_p, sizeof(DLLNode*));
+							debug(PRIO_NORMAL, "Copied into the unfs: %p %p\n", (*unfs)->val, *res_p);
+							debug(PRIO_NORMAL, "Done\n");
 						}
 						lretu_dll(request_pool, temp);
 						debug(PRIO_NORMAL, "Returned the request object into the pool %p\n", temp);
 					}
 				} else {
-					if(res_p)
+					if (res_p)
 						lretu_dll(response_pool,
-							*res_p);
-					if(unfs)
+						    *res_p);
+					if (unfs)
 						lretu_dll(un_fsynced, *unfs);
-					if(temp)
+					if (temp)
 						lretu_dll(request_pool, temp);
 				}
 			}
@@ -578,48 +660,66 @@ dl_processor_thread(void *vargp)
 static void
 start_processor_threads(struct broker_configuration *conf)
 {
-	for (int i = 0; i < NUM_PROCESSORS; i++) {
-		pas[i].index = i;
-		pas[i].tid   = NULL;
-		pas[i].config = conf;
-		pthread_create(&created_threads[i], NULL, dl_processor_thread,
-			&pas[i]);
-		pas[i].tid = &created_threads[i];
+	int processor_it;
+
+	for (processor_it = 0; processor_it < NUM_PROCESSORS; processor_it++) {
+		pas[processor_it].index = processor_it;
+		pas[processor_it].tid   = NULL;
+		pas[processor_it].config = conf;
+		pthread_create(&created_threads[processor_it], NULL,
+		    dl_processor_thread, &pas[processor_it]);
+		pas[processor_it].tid = &created_threads[processor_it];
 	}
 }
 
 static void *
 dl_fsync_thread(void *vargp)
 {
-	processor_argument* pa = (processor_argument*) vargp;
-
-	sleep(1);
+	char *pbuf;
+        char *send_out_buf;
+	processor_argument *pa = (processor_argument*) vargp;
+	int old_cancel_state;
 
 	debug(PRIO_LOW, "FSync thread started... %d\n", pa->index);
-	char *pbuf = (char*) distlog_alloc(MTU*sizeof(char)), *send_out_buf = (char*) distlog_alloc(MTU*sizeof(char));
 
-	while (running) {
-		debug(PRIO_LOW, "Checking if there are any elements un-fsynched...\n");
+	/* Defer cancellation of the thread until the cancellation point 
+	 * pthread_testcancel(). This ensures that thread ins't cancelled until
+	 * outstanding requests have been processed.
+	 */	
+	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
+
+	pbuf = (char*) distlog_alloc(MTU * sizeof(char));
+	send_out_buf = (char*) distlog_alloc(MTU * sizeof(char));
+
+	for (;;) {
+		pthread_testcancel();
+
+		debug(PRIO_LOW, "Checking if there are any elements "
+		    "un-fsynched...\n");
 
 		if (un_fsynced->cur_num > 0) {
 			lock_dll(un_fsynced);
-			debug(PRIO_LOW, "un-fsynched queue has some elements in it [%d]. Time to ack them.\n", un_fsynced->cur_num);
+			debug(PRIO_LOW, "un-fsynched queue has some elements "
+			    "in it [%d]. Time to ack them.\n",
+			    un_fsynced->cur_num);
 
 			lock_seg(ptr_seg);
 			fsync(ptr_seg->_log);
 			fsync(ptr_seg->_index);
 
-			DLLNode* cur = un_fsynced->last_valid;
+			DLLNode *cur = un_fsynced->last_valid;
 			while (cur) {
-				DLLNode* res_p = (DLLNode*) cur->val;
-				struct ResponseMessage *rm = (struct ResponseMessage*)res_p->val;
+				DLLNode *res_p = (DLLNode*) cur->val;
+				struct ResponseMessage *rm =
+				    (struct ResponseMessage*)res_p->val;
 
-				debug(PRIO_LOW, "Unfsynching: %d\n", rm->CorrelationId);
-				int fi = wrap_with_size(rm, &pbuf, send_out_buf, (enum request_type)cur->fd);
+				debug(PRIO_LOW, "Unfsynching: %d\n",
+				    rm->CorrelationId);
+				int fi = wrap_with_size(rm, &pbuf,
+				    send_out_buf, (enum request_type) cur->fd);
 
 				msend(res_p->fd, send_out_buf, fi);
 				//send(res_p->fd, send_out_buf, fi, 0);
-
 
 				lretu_dll(response_pool, res_p);
 				returnObj(un_fsynced, cur);
@@ -629,11 +729,13 @@ dl_fsync_thread(void *vargp)
 			ulock_dll(un_fsynced);
 			ulock_seg(ptr_seg);
 
-			debug(PRIO_LOW, "Finished fsynching the elems for now. Sleeping....\n");
+			debug(PRIO_LOW, "Finished fsynching the elems for now. "
+			    "Sleeping....\n");
 		} else {
 			debug(PRIO_LOW, "No elements that are not fsynched\n");
 		}
-		debug(PRIO_LOW, "Fsynch thread is going to sleep for %d seconds\n", pa->config->fsync_thread_sleep_length);
+		debug(PRIO_LOW, "Fsynch thread is going to sleep for %d "
+		    "seconds\n", pa->config->fsync_thread_sleep_length);
 		sleep(pa->config->fsync_thread_sleep_length);
 	}
 	return NULL;
@@ -642,6 +744,7 @@ dl_fsync_thread(void *vargp)
 static void
 start_fsync_thread(struct broker_configuration *conf)
 {
+
 	fsy->tid   = NULL;
 	fsy->config = conf;
 	fsy->index = 0;
@@ -653,17 +756,24 @@ start_fsync_thread(struct broker_configuration *conf)
 static void
 close_listening_socket(int sockfd)
 {
+
 	close(sockfd);
 }
 
 static void
 dl_signal_handler(int dummy)
 {
-	debug(PRIO_NORMAL, "Caught SIGINT[%d]\n", dummy);
-	running = 0;
+	int processor_it;
 
-	for (int i=0; i<NUM_PROCESSORS; i++){
-		pthread_join(created_threads[i], NULL);
+	debug(PRIO_NORMAL, "Caught SIGINT[%d]\n", dummy);
+	// TODO: cancel threads properly (defer cancellation until all data
+	// is consistent)
+	for (processor_it = 0; processor_it < NUM_PROCESSORS; processor_it++) {
+		pthread_cancel(created_threads[processor_it]);
+	}
+
+	for (processor_it = 0; processor_it < NUM_PROCESSORS; processor_it++) {
+		pthread_join(created_threads[processor_it], NULL);
 	}
 
 	free_datastructures();
@@ -672,7 +782,7 @@ dl_signal_handler(int dummy)
 
 void
 broker_busyloop(int portnumber, const char *p_name,
-	struct broker_configuration *conf)
+    struct broker_configuration *conf)
 {
 	int sockfd;
 
