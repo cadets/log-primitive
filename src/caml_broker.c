@@ -93,9 +93,10 @@ static DLL *response_pool;
 static DLL *un_fsynced; // responses which are unsynced
 
 static pthread_t *created_threads;
-static pthread_t *fsy_thread;
 static processor_argument *pas;
-static processor_argument *fsy;
+
+static pthread_t fsy_thread;
+static processor_argument fsy_args;
 
 static CircularQueue *threadid_to_array_of_requests;
 
@@ -410,9 +411,9 @@ allocate_broker_datastructures(struct broker_configuration *conf)
 	//                                                                        sizeof(DLLNode*));
 
 	if (!(conf->val & BROKER_FSYNC_ALWAYS)) {
-		fsy = (processor_argument *) distlog_alloc(
-		    sizeof(struct processor_argument));
-		fsy_thread = (pthread_t *) distlog_alloc(sizeof(pthread_t));
+		//fsy = (processor_argument *) distlog_alloc(
+		//    sizeof(struct processor_argument));
+		//fsy_thread = (pthread_t *) distlog_alloc(sizeof(pthread_t));
 
 		un_fsynced = allocate_dlls_per_num_processors(1,
 		    MAX_NUM_UNFSYNCED);
@@ -744,13 +745,15 @@ dl_fsync_thread(void *vargp)
 static void
 start_fsync_thread(struct broker_configuration *conf)
 {
+	int ret;
 
-	fsy->tid   = NULL;
-	fsy->config = conf;
-	fsy->index = 0;
+	fsy_args.tid   = NULL;
+	fsy_args.config = conf;
+	fsy_args.index = 0;
 
-	pthread_create(fsy_thread, NULL, dl_fsync_thread, fsy);
-	fsy->tid = fsy_thread;
+	/* TODO: handle error creating thread */
+	ret = pthread_create(&fsy_thread, NULL, dl_fsync_thread, &fsy_args);
+	fsy_args.tid = fsy_thread;
 }
 
 static void
@@ -766,8 +769,7 @@ dl_signal_handler(int dummy)
 	int processor_it;
 
 	debug(PRIO_NORMAL, "Caught SIGINT[%d]\n", dummy);
-	// TODO: cancel threads properly (defer cancellation until all data
-	// is consistent)
+
 	for (processor_it = 0; processor_it < NUM_PROCESSORS; processor_it++) {
 		pthread_cancel(created_threads[processor_it]);
 	}
