@@ -40,9 +40,9 @@
 #include "protocol.h"
 #include "caml_common.h"
 
-extern void	client_busyloop(const char *, int,
+extern void distlog_client_busyloop(const char *, int,
     struct client_configuration *);
-extern int	send_request(int, enum request_type, int, char *, int,
+extern int distlog_send_request(int, enum request_type, int, char *, int,
     int, ...);
 
 #endif

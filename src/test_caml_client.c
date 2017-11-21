@@ -114,11 +114,11 @@ main()
 	cc->on_ack = on_ack;
 	cc->on_response = on_response;
 
-	client_busyloop("127.0.0.1", 9999, cc);
+	distlog_client_busyloop("127.0.0.1", 9999, cc);
     
 	while (i < 5) {
 		printf("I am inserting stuffs\n");
-		send_request(
+		distlog_send_request(
 			0,
 			REQUEST_PRODUCE,
 			i,
@@ -137,7 +137,7 @@ main()
 
     	for (;;) {
 		printf("I am requesting stuffs\n");
-		send_request(
+		distlog_send_request(
 			0,
 			REQUEST_FETCH,
 			i,

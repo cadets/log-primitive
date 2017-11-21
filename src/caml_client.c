@@ -58,16 +58,16 @@
 #include "protocol_encoder.h"
 #include "utils.h"
 
-static int allocate_client_datastructures(struct client_configuration *);
-static int connect_to_server(const char *, int);
-static void parse_server_answer(struct RequestMessage *,
+static int dl_allocate_client_datastructures(struct client_configuration *);
+static int dl_connect_to_server(const char *, int);
+static void dl_parse_server_answer(struct RequestMessage *,
     struct ResponseMessage *, char *);
-static void * reader_thread(void *);
-static void * request_notifier_thread(void *);
-static void * resender_thread(void *);
-static void start_notifiers(struct client_configuration *);
-static void start_reader_threads(struct client_configuration *, int, ...);
-static void start_resender(struct client_configuration *);
+static void * dl_reader_thread(void *);
+static void * dl_request_notifier_thread(void *);
+static void * dl_resender_thread(void *);
+static void dl_start_notifiers(struct client_configuration *);
+static void dl_start_reader_threads(struct client_configuration *, int, ...);
+static void dl_start_resender(struct client_configuration *);
 
 #define MAX_SIZE_HOSTNAME 16
 
@@ -113,6 +113,7 @@ static pthread_t *readers;
 static struct reader_argument resender_arg;
 static pthread_t resender;
 
+// TODO: Shared mutable state across reader threads!
 static int current_request_notifier = 0;
 
 static int num_readers;
@@ -160,6 +161,7 @@ static pthread_mutex_t tlmtx = PTHREAD_MUTEX_INITIALIZER;
 
 RB_HEAD(treehead, tentry) thead = RB_INITIALIZER(&thead);
 static pthread_mutex_t tmtx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cond3;
 
 static int
 tentry_cmp(struct tentry *e1, struct tentry *e2)
@@ -171,7 +173,7 @@ RB_PROTOTYPE(treehead, tentry, linkage, tentry_cmp);
 RB_GENERATE(treehead, tentry, linkage, tentry_cmp);
 
 static int
-connect_to_server(const char *hostname, int portnumber)
+dl_connect_to_server(const char *hostname, int portnumber)
 {
 	struct sockaddr_in dest;
 	int sockfd;
@@ -192,7 +194,7 @@ connect_to_server(const char *hostname, int portnumber)
 }
 
 static void *
-resender_thread(void *vargp)
+dl_resender_thread(void *vargp)
 {
 	struct reader_argument *ra = (struct reader_argument *) vargp;
 	struct tentry *data;
@@ -243,7 +245,7 @@ resender_thread(void *vargp)
 }
 
 static void *
-reader_thread(void *vargp)
+dl_reader_thread(void *vargp)
 {
 	char *pbuf = (char *) distlog_alloc(sizeof(char) * MTU);
 	char *send_out_buffer;
@@ -260,7 +262,7 @@ reader_thread(void *vargp)
 			debug(PRIO_NORMAL, "No connection to server. "
 			    "Attempting to connect to '%s:%d'\n",
 			    ra->hostname, ra->portnumber);
-			server_conn = connect_to_server(ra->hostname,
+			server_conn = dl_connect_to_server(ra->hostname,
 				ra->portnumber);
 			if (server_conn < 0) {
 				debug(PRIO_NORMAL, "Error connecting...\n");
@@ -350,7 +352,7 @@ reader_thread(void *vargp)
 }
 
 static void
-parse_server_answer(struct RequestMessage* req_m,
+dl_parse_server_answer(struct RequestMessage* req_m,
 	struct ResponseMessage* res_m, char* pbuf)
 {
 
@@ -359,7 +361,7 @@ parse_server_answer(struct RequestMessage* req_m,
 }
 
 static void *
-request_notifier_thread(void *vargp)
+dl_request_notifier_thread(void *vargp)
 {
 	struct notifier_argument *na = (struct notifier_argument *) vargp;
 	char *pbuf;
@@ -426,7 +428,7 @@ request_notifier_thread(void *vargp)
 					struct ResponseMessage *res_m =
 						&test->rsp_msg;
 
-					parse_server_answer(req_m, res_m, pbuf);
+					dl_parse_server_answer(req_m, res_m, pbuf);
 
 					na->on_ack(res_m->CorrelationId);
 					na->on_response(req_m, res_m);
@@ -455,7 +457,7 @@ request_notifier_thread(void *vargp)
 }
 
 static void
-start_notifiers(struct client_configuration *cc)
+dl_start_notifiers(struct client_configuration *cc)
 {
 	int notifiers_it;
 
@@ -467,27 +469,27 @@ start_notifiers(struct client_configuration *cc)
 		nas[notifiers_it].on_response = cc->on_response;
 
 		pthread_create(&notifiers[notifiers_it], NULL,
-		    request_notifier_thread, &nas[notifiers_it]);
+		    dl_request_notifier_thread, &nas[notifiers_it]);
 		nas[notifiers_it].tid = &notifiers[notifiers_it];
 	}
 }
 
 static void
-start_resender(struct client_configuration *cc)
+dl_start_resender(struct client_configuration *cc)
 {
 	int ret;
 
 	resender_arg.index = 0;
 	resender_arg.tid = NULL;
 	resender_arg.config = cc;
-	ret = pthread_create(&resender, NULL, resender_thread, &resender_arg);
+	ret = pthread_create(&resender, NULL, dl_resender_thread, &resender_arg);
 	if (ret == 0) {
 		resender_arg.tid = &resender;
 	}
 }
 
 static int
-allocate_client_datastructures(struct client_configuration *cc)
+dl_allocate_client_datastructures(struct client_configuration *cc)
 {
 	int notifier, processor_it;
 
@@ -555,7 +557,7 @@ allocate_client_datastructures(struct client_configuration *cc)
 }
 
 static void
-start_reader_threads(struct client_configuration *cc, int num, ...)
+dl_start_reader_threads(struct client_configuration *cc, int num, ...)
 {
 	va_list argvars;
 
@@ -571,30 +573,30 @@ start_reader_threads(struct client_configuration *cc, int num, ...)
 		memcpy(ras[i].hostname, thost, strlen(thost));
 		ras[i].portnumber = va_arg(argvars, int);
 
-		pthread_create(&readers[i], NULL, reader_thread, &ras[i]);
+		pthread_create(&readers[i], NULL, dl_reader_thread, &ras[i]);
 		ras[i].tid = &readers[i];
 	}
 	va_end(argvars);
 }
 
 void
-client_busyloop(const char *hostname, int portnumber,
+distlog_client_busyloop(const char *hostname, int portnumber,
     struct client_configuration* cc)
 {
 	int ret;
 
-	ret  = allocate_client_datastructures(cc);
+	ret  = dl_allocate_client_datastructures(cc);
 	if (ret > 0) {
 		debug(PRIO_NORMAL, "Finished allocation...\n");
 
-		start_notifiers(cc);
-		start_reader_threads(cc, 1, hostname, portnumber);
-		start_resender(cc);
+		dl_start_notifiers(cc);
+		dl_start_reader_threads(cc, 1, hostname, portnumber);
+		dl_start_resender(cc);
 	}
 }
 
 int
-send_request(int server_id, enum request_type rt,
+distlog_send_request(int server_id, enum request_type rt,
     correlationId_t correlation_id, char* client_id, int should_resend,
     int resend_timeout, ...)
 {
