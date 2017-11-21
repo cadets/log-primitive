@@ -39,24 +39,24 @@
 
 #include "protocol.h"
 
-static int      clientId_field_size = 4;
-static int   overall_msg_field_size = 4;
-static int correlationId_field_size = 4;
-static int          type_field_size = 3;
+static const int      clientId_field_size = 4;
+static const int   overall_msg_field_size = 4;
+static const int correlationId_field_size = 4;
+static const int          type_field_size = 3;
 
 // Insert request variables.
-static int           crc_field_size = 20;
-static int           msg_field_size = 4;
+static const int           crc_field_size = 20;
+static const int           msg_field_size = 4;
 
 
-static int MTU = 2000;
-static int MSG_POOL_SIZE = 16;
+static const int MTU = 2000;
+static const int MSG_POOL_SIZE = 16;
 
 extern unsigned long	get_crc(char *, int);
 extern long	get_long(char *, int);
 extern int	get_int(char *, int);
 extern void	get_val(char **, char *, int);
-extern int	read_msg(int, char **);
+extern int	read_msg(int, char *);
 extern int	wrap_with_size(struct ResponseMessage *, char **, char *,
 	enum request_type);
 

@@ -36,6 +36,9 @@
 
 #include "caml_broker.h"
 #include "caml_common.h"
+#include "utils.h"
+
+unsigned short PRIO_LOG = PRIO_LOW;
 
 int
 main()

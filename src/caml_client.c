@@ -34,31 +34,26 @@
  * SUCH DAMAGE.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
-#include <resolv.h>
 #include <arpa/inet.h>
 #include <errno.h>
-#include <string.h>
 #include <fcntl.h>
-#include <arpa/inet.h>
-#include <signal.h>
 #include <pthread.h>
-#include <strings.h>
+#include <resolv.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/socket.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/param.h>
 #include <sys/poll.h>
 #include <sys/queue.h>
-#include <sys/param.h>
+#include <sys/socket.h>
 #include <sys/tree.h>
+#include <unistd.h>
 
 #include "caml_client.h"
 #include "caml_memory.h"
-#include "circular_queue.h"
 #include "protocol_parser.h"
 #include "protocol_encoder.h"
 #include "utils.h"
@@ -98,8 +93,14 @@ static int const REQUESTS_PER_NOTIFIER = 10;
 /* Maximum number of outstanding un-acked messages */
 static int const NODE_POOL_SIZE = 128; 
 
-static CircularQueue *request_notifiers;
-static CircularQueue *send_out_queue;
+struct notify_queue_element {
+	char pbuf[MTU];
+	STAILQ_ENTRY(notify_queue_element) entries;
+};
+STAILQ_HEAD(notify_queue, notify_queue_element);
+static struct notify_queue notify_queues[NUM_NOTIFIERS];
+static pthread_mutex_t mtx1[NUM_NOTIFIERS];
+static pthread_cond_t cond1[NUM_NOTIFIERS];
 
 // Array containing arguments to the reader threads
 static struct reader_argument *ras;
@@ -122,12 +123,18 @@ struct lentry {
 	unsigned long resend_timeout;
 	int should_resend;
 	LIST_ENTRY(lentry) entries;
+	STAILQ_ENTRY(lentry) tq_entries;
 };
 
 struct listhead *headp;
 
 LIST_HEAD(listhead, lentry) head = LIST_HEAD_INITIALIZER(head);
-pthread_mutex_t mtx;
+static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
+
+STAILQ_HEAD(request_queue, lentry);
+static struct request_queue request_queue;
+static pthread_mutex_t mtx2;
+static pthread_cond_t cond2;
 
 struct lentryx {
 	struct ResponseMessage rsp_msg;
@@ -137,7 +144,7 @@ struct lentryx {
 struct listheadx *headpx;
 
 LIST_HEAD(listheadx, lentryx) headx = LIST_HEAD_INITIALIZER(headx);
-pthread_mutex_t mtxx;
+static pthread_mutex_t mtxx = PTHREAD_MUTEX_INITIALIZER;
 
 struct tentry {
 	struct lentry *value;
@@ -148,12 +155,12 @@ struct tentry {
 
 struct treehead *headpt;
 
-
 LIST_HEAD(tlisthead, tentry) tlhead = LIST_HEAD_INITIALIZER(tlhead);
-pthread_mutex_t tlmtx;
+static pthread_mutex_t tlmtx = PTHREAD_MUTEX_INITIALIZER;
 
 RB_HEAD(treehead, tentry) thead = RB_INITIALIZER(&thead);
-pthread_mutex_t tmtx;
+static pthread_mutex_t tmtx = PTHREAD_MUTEX_INITIALIZER;
+
 static int
 tentry_cmp(struct tentry *e1, struct tentry *e2)
 {
@@ -188,14 +195,16 @@ static void *
 resender_thread(void *vargp)
 {
 	struct reader_argument *ra = (struct reader_argument *) vargp;
+	struct tentry *data;
 	unsigned long now;
 	int server_id_assign = 0;
 
 	debug(PRIO_LOW, "Resender thread started\n");
 
 	for (;;) {
-		struct tentry *data;
 		pthread_mutex_lock(&tmtx);
+		// TODO: RB_FOREACH_SAFE as I'm planning on manipulating the
+		// tree
 		RB_FOREACH(data, treehead, &thead) {
 			if (data->value->should_resend) {
 				now = time(NULL);
@@ -209,19 +218,18 @@ resender_thread(void *vargp)
 				    data->value->resend_timeout) {
 					data->value->last_sent = time(NULL);
 
-					lock_cq(
-					    &send_out_queue[server_id_assign]);
-					enqueue(
-					    &send_out_queue[server_id_assign],
-					    data, sizeof(struct lentry *));
-					ulock_cq(
-					    &send_out_queue[server_id_assign]);
+					pthread_mutex_lock(&mtx2);
+					STAILQ_INSERT_TAIL(&request_queue,
+					    data->value, tq_entries);
+					pthread_cond_signal(&cond2);
+					pthread_mutex_unlock(&mtx2);
 
 					server_id_assign =
 					    (server_id_assign + 1) %
 					    num_readers;
 					debug(PRIO_LOW, "Done.\n");
 
+					//TODO: return tree element to the pool
 				}
 			}
 		}
@@ -241,7 +249,10 @@ reader_thread(void *vargp)
 	char *send_out_buffer;
 	int server_conn = -1, rv, msg_size;
 	struct reader_argument *ra = (struct reader_argument *) vargp;
-	
+	struct request_queue local_request_queue;
+
+	STAILQ_INIT(&local_request_queue);
+
 	send_out_buffer = (char *) distlog_alloc(sizeof(char) * MTU);
 
 	for (;;) {
@@ -269,52 +280,70 @@ reader_thread(void *vargp)
 			continue;
 		}
 		if (rv) {
-			msg_size = read_msg(ufd.fd, &pbuf);
+			printf("here\n");
+       			struct notify_queue_element *temp_el =
+			    (struct notify_queue_element *) distlog_alloc(
+				sizeof(struct notify_queue_element));
+			printf("here allocated notify_queue_element %p\n", temp_el);
+			printf("here allocated notify_queue_element %p\n", temp_el->pbuf);
+			printf("here allocated notify_queue_element %p\n", &(temp_el->pbuf));
+			msg_size = read_msg(ufd.fd, temp_el->pbuf);
+			printf("here read_msg\n");
 			if (msg_size > 0) {
 				debug(PRIO_LOW, "Reader thread read %d "
 				    "bytes\n", msg_size);
 				int mnotif = (current_request_notifier + 1) %
 				    NUM_NOTIFIERS;
-				lock_cq(&request_notifiers[mnotif]);
 
-				enqueue(&request_notifiers[mnotif], pbuf,
-					sizeof(char) * MTU);
+				pthread_mutex_lock(&mtx1[mnotif]);
+				STAILQ_INSERT_TAIL(&notify_queues[mnotif], temp_el, entries);
+				printf("Signalling cond1\n");
+				int ret = pthread_cond_signal(&cond1[mnotif]);
+				printf("signal = %d\n", ret);
+				pthread_mutex_unlock(&mtx1[mnotif]);
 
 				current_request_notifier = mnotif;
-				ulock_cq(&request_notifiers[mnotif]);
 			} else {
 				server_conn = -1;
 			}
 		}
-				
-		debug(PRIO_LOW, "No. messages in send_out_queue %d = %d\n",
-		    ra->index, send_out_queue[ra->index].num_elems);
-		while (send_out_queue[ra->index].num_elems > 0) {
 
-			struct lentry *temp;
+		struct lentry *request, *request_temp;
 
-			lock_cq(&send_out_queue[ra->index]);
-			int ind = dequeue(&send_out_queue[ra->index],
-			    (void *) &temp, sizeof(struct lentry *));
-			ulock_cq(&send_out_queue[ra->index]);
-
-			if (ind != -1) {
-				struct RequestMessage* mimi = &temp->req_msg;
-				debug(PRIO_LOW,
-				    "[%d]Dequeued request with address %p\n",
-				    ind, mimi);
-				debug(PRIO_LOW, "mimi->CorreltionsId %d\n",
-				    mimi->CorrelationId);
-				int req_size = encode_requestmessage(
-					mimi, &pbuf);
-				int fi = sprintf(send_out_buffer, "%.*d%s",
-				    OVERALL_MSG_FIELD_SIZE,
-				    req_size+OVERALL_MSG_FIELD_SIZE, pbuf);
-
-				debug(PRIO_NORMAL, "[%d]Sending: '%s'\n",
-				    ind, send_out_buffer);
-				send(server_conn, send_out_buffer, fi, 0);
+		pthread_mutex_lock(&mtx2);		
+		while (STAILQ_EMPTY(&request_queue) != 0 ) {
+			if (pthread_cond_wait(&cond2, &mtx2) == 0) {		
+				break;
 			}
+		}
+		while (STAILQ_EMPTY(&request_queue) == 0 ) {
+			request = STAILQ_FIRST(&request_queue);
+			STAILQ_REMOVE_HEAD(&request_queue, tq_entries);
+
+			STAILQ_INSERT_TAIL(&local_request_queue,
+				request, tq_entries);
+		}
+		pthread_mutex_unlock(&mtx2);
+
+		STAILQ_FOREACH_SAFE(request, &local_request_queue, tq_entries,
+		    request_temp) {
+
+			struct lentry *temp = request;
+			struct RequestMessage* mimi = &temp->req_msg;
+			debug(PRIO_LOW,
+				"Dequeued request with address %p\n",
+				mimi);
+			debug(PRIO_LOW, "mimi->CorreltionsId %d\n",
+				mimi->CorrelationId);
+			int req_size = encode_requestmessage(
+				mimi, &pbuf);
+			int fi = sprintf(send_out_buffer, "%.*d%s",
+				OVERALL_MSG_FIELD_SIZE,
+				req_size+OVERALL_MSG_FIELD_SIZE, pbuf);
+
+			debug(PRIO_NORMAL, "Sending: '%s'\n",
+				send_out_buffer);
+			send(server_conn, send_out_buffer, fi, 0);
 		}
 	}
 	return NULL;
@@ -334,75 +363,84 @@ request_notifier_thread(void *vargp)
 {
 	struct notifier_argument *na = (struct notifier_argument *) vargp;
 	char *pbuf;
+	struct notify_queue local_notify_queue;
+	struct notify_queue_element *notify, *notify_temp;
 	
 	// TODO move this guy to the allocations
 	pbuf = (char *) distlog_alloc(sizeof(char) * MTU);
 
 	debug(PRIO_LOW, "Requester thread with id %d started...\n", na->index);
+	
+	STAILQ_INIT(&local_notify_queue);
 
 	for (;;) {
-		if (request_notifiers[na->index].num_elems > 0) {
-			debug(PRIO_LOW, "num_elems %d started...\n",
-			    request_notifiers[na->index].num_elems);
+		pthread_mutex_lock(&mtx1[na->index]);		
+		while (STAILQ_EMPTY(&notify_queues[na->index]) != 0 ) {
+			printf("Waiting on cond1\n");
+			if (pthread_cond_wait(&cond1[na->index], &mtx1[na->index]) == 0) {		
+				break;
+			}
+		}
+		while (STAILQ_EMPTY(&notify_queues[na->index]) == 0 ) {
+			notify = STAILQ_FIRST(&notify_queues[na->index]);
+			STAILQ_REMOVE_HEAD(&notify_queues[na->index], entries);
 
-			pthread_mutex_lock(&mtxx);
+			STAILQ_INSERT_TAIL(&local_notify_queue,
+				notify, entries);
+		}
+		pthread_mutex_unlock(&mtx1[na->index]);		
+
+		printf("iterating local notify queue\n");
+		STAILQ_FOREACH_SAFE(notify, &local_notify_queue, entries,
+		    notify_temp) {
+
 			struct lentryx * test;
+			pthread_mutex_lock(&mtxx);
 			test = LIST_FIRST(&headx);
 			LIST_REMOVE(test, entries);
 			pthread_mutex_unlock(&mtxx);
 			if (test) {
+				char * pbuf = notify->pbuf;
+				debug(PRIO_NORMAL, "Requester[%d] "
+					"got the following message "
+					"'%s'\n", na->index, pbuf);
+				correlationId_t message_corr_id =
+					get_corrid(pbuf);
 
-				lock_cq(&request_notifiers[na->index]);
-				int ind = dequeue(
-					&request_notifiers[na->index],
-					(void*) pbuf, sizeof(char)*MTU);
-				ulock_cq(&request_notifiers[na->index]);
-				if (ind != -1) {
-					debug(PRIO_NORMAL, "Requester[%d] "
-						"got the following message "
-						"'%s'\n", na->index, pbuf);
-					correlationId_t message_corr_id =
-						get_corrid(pbuf);
+				struct tentry *data;	
+				struct tentry find;
+				find.key = message_corr_id;	
+				pthread_mutex_lock(&tmtx);
+				data = RB_FIND(treehead, &thead, &find);
+				pthread_mutex_unlock(&tmtx);
 
-					struct tentry *data;	
-					struct tentry find;
-					find.key = message_corr_id;	
-					pthread_mutex_lock(&tmtx);
-					data = RB_FIND(treehead, &thead, &find);
-					pthread_mutex_unlock(&tmtx);
+				if (data != NULL) {
+					debug(PRIO_NORMAL,
+						"Found the un_acked node\n");
+					debug(PRIO_NORMAL,
+						"Requested: %d "
+						"Gotten: %d\n",
+						message_corr_id, data->key);
+					struct RequestMessage *req_m =
+						&(data->value)->req_msg;
+					struct ResponseMessage *res_m =
+						&test->rsp_msg;
 
-					if (data != NULL) {
-						debug(PRIO_NORMAL,
-						    "Found the un_acked node\n");
-						debug(PRIO_NORMAL,
-						    "Requested: %d "
-						    "Gotten: %d\n",
-						    message_corr_id, data->key);
-						struct RequestMessage *req_m =
-						    &(data->value)->req_msg;
-						struct ResponseMessage *res_m =
-						    &test->rsp_msg;
+					parse_server_answer(req_m, res_m, pbuf);
 
-						parse_server_answer(req_m, res_m, pbuf);
-
-						na->on_ack(res_m->CorrelationId);
-						na->on_response(req_m, res_m);
-						debug(PRIO_NORMAL,
-						    "Got acknowledged: %d\n",
-						    res_m->CorrelationId);
-						
-						pthread_mutex_lock(&mtxx);
-						LIST_INSERT_HEAD(&headx,
-						    test, entries);
-						pthread_mutex_unlock(&mtxx);
-					} else {
-						debug(PRIO_LOW,
-						    "Not found the un_acked node\n");
-						pthread_mutex_lock(&mtxx);
-						LIST_INSERT_HEAD(&headx, test, entries);
-						pthread_mutex_unlock(&mtxx);
-					}
+					na->on_ack(res_m->CorrelationId);
+					na->on_response(req_m, res_m);
+					debug(PRIO_NORMAL,
+						"Got acknowledged: %d\n",
+						res_m->CorrelationId);
+					
+					pthread_mutex_lock(&mtxx);
+					LIST_INSERT_HEAD(&headx,
+						test, entries);
+					pthread_mutex_unlock(&mtxx);
 				} else {
+					debug(PRIO_LOW,
+						"Not found the un_acked node\n");
 					pthread_mutex_lock(&mtxx);
 					LIST_INSERT_HEAD(&headx, test, entries);
 					pthread_mutex_unlock(&mtxx);
@@ -412,7 +450,6 @@ request_notifier_thread(void *vargp)
 					"to send stuff off\n");
 			}
 		}
-		sleep(na->config->request_notifier_thread_sleep_length);
 	}
 	return NULL;
 }
@@ -452,7 +489,7 @@ start_resender(struct client_configuration *cc)
 static int
 allocate_client_datastructures(struct client_configuration *cc)
 {
-	int processor_it;
+	int notifier, processor_it;
 
 	RB_INIT(&thead);
 	pthread_mutex_init(&tmtx, NULL);
@@ -478,11 +515,15 @@ allocate_client_datastructures(struct client_configuration *cc)
 	ras = (struct reader_argument *) distlog_alloc(
 		sizeof(struct reader_argument) * NUM_READERS);
 
-	request_notifiers = allocate_circ_queue_per_num_processors(
-		NUM_NOTIFIERS, REQUESTS_PER_NOTIFIER, sizeof(char) * MTU);
-	send_out_queue = allocate_circ_queue_per_num_processors(
-	    NUM_NOTIFIERS, REQUESTS_PER_NOTIFIER,
-	    sizeof(struct lentry *));
+	STAILQ_INIT(&request_queue);
+	pthread_mutex_init(&mtx2, NULL);
+	pthread_cond_init(&cond2, NULL);
+
+	for (notifier = 0; notifier < NUM_NOTIFIERS; notifier++ ){
+		STAILQ_INIT(&notify_queues[notifier]);
+		pthread_mutex_init(&mtx1[notifier], NULL);
+		pthread_cond_init(&cond1[notifier], NULL);
+	}
 
 	// TODO: Allocate a list per "processor" currently this is one
 	LIST_INIT(&head);
@@ -508,7 +549,7 @@ allocate_client_datastructures(struct client_configuration *cc)
 		LIST_INSERT_HEAD(&headx, list_entry, entries);
 	}
 
-	pthread_mutex_init(&mtx, NULL);
+	pthread_mutex_init(&mtxx, NULL);
 
 	return 1;
 }
@@ -587,11 +628,12 @@ send_request(int server_id, enum request_type rt,
 		build_req(trq, rt, correlation_id, client_id, ap);
 		debug(PRIO_LOW, "Done\n");
 
-		/* Enque the request for processing */
-		lock_cq(&send_out_queue[server_id]);
-		enqueue(&send_out_queue[server_id], &request,
-			sizeof(struct lentry *));
-		ulock_cq(&send_out_queue[server_id]);
+		pthread_mutex_lock(&mtx2);
+		STAILQ_INSERT_TAIL(&request_queue, request, tq_entries);
+		printf("Signalling cond2\n");
+		int ret = pthread_cond_signal(&cond2);
+		printf("signal = %d\n", ret);
+		pthread_mutex_unlock(&mtx2);
 
 		if (trq->APIKey == REQUEST_FETCH ||
 		    (trq->APIKey == REQUEST_PRODUCE) &&

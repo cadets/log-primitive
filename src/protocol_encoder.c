@@ -41,9 +41,9 @@
 #include "protocol.h"
 #include "protocol_common.h"
 
-static int encode_message(struct Message* inp, char** st);
-static int encode_messagesetelement(struct MessageSetElement* inp, char** st);
-static int encode_messageset(struct MessageSet* inp, char** st);
+//static int encode_message(struct message *, char **);
+static int encode_messagesetelement(struct message_set_element *, char **);
+static int encode_messageset(struct message_set *, char **);
 static int encode_topicname(struct TopicName* inp, char** st);
 static int encode_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp,
 	char** st);
@@ -187,27 +187,34 @@ extern int OFFSET_FETCH_RESPONSE_SIZE_FIELD_SIZE;
 extern int PARTITIONERRORCODE_FIELD_SIZE;
 extern int PORT_FIELD_SIZE;
 
+/*
 static int
-encode_message(struct Message* inp, char** st)
+encode_message(struct message *inp, char **st)
 {
 	char *saveto = *st;
-	const char* format="%.*lu%.*lu%.*d%.*d%s%.*d%s";
-	return sprintf(saveto, format, CRC_FIELD_SIZE, inp->CRC, TIMESTAMP_FIELD_SIZE, inp->Timestamp, inp->Attributes < 0? ATTRIBUTES_FIELD_SIZE-1 : ATTRIBUTES_FIELD_SIZE, inp->Attributes, KEY_SIZE_FIELD_SIZE, strlen(inp->key), inp->key, VALUE_SIZE_FIELD_SIZE, strlen(inp->value), inp->value);
+	const char *format="%.*lu%.*lu%.*d%.*d%s%.*d%s";
+
+	return sprintf(saveto, format, CRC_FIELD_SIZE, inp->crc,
+	    TIMESTAMP_FIELD_SIZE,inp->timestamp,
+	    inp->attributes < 0 ? ATTRIBUTES_FIELD_SIZE-1 : ATTRIBUTES_FIELD_SIZE,
+	    inp->attributes, KEY_SIZE_FIELD_SIZE, strlen(inp->key), inp->key,
+	    VALUE_SIZE_FIELD_SIZE, strlen(inp->value), inp->value);
 }
+*/
 
 static int
-encode_messagesetelement(struct MessageSetElement* inp, char** st)
+encode_messagesetelement(struct message_set_element *inp, char **st)
 {
 	char *saveto = *st;
 	char temp_message[MTU], *temp_message_ptr=temp_message;
 	bzero(temp_message, MTU);
-	int temp_len_message = encode_message(&inp->Message, &temp_message_ptr);
+	int temp_len_message = dl_encode_message(&inp->message, &temp_message_ptr);
 	const char* format="%.*ld%.*d%s";
-	return sprintf(saveto, format, inp->Offset < 0? OFFSET_FIELD_SIZE-1 : OFFSET_FIELD_SIZE, inp->Offset, inp->MessageSize < 0? MESSAGESIZE_FIELD_SIZE-1 : MESSAGESIZE_FIELD_SIZE, inp->MessageSize, temp_message);
+	return sprintf(saveto, format, inp->offset < 0? OFFSET_FIELD_SIZE-1 : OFFSET_FIELD_SIZE, inp->offset, inp->message_size < 0? MESSAGESIZE_FIELD_SIZE-1 : MESSAGESIZE_FIELD_SIZE, inp->message_size, temp_message);
 }
 
 static int
-encode_messageset(struct MessageSet* inp, char** st)
+encode_messageset(struct message_set* inp, char** st)
 {
 	char *saveto = *st;
 	char temp_elems[MTU];

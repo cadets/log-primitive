@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2017 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -33,106 +34,164 @@
  * SUCH DAMAGE.
  */
 
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <resolv.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
-#include <sys/socket.h>
-#include <resolv.h>
-#include <arpa/inet.h>
-#include <errno.h>
 #include <string.h>
-#include <fcntl.h>
-#include <arpa/inet.h>
-#include <signal.h>
-#include <pthread.h>
 #include <strings.h>
 #include <sys/poll.h>
+#include <sys/queue.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
-#include "utils.h"
-#include "message.h"
-#include "protocol.h"
-#include "circular_queue.h"
-#include "doubly_linked_list.h"
 #include "caml_broker.h"
 #include "caml_common.h"
 #include "caml_memory.h"
+#include "message.h"
 #include "protocol.h"
-#include "protocol_parser.h"
+#include "protocol.h"
 #include "protocol_encoder.h"
-
+#include "protocol_parser.h"
+#include "utils.h"
 
 struct processor_argument {
 	int index;
-	pthread_t * tid;
-	struct broker_configuration * config;
+	pthread_t const * tid;
+	struct broker_configuration const * config;
 };
-typedef struct processor_argument processor_argument;
 
-
-static void msend(int fd, char *, int);
-static int broker_handle(DLLNode *, DLLNode *, int);
-static int assign_to_processor(int, int);
-static int free_datastructures();
-static int allocate_broker_datastructures(struct broker_configuration *);
-static int init_listening_socket(int);
-static void accept_loop(int, struct broker_configuration *);
-static void * dl_processor_thread(void *);
-static void start_processor_threads(struct broker_configuration *);
+static void dl_accept_loop(int, struct broker_configuration *);
+static int dl_assign_to_processor(int, int);
+static int dl_broker_handle(struct RequestMessage * const,
+    struct ResponseMessage * const);
 static void * dl_fsync_thread(void *);
-static void start_fsync_thread(struct broker_configuration *);
-static void close_listening_socket(int);
+static void * dl_processor_thread(void *);
 static void dl_signal_handler(int);
-static int handle_request_produce(DLLNode *, struct ResponseMessage *,
+static void dl_start_processor_threads(
+    struct broker_configuration const * const);
+static int allocate_broker_datastructures(struct broker_configuration *);
+static void close_listening_socket(int);
+static int handle_request_produce(struct ResponseMessage *,
     struct RequestMessage *);
-static int handle_request_fetch(struct ResponseMessage *, struct RequestMessage *);
+static int handle_request_fetch(struct ResponseMessage *,
+    struct RequestMessage *);
+static int free_datastructures();
+static int init_listening_socket(int);
+static void start_fsync_thread(struct broker_configuration *);
 
-static DLL *threadid_to_array_of_connections;
-static DLL *request_pool;
-static DLL *response_pool;
-static DLL *un_fsynced; // responses which are unsynced
+/* TODO: Do we want to limit connections from a pool? */
+struct thread_to_proc_pool_element {
+	LIST_ENTRY(thread_to_proc_pool_element) entries;
+	int fd;
+};
+LIST_HEAD(thread_to_proc_pool, thread_to_proc_pool_element);
+static struct thread_to_proc_pool thread_to_proc_pools[NUM_PROCESSORS];
+static pthread_mutex_t thread_to_proc_pool_mtx[NUM_PROCESSORS];
+
+struct request_pool_element {
+	struct RequestMessage req_msg;
+	LIST_ENTRY(request_pool_element) entries;
+	STAILQ_ENTRY(request_pool_element) tq_entries;
+	int fd;
+};
+LIST_HEAD(request_pool, request_pool_element);
+static struct request_pool request_pools[NUM_PROCESSORS];
+static pthread_mutex_t request_pool_mtx[NUM_PROCESSORS];
+
+struct response_pool_element {
+	struct ResponseMessage rsp_msg;
+	LIST_ENTRY(response_pool_element) entries;
+	int fd;
+};
+LIST_HEAD(response_pool, response_pool_element);
+static struct response_pool response_pools[NUM_PROCESSORS];
+static pthread_mutex_t response_pool_mtx[NUM_PROCESSORS];
+
+LIST_HEAD(unfsynced_response, request_pool_element);
+static struct unfsynced_response unfsynced_responses; 
+static pthread_mutex_t unfsynced_responses_mtx;
+static pthread_cond_t unfsynced_responses_cond;
 
 static pthread_t *created_threads;
-static processor_argument *pas;
+static struct processor_argument *pas;
 
 static pthread_t fsy_thread;
-static processor_argument fsy_args;
+static struct processor_argument fsy_args;
 
-static CircularQueue *threadid_to_array_of_requests;
+STAILQ_HEAD(request, request_pool_element);
+static struct request unprocessed_requests;
 
-unsigned short PRIO_LOG = PRIO_NORMAL;
-
-static segment* ptr_seg;
+static segment *ptr_seg;
 
 static void
-msend(int fd, char * buf, int buf_size)
+dl_accept_loop(int sockfd, struct broker_configuration *conf)
 {
+	socklen_t addrlen;
+	struct sockaddr_in client_addr;
+	int current_processor_id = 0;
+	int clientfd, ret;
+	
+	addrlen = sizeof(client_addr);
 
-	debug(PRIO_NORMAL, "Sending: '%s'\n", buf);
-	send(fd, buf, buf_size, 0);
+	for (;;) {
+		clientfd = accept(sockfd, (struct sockaddr *) &client_addr,
+		    &addrlen);
+		if (clientfd < 0) {
+			break;
+		}
+		ret = dl_assign_to_processor(current_processor_id, clientfd);
+		if (ret > 0) {
+			debug(PRIO_NORMAL, "%s:%d connected "
+			    "and assigned to processor number %d\n",
+			    inet_ntoa(client_addr.sin_addr),
+			    ntohs(client_addr.sin_port),
+			    current_processor_id);
+		    	current_processor_id =
+			    (current_processor_id + 1) % NUM_PROCESSORS;
+		}
+	}
 }
 
+static int
+dl_assign_to_processor(int processorid, int conn_fd)
+{
+	struct thread_to_proc_pool_element *element =
+	    (struct thread_to_proc_pool_element *) distlog_alloc(
+		sizeof(struct thread_to_proc_pool_element));
+	if (element != NULL) {
+		element->fd = conn_fd;
+		pthread_mutex_lock(&thread_to_proc_pool_mtx[processorid]);
+		LIST_INSERT_HEAD(&thread_to_proc_pools[processorid],
+		    element, entries);
+		pthread_mutex_unlock(&thread_to_proc_pool_mtx[processorid]);
+		return 1;
+	} else {
+		return -1;
+	}
+}
 
 static int
-broker_handle(DLLNode *req_p, DLLNode *res_p, int thread_index)
+dl_broker_handle(struct RequestMessage * const request,
+    struct ResponseMessage * const response)
 {
-	struct ResponseMessage *res_ph;
-	struct RequestMessage  *req_ph = (struct RequestMessage*) req_p->val;
+	ASSERT(request != NULL);
+	// TODO: In the current implementation response can be NULL, need to fix
+	ASSERT(response != NULL);
 
-	ASSERT(req_p != NULL);
-	ASSERT(res_p != NULL);
-
-	res_ph = (struct ResponseMessage*) res_p->val;
-	res_p->fd = req_p->fd;
-	clear_responsemessage(res_ph, req_ph->APIKey);
-	res_ph->CorrelationId = req_ph->CorrelationId;
-
+	clear_responsemessage(response, request->APIKey);
+	response->CorrelationId = request->CorrelationId;
+	
 	debug(PRIO_NORMAL, "CorrelationId: %d ClientID: %s\n",
-	    req_ph->CorrelationId, req_ph->ClientId);
-	switch(req_ph->APIKey) {
+	    request->CorrelationId, request->ClientId);
+	switch(request->APIKey) {
 	case REQUEST_PRODUCE:;
 		debug(PRIO_NORMAL, "Got a request_process message\n");
-		handle_request_produce(res_p, res_ph, req_ph);
+		handle_request_produce(response, request);
 		break;
 	case REQUEST_OFFSET_COMMIT:
 		break;
@@ -141,9 +200,7 @@ broker_handle(DLLNode *req_p, DLLNode *res_p, int thread_index)
 	case REQUEST_FETCH:
 		debug(PRIO_NORMAL, "Got a request_fetch message\n");
 		// TODO: handle return codes properly
-		if (handle_request_fetch(res_ph, req_ph) == 0) {
-			return 0;
-		}
+		return handle_request_fetch(response, request);
 		break;
 	case REQUEST_OFFSET_FETCH:
 		break;
@@ -152,8 +209,9 @@ broker_handle(DLLNode *req_p, DLLNode *res_p, int thread_index)
 	case REQUEST_GROUP_COORDINATOR:
 		break;
 	}
-	debug(PRIO_LOW, "Finished broker_handle\n");
+	debug(PRIO_LOW, "Finished dl_broker_handle\n");
 	return 1;
+
 }
 
 static int
@@ -165,7 +223,7 @@ handle_request_fetch(struct ResponseMessage *res_ph,
 
 	debug(PRIO_NORMAL, "Request: %p Response: %p\n", req_ph, res_ph);
 
-	char * current_topic_name = curfreq->TopicName.TopicName;
+	char *current_topic_name = curfreq->TopicName.TopicName;
 	int topic_name_len = strlen(current_topic_name);
 	debug(PRIO_NORMAL, "The associated topic name is: %s\n",
 	    current_topic_name);
@@ -216,15 +274,15 @@ handle_request_fetch(struct ResponseMessage *res_ph,
 				"size\n");
 			break;
 		}
-		struct MessageSetElement *mse =
+		struct message_set_element *mse =
 			&curfres->sfr[csfr].ssfr[cssfr].MessageSet.Elems[curm];
-		mse->Message.Attributes = 0;
+		mse->message.attributes = 0;
 
 		int msglen = get_message_by_offset(ptr_seg,
-			current_offset, mse->Message.value);
+			current_offset, mse->message.value);
 
 		if(msglen < 0){
-			mse->Message.Attributes = msglen;
+			mse->message.attributes = msglen;
 		}
 
 		if(msglen == 0){
@@ -236,16 +294,16 @@ handle_request_fetch(struct ResponseMessage *res_ph,
 		}
 
 		debug(PRIO_NORMAL, "Found a message %s "
-			"for offset %d\n", mse->Message.value,
+			"for offset %d\n", mse->message.value,
 			current_offset);
 		curfres->NUM_SFR = csfr+1;
 		curfres->sfr[csfr].NUM_SSFR = cssfr+1;
 		curfres->sfr[csfr].ssfr[cssfr].MessageSet.NUM_ELEMS =
 			curm+1;
 
-		mse->Offset = current_offset;
-		mse->Message.Timestamp = time(NULL);
-		mse->Message.CRC = get_crc(mse->Message.value, msglen);
+		mse->offset = current_offset;
+		mse->message.timestamp = time(NULL);
+		mse->message.crc = get_crc(mse->message.value, msglen);
 
 		bytes_so_far += msglen >= 0 ? msglen : 0;
 		curm += 1;
@@ -260,10 +318,12 @@ handle_request_fetch(struct ResponseMessage *res_ph,
 		// Do not send anything
 		return 0;
 	}
+
+	return 1;
 }
 
 static int
-handle_request_produce(DLLNode *res_p, struct ResponseMessage *res_ph,
+handle_request_produce(struct ResponseMessage *res_ph,
     struct RequestMessage *req_ph)
 {
 	char * current_topic_name =
@@ -272,17 +332,19 @@ handle_request_produce(DLLNode *res_p, struct ResponseMessage *res_ph,
 		"Inserting messages into the topicname '%s'\n",
 		current_topic_name);
 
-	if (res_p) {
+	if (res_ph) {
 		int topic_name_len = strlen(current_topic_name);
 		debug(PRIO_NORMAL, "There is a response needed [%d]\n",
 		    req_ph->CorrelationId);
 
+		/* Get the current subproduce */
 		int current_subreply =
-		    res_ph->rm.produce_response.NUM_SUB; // Get the current subproduce
+		    res_ph->rm.produce_response.NUM_SUB;
 
 		struct SubProduceResponse *current_spr =
 		    &(res_ph->rm.produce_response.spr[current_subreply]);
-		res_ph->rm.produce_response.NUM_SUB++; // Say that you have occupied a cell in the subproduce
+		// Say that you have occupied a cell in the subproduce
+		res_ph->rm.produce_response.NUM_SUB++; 
 		char* ttn = current_spr->TopicName.TopicName;
 		debug(PRIO_LOW, "starting copying...\n");
 		memcpy(ttn, current_topic_name, topic_name_len);
@@ -290,21 +352,22 @@ handle_request_produce(DLLNode *res_p, struct ResponseMessage *res_ph,
 		current_spr->NUM_SUBSUB =
 			req_ph->rm.produce_request.spr.sspr.mset.NUM_ELEMS;
 
-		for (int i = 0; i < req_ph->rm.produce_request.spr.sspr.mset.NUM_ELEMS; i++) {
-			struct Message *tmsg =
-				&req_ph->rm.produce_request.spr.sspr.mset.Elems[i].Message;
-			debug(PRIO_LOW, "\tMessage: '%s'\n",
-				tmsg->value);
+		for (int i = 0;
+		    i < req_ph->rm.produce_request.spr.sspr.mset.NUM_ELEMS;
+		    i++) {
+			struct dl_message *tmsg =
+			    &req_ph->rm.produce_request.spr.sspr.mset.Elems[i].message;
+			debug(PRIO_LOW, "\tMessage: '%s'\n", tmsg->value);
 			int slen = strlen(tmsg->value);
 
 			struct SubSubProduceResponse *curr_sspr =
-				&current_spr->sspr[i];
+			    &current_spr->sspr[i];
 			curr_sspr->Timestamp = time(NULL);
 			int curr_repl = 0;
-			unsigned long mycrc =
-				get_crc(tmsg->value, slen);
+			unsigned long mycrc = get_crc(tmsg->value, slen);
 
-			if (tmsg->CRC == mycrc) { // Checking to see if the crcs match
+			// Checking to see if the crcs match
+			if (tmsg->crc == mycrc) { 
 				lock_seg(ptr_seg);
 				int ret = insert_message(ptr_seg, tmsg->value, slen);
 				ulock_seg(ptr_seg);
@@ -317,25 +380,28 @@ handle_request_produce(DLLNode *res_p, struct ResponseMessage *res_ph,
 				}
 			} else {
 				curr_repl |= CRC_NOT_MATCH;
-				debug(PRIO_LOW, "The CRCs do not match for msg: '%s'\n", tmsg->value);
+				debug(PRIO_LOW,
+				    "The CRCs do not match for msg: '%s'\n",
+				    tmsg->value);
 			}
 
 			curr_sspr->ErrorCode = curr_repl;
-			curr_sspr->Partition = 1; // TODO: implement the proper partitions
+			// TODO: implement the proper partitions
+			curr_sspr->Partition = 1;
 		}
 	} else {
 		debug(PRIO_LOW, "There is no response needed\n");
 		for (int i = 0;
 			i < req_ph->rm.produce_request.spr.sspr.mset.NUM_ELEMS;
 			i++) {
-			struct Message *tmsg =
-			    &req_ph->rm.produce_request.spr.sspr.mset.Elems[i].Message;
+			struct dl_message *tmsg =
+			    &req_ph->rm.produce_request.spr.sspr.mset.Elems[i].message;
 			int slen = strlen(tmsg->value);
 
-			unsigned long mycrc =
-				get_crc(tmsg->value, slen);
+			unsigned long mycrc = get_crc(tmsg->value, slen);
 
-			if (tmsg->CRC == mycrc) { // Checking to see if the crcs match
+		       	// Checking to see if the crcs match
+			if (tmsg->crc == mycrc) {
 				lock_seg(ptr_seg);
 				insert_message(ptr_seg, tmsg->value, slen);
 				ulock_seg(ptr_seg);
@@ -346,31 +412,17 @@ handle_request_produce(DLLNode *res_p, struct ResponseMessage *res_ph,
 }
 
 static int
-assign_to_processor(int processorid, int conn_fd)
-{
-	DLLNode* pcn;
-
-	pcn  = lboru_dll(&threadid_to_array_of_connections[processorid]);
-	if (pcn) {
-		memcpy(pcn->val, &conn_fd, sizeof(int));
-		debug(PRIO_LOW, "Enqueued %d fd into the connections queue\n",
-		    *((int*)pcn->val));
-		print_dll(&threadid_to_array_of_connections[processorid]);
-		return 1;
-	}
-	return -1;
-}
-
-static int
 free_datastructures()
 {
 	int processor_it;
 
+	/*
 	for (processor_it = 0; processor_it < NUM_PROCESSORS; processor_it++) {
 		distlog_free(
 		    threadid_to_array_of_connections[processor_it].head);
 	}
 	distlog_free(threadid_to_array_of_connections);
+	*/
 
 	distlog_free(pas);
 	distlog_free(created_threads);
@@ -383,42 +435,61 @@ free_datastructures()
 static int
 allocate_broker_datastructures(struct broker_configuration *conf)
 {
+	int connection_it, processor_it, request_it, response_it;
 
-	pas = (processor_argument *) distlog_alloc(
-	    sizeof(processor_argument) * NUM_PROCESSORS);
+	/* TODO */
+	pas = (struct processor_argument *) distlog_alloc(
+	    sizeof(struct processor_argument) * NUM_PROCESSORS);
 	created_threads = (pthread_t *) distlog_alloc(
 	    sizeof(pthread_t) * NUM_PROCESSORS);
+		
+	/* TODO */
+	for (processor_it = 0; processor_it < NUM_PROCESSORS; processor_it++) {
+		LIST_INIT(&thread_to_proc_pools[processor_it]);
+		pthread_mutex_init(&thread_to_proc_pool_mtx[processor_it],
+		    NULL);
+	}
 
-	threadid_to_array_of_connections = allocate_dlls_per_num_processors(
-	    NUM_PROCESSORS, CONNECTIONS_PER_PROCESSOR);
-	preallocate_with(threadid_to_array_of_connections, NUM_PROCESSORS,
-	    CONNECTIONS_PER_PROCESSOR, sizeof(int));
+	/* TODO */
+	for (processor_it = 0; processor_it < NUM_PROCESSORS; processor_it++) {
+		LIST_INIT(&request_pools[processor_it]);
+		pthread_mutex_init(&request_pool_mtx[processor_it], NULL);
+		
+		for (request_it = 0;
+		    request_it < MAX_NUM_REQUESTS_PER_PROCESSOR;
+		    request_it++) {
+			struct request_pool_element *element =
+			    (struct request_pool_element *) distlog_alloc(
+			    sizeof(struct request_pool_element));
+			LIST_INSERT_HEAD(&request_pools[processor_it],
+			    element, entries);
+		}
+	}
 
-	request_pool = allocate_dlls_per_num_processors(NUM_PROCESSORS,
-	    MAX_NUM_REQUESTS_PER_PROCESSOR);
-	preallocate_with(request_pool, NUM_PROCESSORS,
-	    MAX_NUM_REQUESTS_PER_PROCESSOR, sizeof(struct RequestMessage));
+	/* TODO */
+	for (processor_it = 0; processor_it < NUM_PROCESSORS; processor_it++) {
+		LIST_INIT(&response_pools[processor_it]);
+		pthread_mutex_init(&response_pool_mtx[processor_it], NULL);
+		
+		for (response_it = 0;
+		    response_it < MAX_NUM_REQUESTS_PER_PROCESSOR;
+		    response_it++) {
+			struct response_pool_element *element =
+			    (struct response_pool_element *) distlog_alloc(
+			    sizeof(struct response_pool_element));
+			LIST_INSERT_HEAD(&response_pools[processor_it],
+			    element, entries);
+		}
+	}
+	
+	/* TODO */
+	STAILQ_INIT(&unprocessed_requests);
 
-	response_pool = allocate_dlls_per_num_processors(NUM_PROCESSORS,
-	    MAX_NUM_RESPONSES_PER_PROCESSOR);
-	preallocate_with(response_pool, NUM_PROCESSORS,
-	    MAX_NUM_RESPONSES_PER_PROCESSOR, sizeof(struct ResponseMessage));
-
-	threadid_to_array_of_requests = allocate_circ_queue_per_num_processors(
-	    NUM_PROCESSORS, MAX_NUM_REQUESTS_PER_PROCESSOR, sizeof(DLLNode *));
-	//threadid_to_array_of_responses = allocate_circ_queue_per_num_processors(NUM_PROCESSORS,
-	//                                                                        MAX_NUM_RESPONSES_PER_PROCESSOR,
-	//                                                                        sizeof(DLLNode*));
-
+	/* TODO */
 	if (!(conf->val & BROKER_FSYNC_ALWAYS)) {
-		//fsy = (processor_argument *) distlog_alloc(
-		//    sizeof(struct processor_argument));
-		//fsy_thread = (pthread_t *) distlog_alloc(sizeof(pthread_t));
-
-		un_fsynced = allocate_dlls_per_num_processors(1,
-		    MAX_NUM_UNFSYNCED);
-		preallocate_with(un_fsynced, 1, MAX_NUM_UNFSYNCED,
-		    sizeof(DLLNode **));
+		LIST_INIT(&response_pools[processor_it]);
+		pthread_mutex_init(&unfsynced_responses_mtx, NULL);
+		pthread_cond_init(&unfsynced_responses_cond, NULL);
 	}
 
 	return 0;
@@ -451,41 +522,12 @@ init_listening_socket(int portnumber)
 	return sockfd;
 }
 
-static void
-accept_loop(int sockfd, struct broker_configuration *conf)
-{
-	int current_processor_id = 0;
-        int running = 1;
-
-	while (running) {
-		int clientfd, ret;
-		struct sockaddr_in client_addr;
-		socklen_t addrlen = sizeof(client_addr);
-		clientfd = accept(sockfd, (struct sockaddr *) &client_addr,
-		    &addrlen);
-		if (clientfd < 0) {
-			running=0;
-			return;
-		}
-		ret = assign_to_processor(current_processor_id, clientfd);
-		if (ret > 0) {
-			debug(PRIO_NORMAL, "%s:%d connected "
-			    "and assigned to processor number %d\n",
-			    inet_ntoa(client_addr.sin_addr),
-			    ntohs(client_addr.sin_port),
-			    current_processor_id);
-		    current_processor_id =
-			(current_processor_id + 1) % NUM_PROCESSORS;
-		}
-	}
-}
-
 static void *
 dl_processor_thread(void *vargp)
 {
-	processor_argument* pa = (processor_argument*) vargp;
-	DLL *mydll = &threadid_to_array_of_connections[pa->index];
-	DLLNode *temp;
+	struct processor_argument *pa = (struct processor_argument *) vargp;
+	struct thread_to_proc_pool_element *element, *temp_element;
+	struct request_pool_element *temp;
 	int msg_size;
 	int old_cancel_state;
 	int rv;
@@ -495,7 +537,7 @@ dl_processor_thread(void *vargp)
 	debug(PRIO_LOW, "Processor thread with id %d started...\n", pa->index);
 
 	/* Defer cancellation of the thread until the cancellation point 
-	 * pthread_testcancel(). This ensures that thread ins't cancelled until
+	 * pthread_testcancel(). This ensures that thread isn't cancelled until
 	 * outstanding requests have been processed.
 	 */	
 	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
@@ -503,153 +545,190 @@ dl_processor_thread(void *vargp)
 	for (;;) {
 		pthread_testcancel();
 
-		int mynum = mydll->cur_num;
-		if (mynum > 0) {
-			struct pollfd ufds[mynum];
+		int connections = 0;
+		pthread_mutex_lock(&thread_to_proc_pool_mtx[pa->index]);
+		LIST_FOREACH_SAFE(element,
+		    &thread_to_proc_pools[pa->index], entries, temp_element) {
+			connections++;
+		}
+		pthread_mutex_unlock(&thread_to_proc_pool_mtx[pa->index]);
 
-			DLLNode *cur = mydll->head;
-			for (int i = 0; i < mynum; i++) {
-				ufds[i].fd = *((int *) cur->val);
-				ufds[i].events = POLLIN;// | POLLPRI;
-				cur = cur->next;
-			}
-
-			rv = poll(ufds, mynum, 3000);
-			debug(PRIO_NORMAL, "[%d] Polling... %d\n",
-				pa->index, rv);
-
-			if (rv == -1) {
-				debug(PRIO_HIGH, "POLL ERROR\n");
-				exit(-1);
-			}
-
-			if (rv != 0) {
-				cur = mydll->head;
-				DLLNode *next = NULL;
-				for (int i = 0;
-					(i < mynum) && (i != mydll->cur_num);
-					i++) {
-					next = cur->next;
-					if (ufds[i].revents & POLLIN) {
-						DLLNode *rm =
-							lboru_dll(request_pool);
-
-						if (!rm) {
-							//TODO it is actually a very good q what to do here. Either
-							//ignore, or send back a message saying there is a problem
-							//For now it just ignores it as the client policy just resends it.
-							//Meaning that potentially one may starve
-							debug(PRIO_NORMAL, "Cant borrow any more requests.\n");
-							continue;
-						}
-
-						msg_size = read_msg(ufds[i].fd,
-							&pbuf);
-						if (msg_size > 0) {
-							debug(PRIO_LOW, "Enqueuing: '%s'\n", pbuf);
-
-							struct RequestMessage *trq = (struct RequestMessage*) rm->val;
-
-							clear_requestmessage(trq, get_apikey(pbuf));
-							parse_requestmessage(trq , pbuf);
-							rm->fd = ufds[i].fd;
-							
-							lock_cq(&threadid_to_array_of_requests[pa->index]);
-							enqueue(&threadid_to_array_of_requests[pa->index], &rm, sizeof(DLLNode *));
-							ulock_cq(&threadid_to_array_of_requests[pa->index]);
-						} else {
-							//This is the disconnect. Maybe need to clean the
-							//responses to this guy. Not sure how to do that
-							//yet. TODO: decide
-							lretu_dll(&threadid_to_array_of_connections[pa->index], cur);
-							lretu_dll(request_pool, rm);
-						}
-					}
-					cur = next;
-				}
-			}
+		struct pollfd ufds[connections];
+			
+		int connection_it = 0;
+		pthread_mutex_lock(&thread_to_proc_pool_mtx[pa->index]);
+		LIST_FOREACH_SAFE(element,
+		    &thread_to_proc_pools[pa->index], entries, temp_element) {
+			ufds[connection_it].fd = element->fd;
+			ufds[connection_it].events = POLLIN;
+			connection_it++;
+		}
+		pthread_mutex_unlock(&thread_to_proc_pool_mtx[pa->index]);
+			
+		/* Poll the connections assigned to this processor */
+		rv = poll(ufds, connections, 3000);
+		debug(PRIO_NORMAL, "[%d] Polling... %d\n",
+			pa->index, rv);
+		if (rv == -1) {
+			debug(PRIO_HIGH, "POLL ERROR\n");
+			exit(-1);
 		}
 
-		if (threadid_to_array_of_requests[pa->index].front != -1) {
-			int bnodes_size = 2;
-			int ret;
-			DLLNode * bnodes[bnodes_size];
+		if (rv != 0) {
+			connection_it = 0;
+			LIST_FOREACH_SAFE(element,
+			    &thread_to_proc_pools[pa->index], entries,
+			    temp_element) {
+				if (ufds[connection_it].revents & POLLIN) {
+					/* Get a request from the pool of objects */
+					pthread_mutex_lock(&request_pool_mtx[pa->index]);
+					struct request_pool_element *request;
+					request = LIST_FIRST(&request_pools[pa->index]);
+					LIST_REMOVE(request, entries);
+					pthread_mutex_unlock(&request_pool_mtx[pa->index]);
 
-			ret = lboru_dlls(bnodes, bnodes_size, un_fsynced,
-			    response_pool);
-			if (!ret)
-				continue;
-			DLLNode **unfs  = &bnodes[0], **res_p = &bnodes[1];
+					if (!request) {
+						//TODO it is actually a very good q what to do here. Either
+						//ignore, or send back a message saying there is a problem
+						//For now it just ignores it as the client policy just resends it.
+						//Meaning that potentially one may starve
+						debug(PRIO_NORMAL, "Cant borrow any more requests.\n");
+						continue;
+					}
 
-			debug(PRIO_LOW, "Successfully borrowed %p %p %p\n",
-			    *unfs, *res_p, (*res_p)->val);
+					msg_size = read_msg(
+					    ufds[connection_it].fd, pbuf);
+					if (msg_size > 0) {
+						debug(PRIO_LOW, "Enqueuing: '%s'\n", pbuf);
 
-			lock_cq(&threadid_to_array_of_requests[pa->index]);
-			int ind = dequeue(
-			    &threadid_to_array_of_requests[pa->index],
-			    (void**) &temp, sizeof(DLLNode*));
-			ulock_cq(&threadid_to_array_of_requests[pa->index]);
+						struct RequestMessage *trq =
+						    &request->req_msg;
 
-			if (ind != -1) {
-				struct RequestMessage* rmsg =
-				    (struct RequestMessage *) temp->val;
-				if (pa->config->val & BROKER_FSYNC_ALWAYS) {
-					lretu_dll(un_fsynced, *unfs);
-					unfs=NULL;
-				}
-
-				if ((rmsg->APIKey == REQUEST_PRODUCE) &&
-					(!rmsg->rm.produce_request.RequiredAcks)){
-					lretu_dll(response_pool, *res_p);
-					res_p=NULL;
-				}
-
-				int sh = broker_handle(temp, *res_p,
-				    pa->index);
-				debug(PRIO_NORMAL, "broker_handle finished with code %d\n", sh);
-				debug(PRIO_NORMAL, "Response %p\n", res_p);
-				if (sh > 0) {
-					if(pa->config->val &
-					    BROKER_FSYNC_ALWAYS) {
-						lock_seg(ptr_seg);
-						fsync(ptr_seg->_log);
-						fsync(ptr_seg->_index);
-						ulock_seg(ptr_seg);
-
-						if (res_p) {
-						    struct ResponseMessage* myres = (struct ResponseMessage*) (*res_p)->val;
-						    int fi = wrap_with_size(myres, &pbuf, send_out_buf, rmsg->APIKey);
-						    msend((*res_p)->fd, send_out_buf, fi);
-
-						    lretu_dll(response_pool,
-							*res_p);
-						    lretu_dll(request_pool,
-							temp);
-						}
-						if(unfs)
-							lretu_dll(un_fsynced,
-							    *unfs);
+						clear_requestmessage(trq,
+						    get_apikey(pbuf));
+						parse_requestmessage(trq,
+						    pbuf);
+						request->fd = ufds[connection_it].fd;
+						
+						STAILQ_INSERT_TAIL(
+						    &unprocessed_requests,
+						    request, tq_entries);
 					} else {
-						if(res_p) {
-							debug(PRIO_NORMAL, "Setting the unfsynched node %p\n", unfs);
-							(*unfs)->fd =
-							    rmsg->APIKey;
-							memcpy(&((*unfs)->val), res_p, sizeof(DLLNode*));
-							debug(PRIO_NORMAL, "Copied into the unfs: %p %p\n", (*unfs)->val, *res_p);
-							debug(PRIO_NORMAL, "Done\n");
-						}
-						lretu_dll(request_pool, temp);
-						debug(PRIO_NORMAL, "Returned the request object into the pool %p\n", temp);
+						//This is the disconnect. Maybe need to clean the
+						//responses to this guy. Not sure how to do that
+						//yet. TODO: decide
+						pthread_mutex_lock(
+						    &thread_to_proc_pool_mtx[pa->index]);
+						LIST_REMOVE(element, entries);
+						distlog_free(element);
+						pthread_mutex_unlock(
+						    &thread_to_proc_pool_mtx[pa->index]);
+
+						pthread_mutex_lock(
+						    &request_pool_mtx[pa->index]);
+						LIST_INSERT_HEAD(
+						    &request_pools[pa->index],
+						    request, entries);
+						pthread_mutex_unlock(
+						    &request_pool_mtx[pa->index]);
+					}
+
+				}
+				connection_it++;
+			}
+		}
+	
+		if (STAILQ_EMPTY(&unprocessed_requests) == 0) {
+			struct request_pool_element *rq_temp;
+
+			rq_temp = STAILQ_FIRST(&unprocessed_requests);
+			STAILQ_REMOVE_HEAD(&unprocessed_requests, tq_entries);
+
+			/* Get a response from the pool of objects */
+			pthread_mutex_lock(&response_pool_mtx[pa->index]);
+			struct response_pool_element *response;
+			response = LIST_FIRST(&response_pools[pa->index]);
+			LIST_REMOVE(response, entries);
+			pthread_mutex_unlock(&response_pool_mtx[pa->index]);
+
+			struct RequestMessage *rmsg =
+				(struct RequestMessage *) &rq_temp->req_msg;
+			struct RequestMessage *req_ph =
+				(struct RequestMessage*) &rq_temp->req_msg;
+			response->fd = rq_temp->fd;
+
+			int sh = dl_broker_handle(req_ph, &response->rsp_msg);
+			if (sh > 0) {
+				debug(PRIO_NORMAL,
+					"dl_broker_handle finished "
+					"with code %d\n", sh);
+				if(pa->config->val &
+					BROKER_FSYNC_ALWAYS) {
+					lock_seg(ptr_seg);
+					fsync(ptr_seg->_log);
+					fsync(ptr_seg->_index);
+					ulock_seg(ptr_seg);
+
+					if ((rmsg->APIKey == REQUEST_PRODUCE) &&
+						(!rmsg->rm.produce_request.RequiredAcks)) {
+						struct ResponseMessage* myres = &response->rsp_msg;
+						int fi = wrap_with_size(&response->rsp_msg, &pbuf, send_out_buf, rmsg->APIKey);
+						debug(PRIO_NORMAL, "Sending: '%s'\n", send_out_buf);
+						send(temp->fd, send_out_buf, fi, 0);
+
+						/* Return the response to the
+						* object pool.
+						*/
+						pthread_mutex_lock(&response_pool_mtx[pa->index]);
+						LIST_INSERT_HEAD(&response_pools[pa->index], response, entries);
+						pthread_mutex_unlock(&response_pool_mtx[pa->index]);
+
+						pthread_mutex_lock(&response_pool_mtx[pa->index]);
+						LIST_INSERT_HEAD(&response_pools[pa->index], response, entries);
+						pthread_mutex_unlock(&response_pool_mtx[pa->index]);
 					}
 				} else {
-					if (res_p)
-						lretu_dll(response_pool,
-						    *res_p);
-					if (unfs)
-						lretu_dll(un_fsynced, *unfs);
-					if (temp)
-						lretu_dll(request_pool, temp);
+					if(response) {
+						printf("Adding responsse to the unfsynced list\n");
+						pthread_mutex_lock(&unfsynced_responses_mtx);
+						LIST_INSERT_HEAD(&unfsynced_responses, response, entries);
+						pthread_cond_signal(&unfsynced_responses_cond);
+						pthread_mutex_unlock(&unfsynced_responses_mtx);
+					} else {
+
+						pthread_mutex_lock(&response_pool_mtx[pa->index]);
+						LIST_INSERT_HEAD(&response_pools[pa->index], response, entries);
+						pthread_mutex_unlock(&response_pool_mtx[pa->index]);
+
+						debug(PRIO_NORMAL, "Returned the request object into the pool %p\n", temp);
+					}
+
+					pthread_mutex_lock(
+					    &request_pool_mtx[pa->index]);
+					LIST_INSERT_HEAD(
+					    &request_pools[pa->index],
+					    rq_temp, entries);
+					pthread_mutex_unlock(
+					    &request_pool_mtx[pa->index]);
 				}
+			} else {
+				/* Failed handling request - return
+				 * the response to the object pool.
+				 */
+				pthread_mutex_lock(
+					&response_pool_mtx[pa->index]);
+				LIST_INSERT_HEAD(
+					&response_pools[pa->index],
+					response, entries);
+				pthread_mutex_unlock(
+					&response_pool_mtx[pa->index]);
+
+				pthread_mutex_lock(
+				    &request_pool_mtx[pa->index]);
+				LIST_INSERT_HEAD(
+				    &request_pools[pa->index], response,
+				    entries);
+				pthread_mutex_unlock(&request_pool_mtx[pa->index]);
 			}
 		} else {
 			sleep(pa->config->processor_thread_sleep_length);
@@ -658,30 +737,15 @@ dl_processor_thread(void *vargp)
 	return NULL;
 }
 
-static void
-start_processor_threads(struct broker_configuration *conf)
-{
-	int processor_it;
-
-	for (processor_it = 0; processor_it < NUM_PROCESSORS; processor_it++) {
-		pas[processor_it].index = processor_it;
-		pas[processor_it].tid   = NULL;
-		pas[processor_it].config = conf;
-		pthread_create(&created_threads[processor_it], NULL,
-		    dl_processor_thread, &pas[processor_it]);
-		pas[processor_it].tid = &created_threads[processor_it];
-	}
-}
-
+/* TODO: Fix up coarse locking and multithreading */
 static void *
 dl_fsync_thread(void *vargp)
 {
 	char *pbuf;
         char *send_out_buf;
-	processor_argument *pa = (processor_argument*) vargp;
+	struct processor_argument *pa = (struct processor_argument *) vargp;
+	struct response_pool_element *response, *response_temp;
 	int old_cancel_state;
-
-	debug(PRIO_LOW, "FSync thread started... %d\n", pa->index);
 
 	/* Defer cancellation of the thread until the cancellation point 
 	 * pthread_testcancel(). This ensures that thread ins't cancelled until
@@ -689,56 +753,76 @@ dl_fsync_thread(void *vargp)
 	 */	
 	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
 
-	pbuf = (char*) distlog_alloc(MTU * sizeof(char));
-	send_out_buf = (char*) distlog_alloc(MTU * sizeof(char));
+	pbuf = (char *) distlog_alloc(MTU * sizeof(char));
+	send_out_buf = (char *) distlog_alloc(MTU * sizeof(char));
+	
+	debug(PRIO_LOW, "FSync thread started... %d\n", pa->index);
 
 	for (;;) {
+		pthread_mutex_lock(&unfsynced_responses_mtx);
+		if (pthread_cond_wait(&unfsynced_responses_cond,
+		    &unfsynced_responses_mtx) == 0) {
+			/* If there are un-fsynced response, fsync the log and
+			 * the disk and send the responses.
+			 */
+			if (LIST_EMPTY(&unfsynced_responses) == 0) {
+				/* Synchronously write both the log and
+				 * the index to the disk.
+				 */
+				lock_seg(ptr_seg);
+				fsync(ptr_seg->_log);
+				fsync(ptr_seg->_index);
+
+				LIST_FOREACH_SAFE(response,
+				    &unfsynced_responses, entries,
+				    response_temp) {
+					debug(PRIO_LOW, "Unfsynching: %d\n",
+					response->rsp_msg.CorrelationId);
+				
+					int fi = wrap_with_size(
+					    &response->rsp_msg, &pbuf,
+					    send_out_buf,
+					    (enum request_type) response->fd);
+					debug(PRIO_NORMAL, "Sending: '%s'\n",
+					    send_out_buf);
+					if (send(response->fd, send_out_buf,
+					    fi, 0) == 0) {
+
+						/* Response has been ack'd,
+						 * remove it from the
+						 * unfsynced_responses
+						 * and return to the
+						 * appropriate response pool
+						 */
+						LIST_REMOVE(response, entries);
+
+						/* TODO: which reponse pool did it come from?
+						pthread_mutex_lock(&response_pool_mtx[pa->index]);
+						LIST_INSERT_HEAD(&response_pools[pa->index], response, entries);
+						pthread_mutex_unlock(&response_pool_mtx[pa->index]);
+						*/
+					}
+				}
+				ulock_seg(ptr_seg);
+
+			}
+		}
+		pthread_mutex_unlock(&unfsynced_responses_mtx);
+	
+		/* Fsync'd all outstanding responses. Check whether the
+		 * thread has been canceled.
+		 */	
 		pthread_testcancel();
 
-		debug(PRIO_LOW, "Checking if there are any elements "
-		    "un-fsynched...\n");
-
-		if (un_fsynced->cur_num > 0) {
-			lock_dll(un_fsynced);
-			debug(PRIO_LOW, "un-fsynched queue has some elements "
-			    "in it [%d]. Time to ack them.\n",
-			    un_fsynced->cur_num);
-
-			lock_seg(ptr_seg);
-			fsync(ptr_seg->_log);
-			fsync(ptr_seg->_index);
-
-			DLLNode *cur = un_fsynced->last_valid;
-			while (cur) {
-				DLLNode *res_p = (DLLNode*) cur->val;
-				struct ResponseMessage *rm =
-				    (struct ResponseMessage*)res_p->val;
-
-				debug(PRIO_LOW, "Unfsynching: %d\n",
-				    rm->CorrelationId);
-				int fi = wrap_with_size(rm, &pbuf,
-				    send_out_buf, (enum request_type) cur->fd);
-
-				msend(res_p->fd, send_out_buf, fi);
-				//send(res_p->fd, send_out_buf, fi, 0);
-
-				lretu_dll(response_pool, res_p);
-				returnObj(un_fsynced, cur);
-
-				cur = un_fsynced->last_valid;
-			}
-			ulock_dll(un_fsynced);
-			ulock_seg(ptr_seg);
-
-			debug(PRIO_LOW, "Finished fsynching the elems for now. "
-			    "Sleeping....\n");
-		} else {
-			debug(PRIO_LOW, "No elements that are not fsynched\n");
-		}
 		debug(PRIO_LOW, "Fsynch thread is going to sleep for %d "
 		    "seconds\n", pa->config->fsync_thread_sleep_length);
+		
 		sleep(pa->config->fsync_thread_sleep_length);
 	}
+
+	distlog_free(pbuf);
+	distlog_alloc(send_out_buf);
+
 	return NULL;
 }
 
@@ -753,7 +837,9 @@ start_fsync_thread(struct broker_configuration *conf)
 
 	/* TODO: handle error creating thread */
 	ret = pthread_create(&fsy_thread, NULL, dl_fsync_thread, &fsy_args);
-	fsy_args.tid = fsy_thread;
+	if (ret == 0) {
+		fsy_args.tid = &fsy_thread;
+	}
 }
 
 static void
@@ -782,6 +868,21 @@ dl_signal_handler(int dummy)
 	exit(0);
 }
 
+static void
+dl_start_processor_threads(struct broker_configuration const * const conf)
+{
+	int processor;
+
+	for (processor= 0; processor < NUM_PROCESSORS; processor++) {
+		pas[processor].index = processor;
+		pas[processor].tid   = NULL;
+		pas[processor].config = conf;
+		pthread_create(&created_threads[processor], NULL,
+		    dl_processor_thread, &pas[processor]);
+		pas[processor].tid = &created_threads[processor];
+	}
+}
+
 void
 broker_busyloop(int portnumber, const char *p_name,
     struct broker_configuration *conf)
@@ -790,7 +891,7 @@ broker_busyloop(int portnumber, const char *p_name,
 
 	print_configuration(conf);
 	allocate_broker_datastructures(conf);
-	start_processor_threads(conf);
+	dl_start_processor_threads(conf);
 
 	// TODO: NEED TO MOVE IT SOMEWHERE
 	del_folder(p_name);
@@ -804,5 +905,5 @@ broker_busyloop(int portnumber, const char *p_name,
 	}
 
 	sockfd = init_listening_socket(portnumber);
-	accept_loop(sockfd, conf);
+	dl_accept_loop(sockfd, conf);
 }

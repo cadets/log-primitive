@@ -83,11 +83,10 @@
 #include <stdarg.h>
 
 #include "caml_common.h"
+#include "caml_memory.h"
 #include "utils.h"
 
 segment* ptr_seg;
-
-extern unsigned short PRIO_LOG;
 
 // Adopted from http://www.doc.ic.ac.uk/~rn710/Installs/otp_src_17.0/erts/emulator/drivers/unix/unix_efile.c
 //

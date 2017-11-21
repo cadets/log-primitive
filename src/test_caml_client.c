@@ -45,6 +45,8 @@
 static void on_ack(unsigned long);
 static void on_response(struct RequestMessage *, struct ResponseMessage *);
 
+unsigned short PRIO_LOG = PRIO_LOW;
+
 static void
 on_ack(unsigned long correlationId)
 {
@@ -61,7 +63,7 @@ on_response(struct RequestMessage *rm, struct ResponseMessage *rs)
 		case REQUEST_PRODUCE:
 			printf("Produced the following messages: \n");
 			for (int i = 0; i < rm->rm.produce_request.spr.sspr.mset.NUM_ELEMS; i++) {
-				printf("\tMessage: %s\n", rm->rm.produce_request.spr.sspr.mset.Elems[i].Message.value); 
+				printf("\tMessage: %s\n", rm->rm.produce_request.spr.sspr.mset.Elems[i].message.value); 
 			}
 
 			printf("Request answer: \n");

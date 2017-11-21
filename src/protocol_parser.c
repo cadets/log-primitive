@@ -136,15 +136,70 @@ extern int OFFSET_FETCH_RESPONSE_SIZE_FIELD_SIZE;
 extern int PARTITIONERRORCODE_FIELD_SIZE;
 extern int PORT_FIELD_SIZE;
 
+/*
+static int parse_message(struct message *, char *);
+static int parse_messagesetelement(struct message_set_element* inp, char *beg);
+static int parse_messageset(struct MessageSet* inp, char *beg);
+static int parse_topicname(struct TopicName* inp, char *beg);
+static int parse_groupcoordinatorrequest(struct GroupCoordinatorRequest* inp,
+	char *beg);
+static int parse_metadatarequest(struct MetadataRequest* inp, char *beg);
+static int parse_subsubproducerequest(struct SubSubProduceRequest* inp,
+	char *beg);
+static int parse_subproducerequest(struct SubProduceRequest* inp, char *beg);
+static int parse_producerequest(struct ProduceRequest* inp, char *beg);
+static int parse_fetchrequest(struct FetchRequest* inp, char *beg);
+static int parse_offsetrequest(struct OffsetRequest* inp, char *beg);
+static int parse_offsetcommitrequest(struct OffsetCommitRequest* inp,
+	char *beg);
+static int parse_offsetfetchrequest(struct OffsetFetchRequest* inp, char *beg);
+static int parse_reqmessage(union ReqMessage* inp, char *beg,
+	enum request_type rt);
+static int parse_broker(struct Broker* inp, char *beg);
+static int parse_replica(struct Replica* inp, char *beg);
+static int parse_isr(struct Isr* inp, char *beg);
+static int parse_partitionmetadata(struct PartitionMetadata* inp, char *beg);
+static int parse_topicmetadata(struct TopicMetadata* inp, char *beg);
+static int parse_metadataresponse(struct MetadataResponse* inp, char *beg);
+static int parse_subsubproduceresponse(struct SubSubProduceResponse* inp,
+	char *beg);
+static int parse_subproduceresponse(struct SubProduceResponse* inp, char *beg);
+static int parse_produceresponse(struct ProduceResponse* inp, char *beg);
+static int parse_subsubfetchresponse(struct subSubFetchResponse* inp,
+	char *beg);
+static int parse_subfetchresponse(struct subFetchResponse* inp, char *beg);
+static int parse_fetchresponse(struct FetchResponse* inp, char *beg);
+static int parse_offset(struct Offset* inp, char *beg);
+static int parse_partitionoffsets(struct PartitionOffsets* inp, char *beg);
+static int parse_suboffsetresponse(struct subOffsetResponse* inp, char *beg);
+static int parse_offsetresponse(struct OffsetResponse* inp, char *beg);
+static int parse_groupcoordinatorresponse(struct GroupCoordinatorResponse* inp,
+	char *beg);
+static int parse_subsuboffsetcommitresponse(
+	struct subSubOffsetCommitResponse* inp, char *beg);
+static int parse_suboffsetcommitresponse(struct subOffsetCommitResponse* inp,
+	char *beg);
+static int parse_offsetcommitresponse(struct OffsetCommitResponse* inp,
+	char *beg);
+static int parse_subsuboffsetfetchresponse(
+	struct subSubOffsetFetchResponse* inp, char *beg);
+static int parse_suboffsetfetchresponse(struct subOffsetFetchResponse* inp,
+	char *beg);
+static int parse_offsetfetchresponse(struct OffsetFetchResponse* inp,
+	char *beg);
+static int parse_resmessage(union ResMessage* inp, char *beg);
+*/
+
+/*
 int
-parse_message(struct Message* inp, char *beg)
+parse_message(struct message *inp, char *beg)
 {
 	unsigned long temp_var_crc = get_long(beg, CRC_FIELD_SIZE);
-	inp->CRC = temp_var_crc;
+	inp->crc = temp_var_crc;
 	unsigned long temp_var_timestamp = get_long(beg+CRC_FIELD_SIZE, TIMESTAMP_FIELD_SIZE);
-	inp->Timestamp = temp_var_timestamp;
+	inp->timestamp = temp_var_timestamp;
 	int temp_var_attributes = get_int(beg+CRC_FIELD_SIZE+TIMESTAMP_FIELD_SIZE, ATTRIBUTES_FIELD_SIZE);
-	inp->Attributes = temp_var_attributes;
+	inp->attributes = temp_var_attributes;
 	int read_var_key = get_int(beg+CRC_FIELD_SIZE+TIMESTAMP_FIELD_SIZE+ATTRIBUTES_FIELD_SIZE, KEY_SIZE_FIELD_SIZE);
 	char* krya_key = inp->key;
 	get_val(&krya_key, beg+CRC_FIELD_SIZE+TIMESTAMP_FIELD_SIZE+ATTRIBUTES_FIELD_SIZE+KEY_SIZE_FIELD_SIZE, read_var_key);
@@ -155,20 +210,22 @@ parse_message(struct Message* inp, char *beg)
 	krya_value[read_var_value] = '\0';
 	return CRC_FIELD_SIZE+TIMESTAMP_FIELD_SIZE+ATTRIBUTES_FIELD_SIZE+KEY_SIZE_FIELD_SIZE+read_var_key+VALUE_SIZE_FIELD_SIZE+read_var_value;
 }
-int parse_messagesetelement(struct MessageSetElement* inp, char *beg){
+*/
+
+int parse_messagesetelement(struct message_set_element *inp, char *beg){
 	long temp_var_offset = get_long(beg, OFFSET_FIELD_SIZE);
-	inp->Offset = temp_var_offset;
+	inp->offset = temp_var_offset;
 	int temp_var_messagesize = get_int(beg+OFFSET_FIELD_SIZE, MESSAGESIZE_FIELD_SIZE);
-	inp->MessageSize = temp_var_messagesize;
-	int parsed_size_message = parse_message(&inp->Message, beg+OFFSET_FIELD_SIZE+MESSAGESIZE_FIELD_SIZE);
+	inp->message_size = temp_var_messagesize;
+	int parsed_size_message = dl_parse_message(&inp->message, beg+OFFSET_FIELD_SIZE+MESSAGESIZE_FIELD_SIZE);
 	return OFFSET_FIELD_SIZE+MESSAGESIZE_FIELD_SIZE+parsed_size_message;
 }
 
 int
-parse_messageset(struct MessageSet* inp, char *beg)
+parse_messageset(struct message_set* inp, char *beg)
 {
 	int read_var_elems = get_int(beg, ELEMS_SIZE_FIELD_SIZE);
-	struct MessageSetElement* krya_elems = inp->Elems;
+	struct message_set_element* krya_elems = inp->Elems;
 	int temp_elems = 0;
 	for(int i=0; i<read_var_elems; i++){
 		temp_elems = temp_elems + parse_messagesetelement(&krya_elems[i], beg+ELEMS_SIZE_FIELD_SIZE + temp_elems);

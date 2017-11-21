@@ -41,8 +41,8 @@
 #include "caml_common.h"
 
 extern void	client_busyloop(const char *, int,
-	struct client_configuration *);
+    struct client_configuration *);
 extern int	send_request(int, enum request_type, int, char *, int,
-	int, ...);
+    int, ...);
 
 #endif

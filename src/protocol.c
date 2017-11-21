@@ -54,7 +54,7 @@ build_req(struct RequestMessage* rq, enum request_type rt, int correlationId,
 
 	char* topicName;
 
-	switch(rt){
+	switch (rt){
 	case REQUEST_PRODUCE:
 	    topicName = va_arg(varlist, char*);
 	    int ms_size = va_arg(varlist, int);
@@ -69,9 +69,9 @@ build_req(struct RequestMessage* rq, enum request_type rt, int correlationId,
 	    long timestamp = time(NULL);
 	    for(int i=0; i<ms_size; i++){
 		char* remp = va_arg(varlist, char*);
-		memcpy(rq->rm.produce_request.spr.sspr.mset.Elems[i].Message.value, remp, strlen(remp));
-		rq->rm.produce_request.spr.sspr.mset.Elems[i].Message.Timestamp = timestamp;
-		rq->rm.produce_request.spr.sspr.mset.Elems[i].Message.CRC = get_crc(remp, strlen(remp));
+		memcpy(rq->rm.produce_request.spr.sspr.mset.Elems[i].message.value, remp, strlen(remp));
+		rq->rm.produce_request.spr.sspr.mset.Elems[i].message.timestamp = timestamp;
+		rq->rm.produce_request.spr.sspr.mset.Elems[i].message.crc = get_crc(remp, strlen(remp));
 	    }
 	    break;
 	case REQUEST_FETCH:
@@ -87,6 +87,18 @@ build_req(struct RequestMessage* rq, enum request_type rt, int correlationId,
 		rq->rm.fetch_request.MaxBytes = maxbytes;
 		rq->rm.fetch_request.MinBytes = minbytes;
 		rq->rm.fetch_request.FetchOffset = fetch_offset;
+		break;
+	case REQUEST_OFFSET:
+		/* FALLTHROUGH */
+	case REQUEST_OFFSET_COMMIT:
+		/* FALLTHROUGH */
+	case REQUEST_OFFSET_FETCH:
+		/* FALLTHROUGH */
+	case REQUEST_METADATA:
+		/* FALLTHROUGH */
+	case REQUEST_GROUP_COORDINATOR:
+		/* FALLTHROUGH */
+	default:
 		break;
 	}
 }

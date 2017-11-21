@@ -40,6 +40,6 @@
 #include "caml_common.h"
 
 extern void	broker_busyloop(int, const char *,
-	struct broker_configuration *);
+    struct broker_configuration *);
 
 #endif

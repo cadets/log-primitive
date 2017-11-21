@@ -49,7 +49,7 @@
 #include "utils.h"
 
 unsigned short PRIO_LOG = PRIO_HIGH; 
-extern int MTU;
+//extern int MTU;
 
 void
 gen_random_string(char *s, const int len)
@@ -70,18 +70,18 @@ gen_random_string(char *s, const int len)
 int
 main()
 {    
-	struct Message inmsg, outmsg;
+	struct dl_message inmsg, outmsg;
 
 	char* out = (char*) malloc(sizeof(char) * MTU);
 	gen_random_string(inmsg.key, 10);
 	gen_random_string(inmsg.value, 10);
 
-	encode_message(&inmsg, &out);
+	dl_encode_message(&inmsg, &out);
 
-	parse_message(&outmsg, out);
+	dl_parse_message(&outmsg, out);
 
-	assert(inmsg.CRC == outmsg.CRC);
-	assert(inmsg.Attributes == outmsg.Attributes);
+	assert(inmsg.crc == outmsg.crc);
+	assert(inmsg.attributes == outmsg.attributes);
 
 	assert(strcmp(inmsg.key, outmsg.key) == 0);
 	assert(strcmp(inmsg.value, outmsg.value) == 0);

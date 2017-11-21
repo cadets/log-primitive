@@ -39,5 +39,5 @@
 
 #include "caml_memory.h"
 
-const distlog_malloc_func_t distlog_alloc = &malloc;
-const distlog_free_func_t distlog_free = &free;
+const distlog_malloc_func distlog_alloc = &malloc;
+const distlog_free_func distlog_free = &free;

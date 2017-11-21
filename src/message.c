@@ -50,10 +50,11 @@
 extern segment ptr_seg;
 
 int
-read_msg(int fd, char **saveto)
+read_msg(int fd, char *saveto)
 {
-    char* buffer = *saveto;
+    char* buffer = saveto;
 
+    printf("buffer = %p\n", buffer);
     int ret = recv(fd, buffer, overall_msg_field_size, 0);
     buffer[overall_msg_field_size] = '\0';
     debug(PRIO_LOW, "Read %d bytes (%s)...\n", ret, buffer);
