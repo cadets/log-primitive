@@ -46,6 +46,38 @@
 
 #define MAX_FILENAME_SIZE 30
 
+#ifdef _KERNEL
+#define DISTLOGTR0(event_mask, format) \
+	CTR0(event_mask, format)
+#define DISTLOGTR1(event_mask, format, p1) \
+	CTR1(event_mask, format, p1)
+#define DISTLOGTR2(event_mask, format, p1, p2) \
+	CTR2(event_mask, format, p1, p2)
+#define DISTLOGTR3(event_mask, format, p1, p2, p3) \
+	CTR3(event_mask, format, p1, p2, p3)
+#define DISTLOGTR4(event_mask, format, p1, p2, p3, p4) \
+	CTR4(event_mask, format, p1, p2, p3, p4)
+#define DISTLOGTR5(event_mask, format, p1, p2, p3, p4, p5) \
+	CTR5(event_mask, format, p1, p2, p3, p4, p5)
+#define DISTLOGTR6(event_mask, format, p1, p2, p3, p4, p5, p6) \
+	CTR6(event_mask, format, p1, p2, p3, p4, p5, p6)
+#else
+#define DISTLOGTR0(event_mask, format) \
+	debug(event_mask, format)
+#define DISTLOGTR1(event_mask, format, p1) \
+	debug(event_mask, format, p1)
+#define DISTLOGTR2(event_mask, format, p1, p2) \
+	debug(event_mask, format, p1, p2)
+#define DISTLOGTR3(event_mask, format, p1, p2, p3) \
+	debug(event_mask, format, p1, p2, p3)
+#define DISTLOGTR4(event_mask, format, p1, p2, p3, p4) \
+	debug(event_mask, format, p1, p2, p3, p4)
+#define DISTLOGTR5(event_mask, format, p1, p2, p3, p4, p5) \
+	debug(event_mask, format, p1, p2, p3, p4, p5)
+#define DISTLOGTR6(event_mask, format, p1, p2, p3, p4, p5, p6) \
+	debug(event_mask, format, p1, p2, p3, p4, p5, p6)
+#endif
+
 static int index_size_entry = 8;
 static int log_size_entry = 8;
 static int bytes_per_index_entry = 17;//index_size_entry + log_size_entry + 1;

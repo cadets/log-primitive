@@ -17,7 +17,7 @@ BFLAGS = \
 	$(OBJ_NAME)/message.o \
 	$(OBJ_NAME)/utils.o \
 	$(OBJ_NAME)/caml_broker.o \
-	$(OBJ_NAME)/caml_client.o
+	$(OBJ_NAME)/distlog_client.o
 
 INC=-Iinclude
 
@@ -29,7 +29,7 @@ $(OBJ_NAME)/%.o: $(SRC_NAME)/%.c
 part1: $(OBJS)
 		@echo "Building objects ..."
 	 	$(CC) $(FLAGS) -Iinclude $(OBJ_NAME)/test_caml_broker.o $(BFLAGS) -o $(BIN_NAME)/broker_cl
-	 	$(CC) $(FLAGS) -Iinclude $(OBJ_NAME)/test_caml_client.o $(BFLAGS) -o $(BIN_NAME)/client_cl
+	 	$(CC) $(FLAGS) -Iinclude $(OBJ_NAME)/test_distlog_client.o $(BFLAGS) -o $(BIN_NAME)/client_cl
 
 mkdir: rmdir
 		@mkdir $(OBJ_NAME)

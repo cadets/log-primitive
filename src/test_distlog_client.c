@@ -37,7 +37,7 @@
 
 #include <unistd.h>
 
-#include "caml_client.h"
+#include "distlog_client.h"
 #include "caml_common.h"
 #include "utils.h"
 #include "protocol.h"
@@ -48,9 +48,9 @@ static void on_response(struct RequestMessage *, struct ResponseMessage *);
 unsigned short PRIO_LOG = PRIO_LOW;
 
 static void
-on_ack(unsigned long correlationId)
+on_ack(unsigned long correlation_id)
 {
-	printf("Acknowledged message %lu\n", correlationId);
+	DISTLOGTR1(PRIO_NORMAL, "Acknowledged message %lu\n", correlation_id);
 }
 
 static void
