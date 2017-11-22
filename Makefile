@@ -8,15 +8,15 @@ SRCS = $(wildcard $(SRC_NAME)/*.c)
 OBJS = $(SRCS:$(SRC_NAME)/%.c=$(OBJ_NAME)/%.o)
 
 BFLAGS = \
-	$(OBJ_NAME)/caml_common.o \
-	$(OBJ_NAME)/caml_memory.o \
+	$(OBJ_NAME)/dl_common.o \
+	$(OBJ_NAME)/dl_memory.o \
 	$(OBJ_NAME)/dl_message.o \
-	$(OBJ_NAME)/protocol_encoder.o \
-	$(OBJ_NAME)/protocol_parser.o \
-	$(OBJ_NAME)/protocol.o \
+	$(OBJ_NAME)/dl_protocol_encoder.o \
+	$(OBJ_NAME)/dl_protocol_parser.o \
+	$(OBJ_NAME)/dl_protocol.o \
 	$(OBJ_NAME)/message.o \
-	$(OBJ_NAME)/utils.o \
-	$(OBJ_NAME)/caml_broker.o \
+	$(OBJ_NAME)/dl_utils.o \
+	$(OBJ_NAME)/distlog_broker.o \
 	$(OBJ_NAME)/distlog_client.o
 
 INC=-Iinclude
@@ -28,7 +28,7 @@ $(OBJ_NAME)/%.o: $(SRC_NAME)/%.c
 
 part1: $(OBJS)
 		@echo "Building objects ..."
-	 	$(CC) $(FLAGS) -Iinclude $(OBJ_NAME)/test_caml_broker.o $(BFLAGS) -o $(BIN_NAME)/broker_cl
+	 	$(CC) $(FLAGS) -Iinclude $(OBJ_NAME)/test_distlog_broker.o $(BFLAGS) -o $(BIN_NAME)/broker_cl
 	 	$(CC) $(FLAGS) -Iinclude $(OBJ_NAME)/test_distlog_client.o $(BFLAGS) -o $(BIN_NAME)/client_cl
 
 mkdir: rmdir

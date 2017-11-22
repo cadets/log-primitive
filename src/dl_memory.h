@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2017 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,10 +35,13 @@
  *
  */
 
-#include "caml_common.h"
+#ifndef _DL_MEMORY_H
+#define _DL_MEMORY_H
 
-void
-print_configuration(struct broker_configuration *bc)
-{
-	printf("Fsync thread sleep len:\t%d\nProc thread sleep len:\t%d\nVal:\t%d\n", bc->fsync_thread_sleep_length, bc->processor_thread_sleep_length, bc->val);
-}
+typedef void * (* distlog_malloc_func)(unsigned long);
+typedef void (* distlog_free_func)(void *);
+
+extern const distlog_malloc_func distlog_alloc;
+extern const distlog_free_func distlog_free;
+
+#endif

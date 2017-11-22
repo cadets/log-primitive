@@ -36,13 +36,13 @@
 
 // The header file with the used utilities
 
-#ifndef _UTILS_H
-#define _UTILS_H
+#ifndef _DL_UTILS_H
+#define _DL_UTILS_H
 
 #include <pthread.h>
 #include <dirent.h>
 
-#include "protocol_common.h"
+#include "dl_protocol_common.h"
 
 #define MAX_FILENAME_SIZE 30
 

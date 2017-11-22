@@ -34,12 +34,12 @@
  *
  */
 
-#ifndef _PROTOCOL_ENCODER_H
-#define _PROTOCOL_ENCODER_H
+#ifndef _DL_PROTOCOL_ENCODER_H
+#define _DL_PROTOCOL_ENCODER_H
 
 #include "message.h"
-#include "protocol.h"
-#include "protocol_common.h"
+#include "dl_protocol.h"
+#include "dl_protocol_common.h"
 
 extern int MESSAGESETSIZE_FIELD_SIZE;
 extern int NUM_SOR_FIELD_SIZE;

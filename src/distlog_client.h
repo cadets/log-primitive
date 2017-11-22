@@ -34,15 +34,23 @@
  *
  */
 
-#ifndef _CAML_CLIENT_H
-#define _CAML_CLIENT_H
+#ifndef _DISTLOG_CLIENT_H
+#define _DISTLOG_CLIENT_H
 
-#include "protocol.h"
-#include "caml_common.h"
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
+#include <stdbool.h>
+#endif
 
-extern void distlog_client_busyloop(const char *, int,
-    struct client_configuration *);
-extern int distlog_send_request(int, enum request_type, int, char *, int,
+#include "dl_protocol.h"
+#include "dl_common.h"
+
+extern int distlog_client_init(const char * const, const int,
+    struct client_configuration const * const);
+extern int distlog_client_fini();
+
+extern int distlog_send_request(int, enum request_type, int, char *, bool,
     int, ...);
 
 #endif

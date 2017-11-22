@@ -39,10 +39,10 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#include "protocol.h"
-#include "protocol_common.h"
+#include "dl_protocol.h"
+#include "dl_protocol_common.h"
 #include "message.h"
-#include "caml_common.h"
+#include "dl_common.h"
 
 void
 build_req(struct RequestMessage* rq, enum request_type rt, int correlationId,

@@ -38,8 +38,8 @@
 #include <stdio.h>
 
 #include "message.h"
-#include "protocol.h"
-#include "protocol_common.h"
+#include "dl_protocol.h"
+#include "dl_protocol_common.h"
 
 //static int encode_message(struct message *, char **);
 static int encode_messagesetelement(struct message_set_element *, char **);
@@ -372,11 +372,10 @@ encode_requestmessage(struct RequestMessage* inp, char** st)
 {
 	char *saveto = *st;
 	const char* format="%.*d%.*d%.*d%.*d%s%s";
+    	char temp[MTU], *t = temp;
+    	int tt = encode_reqmessage(&inp->rm, &t, inp->APIKey);
 
-    char temp[MTU], *t = temp;
-    int tt = encode_reqmessage(&inp->rm, &t, inp->APIKey);
-
-	return sprintf(saveto, format, inp->APIKey < 0? APIKEY_FIELD_SIZE-1 : APIKEY_FIELD_SIZE, inp->APIKey, inp->APIVersion < 0? APIVERSION_FIELD_SIZE-1 : APIVERSION_FIELD_SIZE, inp->APIVersion, inp->CorrelationId < 0? CORRELATIONID_FIELD_SIZE-1 : CORRELATIONID_FIELD_SIZE, inp->CorrelationId, CLIENTID_SIZE_FIELD_SIZE, strlen(inp->ClientId), inp->ClientId, temp);
+	return sprintf(saveto, format, inp->APIKey < 0 ? APIKEY_FIELD_SIZE-1 : APIKEY_FIELD_SIZE, inp->APIKey, inp->APIVersion < 0? APIVERSION_FIELD_SIZE-1 : APIVERSION_FIELD_SIZE, inp->APIVersion, inp->CorrelationId < 0? CORRELATIONID_FIELD_SIZE-1 : CORRELATIONID_FIELD_SIZE, inp->CorrelationId, CLIENTID_SIZE_FIELD_SIZE, strlen(inp->ClientId), inp->ClientId, temp);
 }
 
 static int

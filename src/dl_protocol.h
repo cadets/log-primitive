@@ -35,8 +35,8 @@
  *
  */
 
-#ifndef _PROTOCOL_H
-#define _PROTOCOL_H
+#ifndef _DL_PROTOCOL_H
+#define _DL_PROTOCOL_H
 
 #include "dl_message.h"
 

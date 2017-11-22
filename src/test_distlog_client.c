@@ -38,9 +38,9 @@
 #include <unistd.h>
 
 #include "distlog_client.h"
-#include "caml_common.h"
-#include "utils.h"
-#include "protocol.h"
+#include "dl_common.h"
+#include "dl_protocol.h"
+#include "dl_utils.h"
 
 static void on_ack(unsigned long);
 static void on_response(struct RequestMessage *, struct ResponseMessage *);
@@ -50,7 +50,8 @@ unsigned short PRIO_LOG = PRIO_LOW;
 static void
 on_ack(unsigned long correlation_id)
 {
-	DISTLOGTR1(PRIO_NORMAL, "Acknowledged message %lu\n", correlation_id);
+	debug(PRIO_NORMAL, "Acknowledged message (correlation_id = %lu\n)",
+	    correlation_id);
 }
 
 static void
@@ -61,14 +62,18 @@ on_response(struct RequestMessage *rm, struct ResponseMessage *rs)
 
 	switch (rm->APIKey) {
 		case REQUEST_PRODUCE:
-			printf("Produced the following messages: \n");
+			debug(PRIO_NORMAL,
+			    "Produced the following messages: \n");
 			for (int i = 0; i < rm->rm.produce_request.spr.sspr.mset.NUM_ELEMS; i++) {
-				printf("\tMessage: %s\n", rm->rm.produce_request.spr.sspr.mset.Elems[i].message.value); 
+				printf("\tMessage: %s\n",
+				    rm->rm.produce_request.spr.sspr.mset.Elems[i].message.value); 
 			}
 
-			printf("Request answer: \n");
-			for (int i = 0; i <rs->rm.produce_response.NUM_SUB; i++){
-				for (int j=0; j < rs->rm.produce_response.spr[i].NUM_SUBSUB; j++){
+			debug(PRIO_NORMAL, "Request answer: \n");
+			for (int i = 0; i < rs->rm.produce_response.NUM_SUB;
+			    i++){
+				for (int j = 0;
+				    j < rs->rm.produce_response.spr[i].NUM_SUBSUB; j++){
 					struct SubSubProduceResponse *csspr = &rs->rm.produce_response.spr[i].sspr[j];
 					printf("Timestamp:\t%ld\n", csspr->Timestamp);
 					printf("Offset:\t%ld\n", csspr->Offset); 
@@ -102,28 +107,26 @@ main()
 	int maxbytes = 1000;
 	int minbytes = 1;
 	int wantoff = 0;
+	struct client_configuration cc;
 
-	struct client_configuration * cc =
-		(struct client_configuration *) malloc(
-		sizeof(struct client_configuration));
-	cc->to_resend = 1;
-	cc->resender_thread_sleep_length = 10;
-	cc->request_notifier_thread_sleep_length = 3;
-	cc->reconn_timeout = 5;
-	cc->poll_timeout = 3000;
-	cc->on_ack = on_ack;
-	cc->on_response = on_response;
+	cc.to_resend = true;
+	cc.resender_thread_sleep_length = 10;
+	cc.request_notifier_thread_sleep_length = 3;
+	cc.reconn_timeout = 5;
+	cc.poll_timeout = 3000;
+	cc.on_ack = on_ack;
+	cc.on_response = on_response;
 
-	distlog_client_busyloop("127.0.0.1", 9999, cc);
+	distlog_client_init("127.0.0.1", 9999, &cc);
     
 	while (i < 5) {
-		printf("I am inserting stuffs\n");
+		debug(PRIO_NORMAL, "I am inserting stuffs\n");
 		distlog_send_request(
 			0,
 			REQUEST_PRODUCE,
 			i,
 			my_client_name,
-			cc->to_resend,
+			cc.to_resend,
 			resend_timeout,
 			my_topic_name,
 			3,
@@ -136,13 +139,13 @@ main()
 	sleep(5);
 
     	for (;;) {
-		printf("I am requesting stuffs\n");
+		debug(PRIO_NORMAL, "I am requesting stuffs\n");
 		distlog_send_request(
 			0,
 			REQUEST_FETCH,
 			i,
 			my_client_name,
-			cc->to_resend,
+			cc.to_resend,
 			resend_timeout,
 			my_topic_name,
 			wantoff,
@@ -152,5 +155,7 @@ main()
 		sleep(30);
 	}
 
-	return 1;
+	distlog_client_fini();
+
+	return 0;
 }

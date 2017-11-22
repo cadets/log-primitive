@@ -35,13 +35,9 @@
  *
  */
 
-#ifndef _CAML_MEMORY_H
-#define _CAML_MEMORY_H
+#include <stdlib.h>
 
-typedef void * (* distlog_malloc_func)(unsigned long);
-typedef void (* distlog_free_func)(void *);
+#include "dl_memory.h"
 
-extern const distlog_malloc_func distlog_alloc;
-extern const distlog_free_func distlog_free;
-
-#endif
+const distlog_malloc_func distlog_alloc = &malloc;
+const distlog_free_func distlog_free = &free;

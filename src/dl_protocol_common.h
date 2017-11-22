@@ -34,11 +34,11 @@
  *
  */
 
-#ifndef _PROTOCOL_COMMON_H
-#define _PROTOCOL_COMMON_H
+#ifndef _DL_PROTOCOL_COMMON_H
+#define _DL_PROTOCOL_COMMON_H
 
-#include "caml_common.h"
-#include "protocol.h"
+#include "dl_common.h"
+#include "dl_protocol.h"
 
 #define MESSAGE_HOLDER_SIZE 1500
 

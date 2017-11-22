@@ -37,7 +37,7 @@
 #ifndef _MESSAGE_H
 #define _MESSAGE_H
 
-#include "protocol.h"
+#include "dl_protocol.h"
 
 static const int      clientId_field_size = 4;
 static const int   overall_msg_field_size = 4;

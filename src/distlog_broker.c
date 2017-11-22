@@ -49,17 +49,16 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "caml_broker.h"
-#include "caml_common.h"
-#include "caml_memory.h"
+#include "distlog_broker.h"
+#include "dl_common.h"
+#include "dl_memory.h"
 #include "message.h"
-#include "protocol.h"
-#include "protocol.h"
-#include "protocol_encoder.h"
-#include "protocol_parser.h"
-#include "utils.h"
+#include "dl_protocol.h"
+#include "dl_protocol_encoder.h"
+#include "dl_protocol_parser.h"
+#include "dl_utils.h"
 
-struct processor_argument {
+struct dl_processor_argument {
 	int index;
 	pthread_t const * tid;
 	struct broker_configuration const * config;
@@ -74,15 +73,15 @@ static void * dl_processor_thread(void *);
 static void dl_signal_handler(int);
 static void dl_start_processor_threads(
     struct broker_configuration const * const);
-static int allocate_broker_datastructures(struct broker_configuration *);
-static void close_listening_socket(int);
-static int handle_request_produce(struct ResponseMessage *,
+static int dl_allocate_broker_datastructures(struct broker_configuration *);
+static void dl_close_listening_socket(int);
+static int dl_handle_request_produce(struct ResponseMessage *,
     struct RequestMessage *);
-static int handle_request_fetch(struct ResponseMessage *,
+static int dl_handle_request_fetch(struct ResponseMessage *,
     struct RequestMessage *);
-static int free_datastructures();
-static int init_listening_socket(int);
-static void start_fsync_thread(struct broker_configuration *);
+static int dl_free_datastructures();
+static int dl_init_listening_socket(int);
+static void dl_start_fsync_thread(struct broker_configuration *);
 
 /* TODO: Do we want to limit connections from a pool? */
 struct thread_to_proc_pool_element {
@@ -118,10 +117,10 @@ static pthread_mutex_t unfsynced_responses_mtx;
 static pthread_cond_t unfsynced_responses_cond;
 
 static pthread_t *created_threads;
-static struct processor_argument *pas;
+static struct dl_processor_argument *pas;
 
 static pthread_t fsy_thread;
-static struct processor_argument fsy_args;
+static struct dl_processor_argument fsy_args;
 
 STAILQ_HEAD(request, request_pool_element);
 static struct request unprocessed_requests;
@@ -191,7 +190,7 @@ dl_broker_handle(struct RequestMessage * const request,
 	switch(request->APIKey) {
 	case REQUEST_PRODUCE:;
 		debug(PRIO_NORMAL, "Got a request_process message\n");
-		handle_request_produce(response, request);
+		dl_handle_request_produce(response, request);
 		break;
 	case REQUEST_OFFSET_COMMIT:
 		break;
@@ -200,7 +199,7 @@ dl_broker_handle(struct RequestMessage * const request,
 	case REQUEST_FETCH:
 		debug(PRIO_NORMAL, "Got a request_fetch message\n");
 		// TODO: handle return codes properly
-		return handle_request_fetch(response, request);
+		return dl_handle_request_fetch(response, request);
 		break;
 	case REQUEST_OFFSET_FETCH:
 		break;
@@ -215,7 +214,7 @@ dl_broker_handle(struct RequestMessage * const request,
 }
 
 static int
-handle_request_fetch(struct ResponseMessage *res_ph,
+dl_handle_request_fetch(struct ResponseMessage *res_ph,
     struct RequestMessage *req_ph)
 {
 	struct FetchResponse *curfres = &res_ph->rm.fetch_response;
@@ -323,7 +322,7 @@ handle_request_fetch(struct ResponseMessage *res_ph,
 }
 
 static int
-handle_request_produce(struct ResponseMessage *res_ph,
+dl_handle_request_produce(struct ResponseMessage *res_ph,
     struct RequestMessage *req_ph)
 {
 	char * current_topic_name =
@@ -412,7 +411,7 @@ handle_request_produce(struct ResponseMessage *res_ph,
 }
 
 static int
-free_datastructures()
+dl_free_datastructures()
 {
 	int processor_it;
 
@@ -433,13 +432,13 @@ free_datastructures()
 }
 
 static int
-allocate_broker_datastructures(struct broker_configuration *conf)
+dl_allocate_broker_datastructures(struct broker_configuration *conf)
 {
 	int connection_it, processor_it, request_it, response_it;
 
 	/* TODO */
-	pas = (struct processor_argument *) distlog_alloc(
-	    sizeof(struct processor_argument) * NUM_PROCESSORS);
+	pas = (struct dl_processor_argument *) distlog_alloc(
+	    sizeof(struct dl_processor_argument) * NUM_PROCESSORS);
 	created_threads = (pthread_t *) distlog_alloc(
 	    sizeof(pthread_t) * NUM_PROCESSORS);
 		
@@ -496,7 +495,7 @@ allocate_broker_datastructures(struct broker_configuration *conf)
 }
 
 static int
-init_listening_socket(int portnumber)
+dl_init_listening_socket(int portnumber)
 {
 	struct sockaddr_in self;
 	int sockfd;
@@ -525,7 +524,7 @@ init_listening_socket(int portnumber)
 static void *
 dl_processor_thread(void *vargp)
 {
-	struct processor_argument *pa = (struct processor_argument *) vargp;
+	struct dl_processor_argument *pa = (struct dl_processor_argument *) vargp;
 	struct thread_to_proc_pool_element *element, *temp_element;
 	struct request_pool_element *temp;
 	int msg_size;
@@ -567,7 +566,7 @@ dl_processor_thread(void *vargp)
 			
 		/* Poll the connections assigned to this processor */
 		rv = poll(ufds, connections, 3000);
-		debug(PRIO_NORMAL, "[%d] Polling... %d\n",
+		debug(PRIO_NORMAL, "Processor thread [%d] polling... %d\n",
 			pa->index, rv);
 		if (rv == -1) {
 			debug(PRIO_HIGH, "POLL ERROR\n");
@@ -743,7 +742,7 @@ dl_fsync_thread(void *vargp)
 {
 	char *pbuf;
         char *send_out_buf;
-	struct processor_argument *pa = (struct processor_argument *) vargp;
+	struct dl_processor_argument *pa = (struct dl_processor_argument *) vargp;
 	struct response_pool_element *response, *response_temp;
 	int old_cancel_state;
 
@@ -827,7 +826,7 @@ dl_fsync_thread(void *vargp)
 }
 
 static void
-start_fsync_thread(struct broker_configuration *conf)
+dl_start_fsync_thread(struct broker_configuration *conf)
 {
 	int ret;
 
@@ -843,7 +842,7 @@ start_fsync_thread(struct broker_configuration *conf)
 }
 
 static void
-close_listening_socket(int sockfd)
+dl_close_listening_socket(int sockfd)
 {
 
 	close(sockfd);
@@ -864,7 +863,7 @@ dl_signal_handler(int dummy)
 		pthread_join(created_threads[processor_it], NULL);
 	}
 
-	free_datastructures();
+	dl_free_datastructures();
 	exit(0);
 }
 
@@ -890,7 +889,7 @@ broker_busyloop(int portnumber, const char *p_name,
 	int sockfd;
 
 	print_configuration(conf);
-	allocate_broker_datastructures(conf);
+	dl_allocate_broker_datastructures(conf);
 	dl_start_processor_threads(conf);
 
 	// TODO: NEED TO MOVE IT SOMEWHERE
@@ -901,9 +900,9 @@ broker_busyloop(int portnumber, const char *p_name,
 	signal(SIGINT, dl_signal_handler);
 
 	if (!(conf->val & BROKER_FSYNC_ALWAYS)) {
-		start_fsync_thread(conf);
+		dl_start_fsync_thread(conf);
 	}
 
-	sockfd = init_listening_socket(portnumber);
+	sockfd = dl_init_listening_socket(portnumber);
 	dl_accept_loop(sockfd, conf);
 }

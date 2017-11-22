@@ -34,12 +34,20 @@
  *
  */
 
-#ifndef _CAML_BROKER_H
-#define _CAML_BROKER_H
+#include "distlog_broker.h"
+#include "dl_utils.h"
 
-#include "caml_common.h"
+unsigned short PRIO_LOG = PRIO_LOW;
 
-extern void	broker_busyloop(int, const char *,
-    struct broker_configuration *);
+int
+main()
+{
+	struct broker_configuration* bc = (struct broker_configuration*) malloc(sizeof(struct broker_configuration));
+	bc->fsync_thread_sleep_length = 5;
+	bc->processor_thread_sleep_length = 5;
+    	bc->val = 0;
 
-#endif
+	broker_busyloop(9999, "test_partition", bc);
+
+	return 1;
+}

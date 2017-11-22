@@ -82,9 +82,9 @@
 #include <string.h>
 #include <stdarg.h>
 
-#include "caml_common.h"
-#include "caml_memory.h"
-#include "utils.h"
+#include "dl_common.h"
+#include "dl_memory.h"
+#include "dl_utils.h"
 
 segment* ptr_seg;
 

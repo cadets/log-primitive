@@ -1,6 +1,5 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
- * Copyright (c) 2017 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -35,9 +34,14 @@
  *
  */
 
-#include <stdlib.h>
+#ifndef _DL_PROTOCOL_PARSER_H
+#define _DL_PROTOCOL_PARSER_H
 
-#include "caml_memory.h"
+#include "message.h"
 
-const distlog_malloc_func distlog_alloc = &malloc;
-const distlog_free_func distlog_free = &free;
+extern enum request_type get_apikey(char *);
+extern int parse_requestmessage(struct RequestMessage *, char *);
+extern int parse_responsemessage(struct ResponseMessage *, char *,
+    enum response_type);
+
+#endif

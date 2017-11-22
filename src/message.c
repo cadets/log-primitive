@@ -42,10 +42,10 @@
 #include <sys/socket.h>
 
 #include "message.h"
-#include "protocol.h"
-#include "protocol_common.h"
-#include "protocol_encoder.h"
-#include "utils.h"
+#include "dl_protocol.h"
+#include "dl_protocol_common.h"
+#include "dl_protocol_encoder.h"
+#include "dl_utils.h"
 
 extern segment ptr_seg;
 

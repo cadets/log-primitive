@@ -34,14 +34,10 @@
  *
  */
 
-#ifndef _PROTOCOL_PARSER_H
-#define _PROTOCOL_PARSER_H
+#include "dl_common.h"
 
-#include "message.h"
-
-extern enum request_type get_apikey(char *);
-extern int parse_requestmessage(struct RequestMessage *, char *);
-extern int parse_responsemessage(struct ResponseMessage *, char *,
-    enum response_type);
-
-#endif
+void
+print_configuration(struct broker_configuration *bc)
+{
+	printf("Fsync thread sleep len:\t%d\nProc thread sleep len:\t%d\nVal:\t%d\n", bc->fsync_thread_sleep_length, bc->processor_thread_sleep_length, bc->val);
+}
