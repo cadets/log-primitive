@@ -39,9 +39,9 @@
 
 #include "message.h"
 
-extern enum request_type get_apikey(char *);
-extern int parse_requestmessage(struct RequestMessage *, char *);
-extern int parse_responsemessage(struct ResponseMessage *, char *,
+extern enum request_type dl_get_apikey(char *);
+extern int dl_parse_requestmessage(struct request_message *, char *);
+extern int dl_parse_responsemessage(struct response_message *, char *,
     enum response_type);
 
 #endif

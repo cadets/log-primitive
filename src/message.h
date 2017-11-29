@@ -57,7 +57,7 @@ extern long	get_long(char *, int);
 extern int	get_int(char *, int);
 extern void	get_val(char **, char *, int);
 extern int	read_msg(int, char *);
-extern int	wrap_with_size(struct ResponseMessage *, char **, char *,
+extern int	wrap_with_size(struct response_message *, char **, char *,
 	enum request_type);
 
 #endif

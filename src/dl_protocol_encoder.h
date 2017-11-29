@@ -136,9 +136,8 @@ extern int OFFSET_FETCH_RESPONSE_SIZE_FIELD_SIZE;
 extern int PARTITIONERRORCODE_FIELD_SIZE;
 extern int PORT_FIELD_SIZE;
 
-extern int	encode_requestmessage(struct RequestMessage *, char **);
-extern int	encode_responsemessage(struct ResponseMessage *, char **,
-	enum response_type);
-extern int	encode_resmessage(union ResMessage *, char **);
+extern int dl_encode_requestmessage(struct request_message *, char **);
+extern int dl_encode_responsemessage(struct response_message *, char **,
+    enum response_type);
 
 #endif

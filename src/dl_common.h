@@ -49,9 +49,9 @@ static const int MAX_NUM_RESPONSES_PER_PROCESSOR = 128; // Maximum outstanding r
 static const int CONNECTIONS_PER_PROCESSOR       = 10; // Number of connections per processor.
 static const int MAX_NUM_UNFSYNCED = 20; // Maximum number of unfsynced inserts
 
-typedef void (*ack_function)(unsigned long);
-typedef void (*response_function)(struct RequestMessage *rm,
-    struct ResponseMessage *rs);
+typedef void (* ack_function) (unsigned long);
+typedef void (* response_function) (struct request_message *,
+    struct response_message *);
 
 typedef int correlationId_t;
 
@@ -75,13 +75,6 @@ struct client_configuration{
 	int	reconn_timeout;
 	int	poll_timeout;
 };
-
-#undef ASSERT
-#if DEBUG
-#define ASSERT(x)	((void)0)
-#else 
-#define ASSERT(x)	((void)0)
-#endif
 
 extern void	print_configuration(struct broker_configuration *);
 

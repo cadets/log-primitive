@@ -45,48 +45,54 @@
 #include "dl_common.h"
 
 void
-build_req(struct RequestMessage* rq, enum request_type rt, int correlationId,
-	char* clientId, va_list varlist)
+build_req(struct request_message* rq, enum request_type rt, int correlation_id,
+	char* client_id, va_list varlist)
 {
-	rq->APIKey = rt;
-	memcpy(rq->ClientId, clientId, strlen(clientId));
-	rq->CorrelationId = correlationId;
+	rq->api_key = rt;
+	memcpy(rq->client_id, client_id, strlen(client_id));
+	rq->correlation_id = correlation_id;
 
-	char* topicName;
+	char* topic_name;
 
-	switch (rt){
+	switch (rt) {
 	case REQUEST_PRODUCE:
-	    topicName = va_arg(varlist, char*);
+	    topic_name = va_arg(varlist, char*);
 	    int ms_size = va_arg(varlist, int);
 
-	    rq->rm.produce_request.RequiredAcks = 1;
-	    rq->rm.produce_request.Timeout = -1;
-	    memcpy(rq->rm.produce_request.spr.TopicName.TopicName, topicName, strlen(topicName));
+	    rq->rm.produce_request.required_acks = 1;
+	    rq->rm.produce_request.timeout = -1;
+	    memcpy(rq->rm.produce_request.spr.topic_name.topic_name,
+		topic_name, strlen(topic_name));
 
-	    rq->rm.produce_request.spr.sspr.MessageSetSize = ms_size;
-	    rq->rm.produce_request.spr.sspr.mset.NUM_ELEMS = ms_size;
+	    rq->rm.produce_request.spr.sspr.message_set_size = ms_size;
+	    rq->rm.produce_request.spr.sspr.mset.num_elems = ms_size;
 
 	    long timestamp = time(NULL);
-	    for(int i=0; i<ms_size; i++){
+	    for (int i=0; i<ms_size; i++) {
 		char* remp = va_arg(varlist, char*);
-		memcpy(rq->rm.produce_request.spr.sspr.mset.Elems[i].message.value, remp, strlen(remp));
-		rq->rm.produce_request.spr.sspr.mset.Elems[i].message.timestamp = timestamp;
-		rq->rm.produce_request.spr.sspr.mset.Elems[i].message.crc = get_crc(remp, strlen(remp));
+
+		memcpy(
+		    rq->rm.produce_request.spr.sspr.mset.elems[i].message.value,
+		    remp, strlen(remp));
+		rq->rm.produce_request.spr.sspr.mset.elems[i].message.timestamp =
+		    timestamp;
+		rq->rm.produce_request.spr.sspr.mset.elems[i].message.crc =
+		    get_crc(remp, strlen(remp));
 	    }
 	    break;
 	case REQUEST_FETCH:
-		topicName = va_arg(varlist, char*);
+		topic_name = va_arg(varlist, char*);
 		long fetch_offset = va_arg(varlist, long);
 		int maxbytes = va_arg(varlist, int);
 		int minbytes = va_arg(varlist, int);
-		memcpy(rq->rm.fetch_request.TopicName.TopicName, topicName,
-			strlen(topicName));
-		rq->rm.fetch_request.ReplicaId = -1;
-		rq->rm.fetch_request.Partition = 1;
-		rq->rm.fetch_request.MaxWaitTime = 100;
-		rq->rm.fetch_request.MaxBytes = maxbytes;
-		rq->rm.fetch_request.MinBytes = minbytes;
-		rq->rm.fetch_request.FetchOffset = fetch_offset;
+		memcpy(rq->rm.fetch_request.topic_name.topic_name, topic_name,
+			strlen(topic_name));
+		rq->rm.fetch_request.replica_id = -1;
+		rq->rm.fetch_request.partition = 1;
+		rq->rm.fetch_request.max_wait_time = 100;
+		rq->rm.fetch_request.max_bytes = maxbytes;
+		rq->rm.fetch_request.min_bytes = minbytes;
+		rq->rm.fetch_request.fetch_offset = fetch_offset;
 		break;
 	case REQUEST_OFFSET:
 		/* FALLTHROUGH */
@@ -132,136 +138,171 @@ get_corrid(char *beg)
 }
 
 void
-clear_fetch_responsemessage(struct FetchResponse* fr)
+clear_fetch_responsemessage(struct fetch_response* fr)
 {
-    fr->NUM_SFR = 0;
-    fr->ThrottleTime = 0;
-    for(int i=0; i < MAX_SUB_FETCH_SIZE; i++){
-        fr->sfr[i].NUM_SSFR = 0;
-        for(int j=0; j < MAX_SUB_SUB_FETCH_SIZE; j++){
-            fr->sfr[i].ssfr[j].MessageSetSize= 0;
-            fr->sfr[i].ssfr[j].MessageSet.NUM_ELEMS = 0;
-        }
-    }
+	fr->num_sfr = 0;
+	fr->throttle_time = 0;
+	for (int i=0; i < MAX_SUB_FETCH_SIZE; i++){
+		fr->sfr[i].num_ssfr = 0;
+		for (int j=0; j < MAX_SUB_SUB_FETCH_SIZE; j++){
+			fr->sfr[i].ssfr[j].message_set_size= 0;
+			fr->sfr[i].ssfr[j].message_set.num_elems = 0;
+		}
+	}
 }
 
 void
-clear_offset_responsemessage(struct OffsetResponse* ofr)
+clear_offset_responsemessage(struct offset_response *ofr)
 {
-   ofr->NUM_SOR = 0;
-   for(int i = 0; i < MAX_SOR; i++){
-        ofr->sor[i].NUM_PARTS=0;
-        for(int j = 0; j<MAX_PART_OFFSETS; j++){
-            ofr->sor[i].PartitionOffsets[j].NUM_OFFSETS = 0;
-        }
-   }
+	ofr->num_sor = 0;
+	for (int i = 0; i < MAX_SOR; i++){
+		ofr->sor[i].num_parts = 0;
+		for (int j = 0; j < MAX_PART_OFFSETS; j++){
+			ofr->sor[i].partition_offsets[j].num_offsets = 0;
+		}
+	}
 }
 
 void
-clear_produce_responsemessage(struct ProduceResponse* pr)
+clear_produce_responsemessage(struct produce_response *pr)
 {
-    pr->NUM_SUB=0;
-    for(int i = 0; i < MAX_SUB_SIZE; i++){
-       pr->spr[i].NUM_SUBSUB = 0;
-    }
+	pr->num_sub = 0;
+	for (int i = 0; i < MAX_SUB_SIZE; i++){
+		pr->spr[i].num_subsub = 0;
+	}
 }
 
 void
-clear_metadata_responsemessage(struct MetadataResponse* mr)
+clear_metadata_responsemessage(struct metadata_response *mr)
 {
-	mr->NUM_BROKERS=0;
+	mr->num_brokers=0;
 }
 
 void
-clear_offsetfetch_responsemessage(struct OffsetFetchResponse* ofr)
+clear_offsetfetch_responsemessage(struct offset_fetch_response *ofr)
 {
-    ofr->NUM_SUB_OFR = 0;
+	ofr->num_sub_ofr = 0;
 
-    for(int i = 0; i < MAX_SUB_OFR; i++){
-        ofr->sofr[i].NUM_SSOFR = 0;
-    }
+	for(int i = 0; i < MAX_SUB_OFR; i++){
+		ofr->sofr[i].num_ssofr = 0;
+	}
 }
 
 void
-clear_offsetcommit_responsemessage(struct OffsetCommitResponse* ocr)
+clear_offsetcommit_responsemessage(struct offset_commit_response *ocr)
 {
-    ocr->NUM_SUB_OCR = 0;
-    for(int i = 0; i < MAX_SUB_OCR; i++){
-        ocr->socr[i].NUM_SSOCR = 0;
-    }
+	ocr->num_sub_ocr = 0;
+	for (int i = 0; i < MAX_SUB_OCR; i++) {
+		ocr->socr[i].num_ssocr = 0;
+	}
 }
 
 void
-clear_group_coordinator_responsemessage(struct GroupCoordinatorResponse* gcr)
+clear_group_coordinator_responsemessage(struct group_coordinator_response *gcr)
 {
-	gcr->CorrdinatorPort = 0;
+	gcr->corrdinator_port = 0;
 }
 
 void
-clear_responsemessage(struct ResponseMessage* rm, enum request_type rt)
+clear_responsemessage(struct response_message *rm, enum request_type rt)
 {
     switch(rt){
-        case REQUEST_FETCH: clear_fetch_responsemessage(&rm->rm.fetch_response); break;
-        case REQUEST_OFFSET: clear_offset_responsemessage(&rm->rm.offset_response); break;
-        case REQUEST_PRODUCE: clear_produce_responsemessage(&rm->rm.produce_response); break;
-        case REQUEST_METADATA: clear_metadata_responsemessage(&rm->rm.metadata_response); break;
-        case REQUEST_OFFSET_FETCH: clear_offsetfetch_responsemessage(&rm->rm.offset_fetch_response); break;
-        case REQUEST_OFFSET_COMMIT: clear_offsetcommit_responsemessage(&rm->rm.offset_commit_response); break;
-        case REQUEST_GROUP_COORDINATOR: clear_group_coordinator_responsemessage(&rm->rm.group_coordinator_response); break;
+        case REQUEST_FETCH:
+		clear_fetch_responsemessage(&rm->rm.fetch_response);
+		break;
+        case REQUEST_OFFSET:
+		clear_offset_responsemessage(&rm->rm.offset_response);
+		break;
+        case REQUEST_PRODUCE:
+		clear_produce_responsemessage(&rm->rm.produce_response);
+		break;
+        case REQUEST_METADATA:
+		clear_metadata_responsemessage(&rm->rm.metadata_response);
+		break;
+        case REQUEST_OFFSET_FETCH:
+		clear_offsetfetch_responsemessage(
+		    &rm->rm.offset_fetch_response);
+		break;
+        case REQUEST_OFFSET_COMMIT:
+		clear_offsetcommit_responsemessage(
+		    &rm->rm.offset_commit_response);
+		break;
+        case REQUEST_GROUP_COORDINATOR:
+		clear_group_coordinator_responsemessage(
+		    &rm->rm.group_coordinator_response);
+		break;
     }
 }
 
-void clear_fetch_requestmessage(struct FetchRequest* fr){
-    fr->Partition = 0;
-}
-
-void clear_offsetfetch_requestmessage(struct OffsetFetchRequest* ofr){
-    ofr->Partition = 0;
+void
+clear_fetch_requestmessage(struct fetch_request *fr)
+{
+	fr->partition = 0;
 }
 
 void
-clear_offset_requestmessage(struct OffsetRequest* ofr)
+clear_offsetfetch_requestmessage(struct offset_fetch_request *ofr)
 {
-    ofr->Partition = 0;
+	ofr->partition = 0;
 }
 
 void
-clear_produce_requestmessage(struct ProduceRequest* pr)
+clear_offset_requestmessage(struct offset_request *ofr)
 {
-    pr->spr.sspr.MessageSetSize = 0;
-    pr->spr.sspr.mset.NUM_ELEMS = 0;
+	ofr->partition = 0;
 }
 
 void
-clear_metadata_requestmessage(struct MetadataRequest* mr)
+clear_produce_requestmessage(struct produce_request *pr)
 {
-    mr->NUM_TOPICS = 0;
+	pr->spr.sspr.message_set_size = 0;
+	pr->spr.sspr.mset.num_elems = 0;
 }
 
 void
-clear_offsetcommit_requestmessage(struct OffsetCommitRequest* ofr)
+clear_metadata_requestmessage(struct metadata_request *mr)
 {
-    ofr->ConsumerGroupGenerationId = 0;
+	mr->num_topics = 0;
 }
 
 void
-clear_group_coordinator_requestmessage(struct GroupCoordinatorRequest* gcr)
+clear_offsetcommit_requestmessage(struct offset_commit_request *ofr)
 {
-    bzero(gcr->GroupId, GROUP_ID_SIZE); 
+	ofr->consumer_group_generation_id = 0;
 }
 
 void
-clear_requestmessage(struct RequestMessage* rm, enum request_type rt)
+clear_group_coordinator_requestmessage(struct group_coordinator_request *gcr)
 {
-    switch(rt){
-        case REQUEST_FETCH: clear_fetch_requestmessage(&rm->rm.fetch_request); break;
-        case REQUEST_OFFSET: clear_offset_requestmessage(&rm->rm.offset_request); break;
-        case REQUEST_PRODUCE: clear_produce_requestmessage(&rm->rm.produce_request); break;
-        case REQUEST_METADATA: clear_metadata_requestmessage(&rm->rm.metadata_request); break;
-        case REQUEST_OFFSET_FETCH: clear_offsetfetch_requestmessage(&rm->rm.offset_fetch_request); break;
-        case REQUEST_OFFSET_COMMIT: clear_offsetcommit_requestmessage(&rm->rm.offset_commit_request); break;
-        case REQUEST_GROUP_COORDINATOR: clear_group_coordinator_requestmessage(&rm->rm.group_coordinator_request); break;
-    }       
+	bzero(gcr->group_id, GROUP_ID_SIZE); 
 }
 
-
+void
+clear_requestmessage(struct request_message *rm, enum request_type rt)
+{
+	switch(rt) {
+	case REQUEST_FETCH:
+		clear_fetch_requestmessage(&rm->rm.fetch_request);
+		break;
+	case REQUEST_OFFSET:
+		clear_offset_requestmessage(&rm->rm.offset_request);
+		break;
+	case REQUEST_PRODUCE:
+		clear_produce_requestmessage(&rm->rm.produce_request);
+		break;
+	case REQUEST_METADATA:
+		clear_metadata_requestmessage(&rm->rm.metadata_request);
+		break;
+	case REQUEST_OFFSET_FETCH:
+		clear_offsetfetch_requestmessage(&rm->rm.offset_fetch_request);
+		break;
+	case REQUEST_OFFSET_COMMIT:
+		clear_offsetcommit_requestmessage(
+		    &rm->rm.offset_commit_request);
+		break;
+	case REQUEST_GROUP_COORDINATOR:
+		clear_group_coordinator_requestmessage(
+		    &rm->rm.group_coordinator_request);
+		break;
+	}       
+}

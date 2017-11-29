@@ -39,7 +39,8 @@
 
 #include "dl_common.h"
 
-extern void	broker_busyloop(int, const char *,
+extern void distlog_broker_init(int, const char *,
     struct broker_configuration *);
+extern void distlog_broker_fini();
 
 #endif

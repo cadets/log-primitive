@@ -43,7 +43,7 @@
 #include "dl_utils.h"
 
 static void on_ack(unsigned long);
-static void on_response(struct RequestMessage *, struct ResponseMessage *);
+static void on_response(struct request_message *, struct response_message *);
 
 unsigned short PRIO_LOG = PRIO_LOW;
 
@@ -55,30 +55,30 @@ on_ack(unsigned long correlation_id)
 }
 
 static void
-on_response(struct RequestMessage *rm, struct ResponseMessage *rs)
+on_response(struct request_message *rm, struct response_message *rs)
 {
 	debug(PRIO_NORMAL, "Response was recieved with correlationId %d\n",
-		rs->CorrelationId);
+		rs->correlation_id);
 
-	switch (rm->APIKey) {
+	switch (rm->api_key) {
 		case REQUEST_PRODUCE:
 			debug(PRIO_NORMAL,
 			    "Produced the following messages: \n");
-			for (int i = 0; i < rm->rm.produce_request.spr.sspr.mset.NUM_ELEMS; i++) {
+			for (int i = 0; i < rm->rm.produce_request.spr.sspr.mset.num_elems; i++) {
 				printf("\tMessage: %s\n",
-				    rm->rm.produce_request.spr.sspr.mset.Elems[i].message.value); 
+				    rm->rm.produce_request.spr.sspr.mset.elems[i].message.value); 
 			}
 
 			debug(PRIO_NORMAL, "Request answer: \n");
-			for (int i = 0; i < rs->rm.produce_response.NUM_SUB;
+			for (int i = 0; i < rs->rm.produce_response.num_sub;
 			    i++){
 				for (int j = 0;
-				    j < rs->rm.produce_response.spr[i].NUM_SUBSUB; j++){
-					struct SubSubProduceResponse *csspr = &rs->rm.produce_response.spr[i].sspr[j];
-					printf("Timestamp:\t%ld\n", csspr->Timestamp);
-					printf("Offset:\t%ld\n", csspr->Offset); 
-					printf("ErrorCode:\t%d\n", csspr->ErrorCode); 
-					printf("Partition:\t%d\n", csspr->Partition); 
+				    j < rs->rm.produce_response.spr[i].num_subsub; j++){
+					struct sub_sub_produce_response *csspr = &rs->rm.produce_response.spr[i].sspr[j];
+					printf("Timestamp:\t%ld\n", csspr->timestamp);
+					printf("Offset:\t%ld\n", csspr->offset); 
+					printf("ErrorCode:\t%d\n", csspr->error_code); 
+					printf("Partition:\t%d\n", csspr->partition); 
 				}
 			}
 			break;

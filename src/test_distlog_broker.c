@@ -42,12 +42,14 @@ unsigned short PRIO_LOG = PRIO_LOW;
 int
 main()
 {
-	struct broker_configuration* bc = (struct broker_configuration*) malloc(sizeof(struct broker_configuration));
-	bc->fsync_thread_sleep_length = 5;
-	bc->processor_thread_sleep_length = 5;
-    	bc->val = 0;
+	struct broker_configuration bc;
 
-	broker_busyloop(9999, "test_partition", bc);
+	bc.fsync_thread_sleep_length = 5;
+	bc.processor_thread_sleep_length = 5;
+    	bc.val = 0;
 
-	return 1;
+	distlog_broker_init(9999, "test_partition", &bc);
+	distlog_broker_fini();
+
+	return 0;
 }

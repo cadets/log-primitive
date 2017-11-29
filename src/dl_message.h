@@ -37,15 +37,15 @@
 #ifndef _DL_MESSAGE_H
 #define _DL_MESSAGE_H
 
-#define KEY_SIZE 12
-#define VALUE_SIZE 12
+#define DL_MESSAGE_KEY_SIZE 12
+#define DL_MESSAGE_VALUE_SIZE 12
 
 struct dl_message {
 	unsigned long crc;
 	unsigned long timestamp;
 	int attributes;
-	char key[KEY_SIZE];
-	char value[VALUE_SIZE];
+	char key[DL_MESSAGE_KEY_SIZE];
+	char value[DL_MESSAGE_VALUE_SIZE];
 };
 
 extern int dl_encode_message(struct dl_message *, char **);

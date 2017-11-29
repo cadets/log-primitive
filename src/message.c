@@ -130,10 +130,10 @@ toul(char * to)
 }
 
 int
-wrap_with_size(struct ResponseMessage *rm, char **buf, char *send_out_buf,
+wrap_with_size(struct response_message *rm, char **buf, char *send_out_buf,
 	enum request_type rt)
 {
-	int req_size = encode_responsemessage(rm, buf, match_requesttype(rt));
+	int req_size = dl_encode_responsemessage(rm, buf, match_requesttype(rt));
 	int fi = sprintf(send_out_buf, "%.*d%s", OVERALL_MSG_FIELD_SIZE,
 		req_size+OVERALL_MSG_FIELD_SIZE, *buf);
 	return fi;

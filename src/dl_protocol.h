@@ -69,6 +69,7 @@
 
 static int OVERALL_MSG_FIELD_SIZE = 4;
 
+// TODO: prefix DL_
 enum reply_error_codes {
 	CRC_NOT_MATCH	= 1 << 0,
 	CRC_MATCH	= 1 << 2,
@@ -77,6 +78,7 @@ enum reply_error_codes {
 };
 typedef enum reply_error_codes reply_error_codes;
 
+// TODO: prefix DL_
 enum request_type {
 	REQUEST_PRODUCE,
 	REQUEST_OFFSET_COMMIT,
@@ -88,6 +90,7 @@ enum request_type {
 };
 typedef enum request_type request_type;
 
+// TODO: prefix DL_
 enum response_type {
  	RESPONSE_METADATA,
 	RESPONSE_PRODUCE,
@@ -106,252 +109,250 @@ struct message_set_element {
 };
 
 struct message_set {
-	struct message_set_element Elems[MAX_SET_SIZE];
-	int NUM_ELEMS; // Elems
+	struct message_set_element elems[MAX_SET_SIZE];
+	int num_elems; // Elems
 };
 
-struct TopicName {
-	char TopicName[TOPIC_NAME_SIZE];
+struct topic_name {
+	char topic_name[TOPIC_NAME_SIZE];
 };
 
-struct GroupCoordinatorRequest {
-	char GroupId[GROUP_ID_SIZE];
+struct group_coordinator_request {
+	char group_id[GROUP_ID_SIZE];
 };
 
-struct MetadataRequest {
-	struct TopicName TopicNames[METADATA_REQUEST_MAX_TOPICS];
-	int NUM_TOPICS; // TopicNames
+struct metadata_request {
+	struct topic_name topic_names[METADATA_REQUEST_MAX_TOPICS];
+	int num_topics; // TopicNames
 };
 
-struct SubSubProduceRequest {
+struct sub_sub_produce_request {
 	struct message_set mset;
-	int MessageSetSize;
-	int Partition;
+	int message_set_size;
+	int partition;
 };
 
-struct SubProduceRequest {
-	struct SubSubProduceRequest sspr;
-	struct TopicName TopicName;
+struct sub_produce_request {
+	struct sub_sub_produce_request sspr;
+	struct topic_name topic_name;
 };
 
-struct ProduceRequest {
-	struct SubProduceRequest spr;
-	int RequiredAcks;
-	int Timeout;
+struct produce_request {
+	struct sub_produce_request spr;
+	int required_acks;
+	int timeout;
 };
 
-struct FetchRequest {
-	struct TopicName TopicName;
-	long FetchOffset;
-	int ReplicaId;
-	int MaxWaitTime;
-	int MinBytes;
-	int Partition;
-	int MaxBytes;
+struct fetch_request {
+	struct topic_name topic_name;
+	long fetch_offset;
+	int replica_id;
+	int max_wait_time;
+	int min_bytes;
+	int partition;
+	int max_bytes;
 };
 
-struct OffsetRequest {
-	struct TopicName TopicName;
-	long Time;
-	int RepolicaId;
-	int Partition;
+struct offset_request {
+	struct topic_name topic_name;
+	long time;
+	int repolica_id; 
+	int partition;
 };
 
-struct OffsetCommitRequest {
-	struct TopicName TopicName;
-	long Offset;
-	long Timestamp;
-	int ConsumerGroupGenerationId;
-	int ConsumerId;
-	int Partition;
-	char ConsumerGroupId[CONSUMER_GROUP_ID_SIZE];
-	char Metadata[METADATA_SIZE];
+struct offset_commit_request {
+	struct topic_name topic_name;
+	long offset;
+	long timestamp;
+	int consumer_group_generation_id;
+	int consumer_id;
+	int partition;
+	char consumer_group_id[CONSUMER_GROUP_ID_SIZE];
+	char metadata[METADATA_SIZE];
 };
 
-struct OffsetFetchRequest {
-	struct TopicName TopicName;
-	int Partition;
-	char ConsumerGroupId[CONSUMER_GROUP_ID_SIZE];
+struct offset_fetch_request {
+	struct topic_name topic_name;
+	int partition;
+	char consumer_group_id[CONSUMER_GROUP_ID_SIZE];
 };
 
-union ReqMessage {
-	struct MetadataRequest     metadata_request;
-	struct ProduceRequest      produce_request;
-	struct FetchRequest        fetch_request;
-	struct OffsetRequest       offset_request;
-	struct OffsetCommitRequest offset_commit_request;
-	struct OffsetFetchRequest  offset_fetch_request;
-	struct GroupCoordinatorRequest group_coordinator_request;
+union req_message {
+	struct metadata_request metadata_request;
+	struct produce_request produce_request;
+	struct fetch_request fetch_request;
+	struct offset_request offset_request;
+	struct offset_commit_request offset_commit_request;
+	struct offset_fetch_request offset_fetch_request;
+	struct group_coordinator_request group_coordinator_request;
 };
 
-struct RequestMessage {
-	union ReqMessage rm; // ! APIKEY
-	enum request_type APIKey;
-	int APIVersion;
-	int CorrelationId;
-	char ClientId[CLIENT_ID_SIZE];
+struct request_message {
+	union req_message rm; // ! APIKEY
+	enum request_type api_key;
+	int api_version;
+	int correlation_id;
+	char client_id[CLIENT_ID_SIZE];
 };
 
 // Responses now
 
-struct Broker {
-	int NodeId;
-	int Port;
-	char Host[HOST_SIZE];
+struct broker {
+	int node_id;
+	int port;
+	char host[HOST_SIZE];
 };
 
-struct Replica {
-	int Replica;
+struct replica {
+	int replica;
 };
 
-struct Isr {
-	int Isr;
+struct isr {
+	int isr;
 };
 
-struct PartitionMetadata {
-	struct Isr Isr[MAX_ISR];
-	struct Replica Replicas[MAX_REPLICAS];
-	int Leader;
-	int NUM_Isrs; // Isr
-	int NUM_REPLICAS; // Replicas
-	int PartitionErrorCode;
-	int PartitionId;
+struct partition_metadata {
+	struct isr isr[MAX_ISR];
+	struct replica replicas[MAX_REPLICAS];
+	int leader;
+	int num_isrs; // Isr
+	int num_replicas; // Replicas
+	int partition_error_code;
+	int partition_id;
 };
 
-struct TopicMetadata {
-	struct PartitionMetadata PartitionMetadatas[METADATAS_SIZE];
-	struct TopicName TopicName;
-	int NUM_PARTITIONS; // PartitionMetadatas
-	int TopicErrorCode;
+struct topic_metadata {
+	struct partition_metadata partition_metadatas[METADATAS_SIZE];
+	struct topic_name topic_name;
+	int num_partitions; // PartitionMetadatas
+	int topic_error_code;
 };
 
-struct MetadataResponse {
-	struct Broker Brokers[MAX_BROKERS];
-	int NUM_BROKERS; // Brokers
+struct metadata_response {
+	struct broker brokers[MAX_BROKERS];
+	int num_brokers; // Brokers
 };
 
-struct SubSubProduceResponse {
-	long Offset;
-	long Timestamp;
-	int ErrorCode;
-	int Partition;
+struct sub_sub_produce_response {
+	long offset;
+	long timestamp;
+	int error_code;
+	int partition;
 };
 
-struct SubProduceResponse {
-	struct SubSubProduceResponse sspr[MAX_SUB_SUB_SIZE];
-	struct TopicName TopicName;
-	int NUM_SUBSUB; // sspr
+struct sub_produce_response {
+	struct sub_sub_produce_response sspr[MAX_SUB_SUB_SIZE];
+	struct topic_name topic_name;
+	int num_subsub; // sspr
 };
 
-struct ProduceResponse {
-	struct SubProduceResponse spr[MAX_SUB_SIZE];
-	int NUM_SUB; //spr
-	int ThrottleTime;
+struct produce_response {
+	struct sub_produce_response spr[MAX_SUB_SIZE];
+	int num_sub; //spr
+	int throttle_time;
 };
 
-struct subSubFetchResponse {
-	struct message_set MessageSet;
-	long HighwayMarkOffset;
-	int Partition;
-	int ErrorCode;
-	int MessageSetSize;
+struct sub_sub_fetch_response {
+	struct message_set message_set;
+	long highway_mark_offset;
+	int partition;
+	int error_code;
+	int message_set_size;
 };
 
-struct subFetchResponse {
-	struct subSubFetchResponse ssfr[MAX_SUB_SUB_FETCH_SIZE];
-	struct TopicName TopicName;
-	int NUM_SSFR; // ssfr
+struct sub_fetch_response {
+	struct sub_sub_fetch_response ssfr[MAX_SUB_SUB_FETCH_SIZE];
+	struct topic_name topic_name;
+	int num_ssfr; // ssfr
 };
 
-struct FetchResponse {
-	struct subFetchResponse sfr[MAX_SUB_FETCH_SIZE];
-	int NUM_SFR; // sfr
-	int ThrottleTime;
+struct fetch_response {
+	struct sub_fetch_response sfr[MAX_SUB_FETCH_SIZE];
+	int num_sfr; // sfr
+	int throttle_time;
 };
 
-struct Offset{
-	long Offset;
+struct offset{
+	long offset;
 };
 
-struct PartitionOffsets {
-	struct Offset Offsets[MAX_OFFSETS];
-	int Partition;
-	int ErrorCode;
-	int NUM_OFFSETS;// Offsets
-	long Timestamp;
+struct partition_offsets {
+	struct offset offsets[MAX_OFFSETS];
+	int partition;
+	int error_code;
+	int num_offsets;// Offsets
+	long timestamp;
 };
 
-struct subOffsetResponse {
-	struct TopicName TopicName;
-	struct PartitionOffsets PartitionOffsets[MAX_PART_OFFSETS];
-	int NUM_PARTS; // PartitionOffsets
+struct sub_offset_response {
+	struct topic_name topic_name;
+	struct partition_offsets partition_offsets[MAX_PART_OFFSETS];
+	int num_parts; // PartitionOffsets
 };
 
-struct OffsetResponse {
-	struct subOffsetResponse sor[MAX_SOR];
-	int NUM_SOR; // sor
+struct offset_response {
+	struct sub_offset_response sor[MAX_SOR];
+	int num_sor; // sor
 };
 
-struct GroupCoordinatorResponse {
-	int CorrdinatorId;
-	int CorrdinatorPort;
-	int ErrorCode;
-	char CorrdinatorHost[HOST_SIZE];
+struct group_coordinator_response {
+	int corrdinator_id;
+	int corrdinator_port;
+	int error_code;
+	char corrdinator_host[HOST_SIZE];
 };
 
-struct subSubOffsetCommitResponse{
-	int Partition;
-	int ErrorCode;
+struct sub_sub_offset_commit_response{
+	int partition;
+	int error_code;
 };
 
-struct subOffsetCommitResponse{
-	struct TopicName TopicName;
-	struct subSubOffsetCommitResponse ssocr[MAX_SUB_SUB_OCR];
-	int NUM_SSOCR; // ssocr
+struct sub_offset_commit_response{
+	struct topic_name topic_name;
+	struct sub_sub_offset_commit_response ssocr[MAX_SUB_SUB_OCR];
+	int num_ssocr; // ssocr
 };
 
-struct OffsetCommitResponse{
-	struct subOffsetCommitResponse socr[MAX_SUB_OCR];
-	int NUM_SUB_OCR; // socr
+struct offset_commit_response{
+	struct sub_offset_commit_response socr[MAX_SUB_OCR];
+	int num_sub_ocr; // socr
 };
 
-struct subSubOffsetFetchResponse{
-	long Offset;
-	int ErrorCode;
-	int Partition;
-	char Metadata[METADATA_SIZE];
+struct sub_sub_offset_fetch_response{
+	long offset;
+	int error_code;
+	int partition;
+	char metadata[METADATA_SIZE];
 };
 
-struct subOffsetFetchResponse{
-	struct subSubOffsetFetchResponse ssofr[MAX_SUB_SUB_OFR];
-	struct TopicName TopicName;
-	int NUM_SSOFR; // ssofr
+struct sub_offset_fetch_response{
+	struct sub_sub_offset_fetch_response ssofr[MAX_SUB_SUB_OFR];
+	struct topic_name topic_name;
+	int num_ssofr; // ssofr
 };
 
-struct OffsetFetchResponse {
-	struct subOffsetFetchResponse sofr[MAX_SUB_OFR];
-	int NUM_SUB_OFR; // sofr
+struct offset_fetch_response {
+	struct sub_offset_fetch_response sofr[MAX_SUB_OFR];
+	int num_sub_ofr; // sofr
 };
 
-union ResMessage {
-	struct MetadataResponse metadata_response;
-	struct ProduceResponse produce_response;
-	struct FetchResponse fetch_response;
-	struct OffsetResponse offset_response;
-	struct OffsetCommitResponse offset_commit_response;
-	struct OffsetFetchResponse offset_fetch_response;
-	struct GroupCoordinatorResponse group_coordinator_response;
+union res_message {
+	struct metadata_response metadata_response;
+	struct produce_response produce_response;
+	struct fetch_response fetch_response;
+	struct offset_response offset_response;
+	struct offset_commit_response offset_commit_response;
+	struct offset_fetch_response offset_fetch_response;
+	struct group_coordinator_response group_coordinator_response;
 };
 
-struct ResponseMessage {
-	union ResMessage rm;
-	int CorrelationId;
+struct response_message {
+	union res_message rm;
+	int correlation_id;
 };
 
 extern enum response_type match_requesttype(enum request_type);
-extern void clear_responsemessage(struct ResponseMessage *,
-    enum request_type);
-extern void clear_requestmessage(struct RequestMessage *,
-    enum request_type);
+extern void clear_responsemessage(struct response_message *, enum request_type);
+extern void clear_requestmessage(struct request_message *, enum request_type);
 
 #endif
