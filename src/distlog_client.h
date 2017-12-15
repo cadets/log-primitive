@@ -46,11 +46,18 @@
 #include "dl_protocol.h"
 #include "dl_common.h"
 
+struct distlog_handle {
+	int64_t dlh_offset;
+};
+
 extern int distlog_client_init(const char * const, const int,
-    struct client_configuration const * const);
+    struct dl_client_configuration const * const);
+extern int distlog_client_open(struct distlog_handle *);
+extern int distlog_client_close(struct distlog_handle *);
 extern int distlog_client_fini();
 
-extern int distlog_send_request(int, enum request_type, int, char *, bool,
-    int, ...);
+extern int distlog_recv(int, char *, bool, int, ...);
+extern int distlog_send(int, char *, bool, int, ...);
+extern int distlog_offsets(int, char *, bool, int, ...);
 
 #endif

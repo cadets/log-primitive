@@ -38,7 +38,24 @@
 #ifndef _DL_PROTOCOL_H
 #define _DL_PROTOCOL_H
 
-#include "dl_message.h"
+#ifdef __APPLE__
+#include <libkern/OSByteOrder.h>
+
+#define htobe16(x) OSSwapHostToBigInt16(x)
+#define htole16(x) OSSwapHostToLittleInt16(x)
+#define be16toh(x) OSSwapBigToHostInt16(x)
+#define le16toh(x) OSSwapLittleToHostInt16(x)
+
+#define htobe32(x) OSSwapHostToBigInt32(x)
+#define htole32(x) OSSwapHostToLittleInt32(x)
+#define be32toh(x) OSSwapBigToHostInt32(x)
+#define le32toh(x) OSSwapLittleToHostInt32(x)
+
+#define htobe64(x) OSSwapHostToBigInt64(x)
+#define htole64(x) OSSwapHostToLittleInt64(x)
+#define be64toh(x) OSSwapBigToHostInt64(x)
+#define le64toh(x) OSSwapLittleToHostInt64(x)
+#endif
 
 #define CLIENT_ID_SIZE 12
 #define KEY_SIZE 12
@@ -47,6 +64,7 @@
 #define METADATA_REQUEST_MAX_TOPICS 64
 #define TOPIC_NAME_SIZE 16
 #define CONSUMER_GROUP_ID_SIZE 16
+#define CONSUMER_ID_SIZE 16
 #define METADATA_SIZE 16
 #define HOST_SIZE 16
 #define MAX_REPLICAS 16
@@ -67,136 +85,119 @@
 #define MAX_SUB_SUB_OFR 16
 #define MAX_BROKERS 16
 
-static int OVERALL_MSG_FIELD_SIZE = 4;
+#define MTU 2048
 
-// TODO: prefix DL_
-enum reply_error_codes {
-	CRC_NOT_MATCH	= 1 << 0,
-	CRC_MATCH	= 1 << 2,
-	INSERT_ERROR	= 1 << 3,
-	INSERT_SUCCESS	= 1 << 4
+// TODO: It's a string in the protocol
+#define DL_MAX_CLIENT_ID 12
+// TODO: improve key/value handling
+#define DL_MESSAGE_KEY_SIZE 256
+#define DL_MESSAGE_VALUE_SIZE 256
+
+/* ApiKey - TODO */
+enum dl_api_key {
+	DL_PRODUCE_REQUEST = 0,
+	DL_FETCH_REQUEST = 1,
+	DL_OFFSET_REQUEST = 2,
+	DL_OFFSET_COMMIT_REQUEST,
+	DL_OFFSET_FETCH_REQUEST,
+	DL_METADATA_REQUEST,
+	DL_COORDINATOR_REQUEST
 };
-typedef enum reply_error_codes reply_error_codes;
+typedef enum dl_api_key dl_api_key;
 
-// TODO: prefix DL_
-enum request_type {
-	REQUEST_PRODUCE,
-	REQUEST_OFFSET_COMMIT,
-	REQUEST_OFFSET,
-	REQUEST_FETCH,
-	REQUEST_OFFSET_FETCH,
-	REQUEST_METADATA,
-	REQUEST_GROUP_COORDINATOR
-};
-typedef enum request_type request_type;
-
-// TODO: prefix DL_
-enum response_type {
- 	RESPONSE_METADATA,
-	RESPONSE_PRODUCE,
-	RESPONSE_FETCH,
-	RESPONSE_OFFSET,
-	RESPONSE_OFFSET_COMMIT,
-	RESPONSE_OFFSET_FETCH,
-	RESPONSE_GROUP_COORDINATOR
-};
-typedef enum response_type response_type;
-
-struct message_set_element {
-	struct dl_message message;
-	long offset;
-	int message_size;
+struct dl_message {
+	int32_t dlm_crc;
+	int8_t dlm_magic_byte;
+	int8_t dlm_attributes;
+	int64_t dlm_timestamp;
+	char dlm_key[DL_MESSAGE_KEY_SIZE];
+	char dlm_value[DL_MESSAGE_VALUE_SIZE];
 };
 
-struct message_set {
-	struct message_set_element elems[MAX_SET_SIZE];
-	int num_elems; // Elems
+struct dl_message_set {
+	int64_t dlms_offset;
+	int32_t dlms_message_size;
+	struct dl_message dlms_message;
 };
 
-struct topic_name {
-	char topic_name[TOPIC_NAME_SIZE];
+struct dl_produce_request {
+	int16_t dlpr_required_acks;
+	int32_t dlpr_timeout;
+	char dlpr_topic_name[TOPIC_NAME_SIZE]; // DL_
+	int32_t dlpr_partition;
+	int32_t dlpr_message_set_size; // This is the size in bytes of the message set
+	struct dl_message_set dlpr_message_set[1];
 };
 
-struct group_coordinator_request {
-	char group_id[GROUP_ID_SIZE];
+struct dl_fetch_request {
+	int32_t dlfr_replica_id;
+	int32_t dlfr_max_wait_time;
+	int32_t dlfr_min_bytes;
+	char dlfr_topic_name[TOPIC_NAME_SIZE];
+	int32_t dlfr_partition;
+	int64_t dlfr_fetch_offset;
+	int32_t dlfr_max_bytes;
+};
+struct dl_offset_request {
+	int32_t dlor_replica_id;
+	// List of values	
+	// topics
+	// ntopics
+	char dlor_topic_name[TOPIC_NAME_SIZE];
+	// List of values
+	// partitions
+	// npartitions
+	int32_t dlor_partition;
+	int64_t dlor_time;
 };
 
-struct metadata_request {
-	struct topic_name topic_names[METADATA_REQUEST_MAX_TOPICS];
-	int num_topics; // TopicNames
+struct dl_metadata_request {
+	char dlmr_topic_name[TOPIC_NAME_SIZE];
 };
 
-struct sub_sub_produce_request {
-	struct message_set mset;
-	int message_set_size;
-	int partition;
-};
-
-struct sub_produce_request {
-	struct sub_sub_produce_request sspr;
-	struct topic_name topic_name;
-};
-
-struct produce_request {
-	struct sub_produce_request spr;
-	int required_acks;
-	int timeout;
-};
-
-struct fetch_request {
-	struct topic_name topic_name;
-	long fetch_offset;
-	int replica_id;
-	int max_wait_time;
-	int min_bytes;
-	int partition;
-	int max_bytes;
-};
-
-struct offset_request {
-	struct topic_name topic_name;
-	long time;
-	int repolica_id; 
-	int partition;
-};
-
-struct offset_commit_request {
-	struct topic_name topic_name;
-	long offset;
-	long timestamp;
-	int consumer_group_generation_id;
-	int consumer_id;
-	int partition;
+struct dl_offset_commit_request {
 	char consumer_group_id[CONSUMER_GROUP_ID_SIZE];
+	int32_t consumer_group_generation_id;
+	char consumer_id[CONSUMER_ID_SIZE];
+	int64_t retention_time;
+	char dlocr_topic_name[TOPIC_NAME_SIZE];
+	int32_t partition;
+	int64_t offset;
 	char metadata[METADATA_SIZE];
 };
 
-struct offset_fetch_request {
-	struct topic_name topic_name;
-	int partition;
-	char consumer_group_id[CONSUMER_GROUP_ID_SIZE];
+struct dl_offset_fetch_request {
+	char dlofr_topic_name[TOPIC_NAME_SIZE];
+	char dlofr_consumer_group_id[CONSUMER_GROUP_ID_SIZE];
+	int32_t dlofr_partition;
 };
 
-union req_message {
-	struct metadata_request metadata_request;
-	struct produce_request produce_request;
-	struct fetch_request fetch_request;
-	struct offset_request offset_request;
-	struct offset_commit_request offset_commit_request;
-	struct offset_fetch_request offset_fetch_request;
-	struct group_coordinator_request group_coordinator_request;
+struct dl_group_coordinator_request {
+	char dlgcr_group_id[GROUP_ID_SIZE];
 };
 
-struct request_message {
-	union req_message rm; // ! APIKEY
-	enum request_type api_key;
-	int api_version;
-	int correlation_id;
-	char client_id[CLIENT_ID_SIZE];
+union dl_request_message {
+	struct dl_produce_request dlrqmt_produce_request;
+	struct dl_fetch_request dlrqmt_fetch_request;
+	struct dl_offset_request dlrqmt_offset_request;
+	struct dl_metadata_request dlrqmt_metadata_request[1];
+	struct dl_offset_commit_request dlrqmt_offset_commit_request;
+	struct dl_offset_fetch_request dlrqmt_offset_fetch_request;
+	struct dl_group_coordinator_request dlrqmt_group_coordinator_request;
+};
+
+struct dl_request {
+	int32_t dlrqm_size;
+	int16_t dlrqm_api_key;
+	int16_t dlrqm_api_version;
+	int32_t dlrqm_correlation_id;
+	char dlrqm_client_id[DL_MAX_CLIENT_ID];
+	union dl_request_message dlrqm_message;
 };
 
 // Responses now
 
+/*
 struct broker {
 	int node_id;
 	int port;
@@ -350,9 +351,81 @@ struct response_message {
 	union res_message rm;
 	int correlation_id;
 };
+*/
 
-extern enum response_type match_requesttype(enum request_type);
-extern void clear_responsemessage(struct response_message *, enum request_type);
-extern void clear_requestmessage(struct request_message *, enum request_type);
+struct dl_pr_partition_response {
+	int32_t dlpr_partition;
+	int16_t dlpr_error_code;
+	int64_t dlpr_base_offset;
+};
+
+struct dl_pr_response {
+	char dl_pr_topic_name[TOPIC_NAME_SIZE];
+	int32_t dlr_num_partition_responses;
+	struct dl_pr_partition_response *dlr_partition_responses;
+	//struct dl_pr_partition_response dlr_partition_responses[1];
+};	
+
+struct dl_produce_response {
+	int32_t dlprs_num_responses;
+	struct dl_pr_response *dlprs_responses;
+	//struct dl_pr_response dlprs_responses[1];
+	int32_t dlprs_throttle_time;
+};
+
+struct dl_fr_partition_response {
+	int32_t dlfrpr_partition;
+	int16_t dlfrpr_error_code;
+	int64_t dlfrpr_high_watermark;
+};
+
+struct dl_fr_response {
+	char dl_fr_topic_name[TOPIC_NAME_SIZE];
+	int32_t dl_fr_num_partition_responses;
+	struct dl_fr_partition_response *dl_fr_partition_responses;
+	//struct dl_pr_partition_response dlr_partition_responses[1];
+};	
+
+struct dl_fetch_response {
+	struct dl_fr_response *dlfrs_responses;
+	int32_t dlfrs_throttle_time;
+	int32_t dlfrs_num_responses;
+};
+
+struct dl_offset_response {
+	char dlors_topic_name[TOPIC_NAME_SIZE];
+	int64_t dlors_offset;
+};
+
+union dl_response_message {
+	//struct metadata_response metadata_response;
+	struct dl_produce_response dlrs_produce_response;
+	struct dl_fetch_response dlrs_fetch_response;
+	struct dl_offset_response dlrs_offset_response;
+	//struct offset_commit_response offset_commit_response;
+	//struct offset_fetch_response offset_fetch_response;
+	//struct group_coordinator_response group_coordinator_response;
+};
+
+struct dl_response {
+	int32_t dlrs_size;
+	int32_t dlrs_correlation_id;
+	union dl_response_message dlrs_message;
+};
+
+struct dl_request_or_response {
+	int32_t dlrx_size;
+};
+
+//extern enum response_type match_requesttype(enum request_type);
+//extern void clear_responsemessage(struct response_message *, enum request_type);
+//extern void clear_requestmessage(struct request_message *, enum request_type);
+extern int read_msg(int, char *);
+
+// TODO: its possible that these functions aren't even required
+extern void dl_build_fetch_request(struct dl_request *, int32_t,
+    char *, va_list);
+extern void dl_build_produce_request(struct dl_request *, int32_t,
+    char *, va_list);
 
 #endif

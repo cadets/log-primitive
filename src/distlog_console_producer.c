@@ -36,6 +36,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "distlog_client.h"
 #include "dl_utils.h"
@@ -44,26 +45,52 @@
 unsigned short PRIO_LOG = PRIO_HIGH;
 
 static char const * const USAGE =
-    "%s: [-p port number] [-t topic] [-h hostname]\n";
+    "%s: [-p port number] [-t topic] [-h hostname] [-v]\n";
 
-static char const * const DEFAULT_CLIENT_ID = "distlog_console_producer";
-static char const * const DEFAULT_TOPIC  = "test";
-static char const * const DEFAULT_HOSTNAME  = "localhost";
-static const int DEFAULT_PORT = 9092;
-static const int DISTLOG_RECORD_SIZE_BYTES = 4096;
+static char const * const DLC_DEFAULT_CLIENT_ID = "distlog_console_producer";
+static char const * const DLC_DEFAULT_TOPIC  = "default";
+static char const * const DLC_DEFAULT_HOSTNAME  = "localhost";
+static const int DLC_DEFAULT_PORT = 9092;
+static const int DLC_DISTLOG_RECORD_SIZE_BYTES = 4096;
 
-static void on_ack(unsigned long);
-// TODO: why isn't this dl_request_message and dl_response_message?
-static void on_response(struct request_message *, struct response_message *);
+static void dlc_siginfo_handler(int);
+static void dlc_sigint_handler(int);
+static void dlc_on_ack(const dl_correlation_id);
+static void dlc_on_response(struct dl_request const * const,
+    struct dl_response const * const);
 
 static void
-on_ack(unsigned long correlation_id)
+dlc_siginfo_handler(int sig)
 {
+	debug(PRIO_LOW, "Caught SIGIFO[%d]\n", sig);
 }
 
 static void
-on_response(struct request_message *rm, struct response_message *rs)
+dlc_sigint_handler(int sig)
 {
+	debug(PRIO_LOW, "Caught SIGINT[%d]\n", sig);
+	
+	/* Deallocate the buffer used to store the user input. */
+	//free(line);
+
+	/* Finalise the distributed log client before finishing. */
+	distlog_client_fini();
+
+	exit(EXIT_SUCCESS);
+}
+
+static void
+dlc_on_ack(const dl_correlation_id id)
+{
+	debug(PRIO_LOW, "Broker acknowledged request: %d\n", id);
+}
+
+static void
+dlc_on_response(struct dl_request const * const request,
+    struct dl_response const * const response)
+{
+	debug(PRIO_LOW, "response size = %d\n", response->dlrs_size);
+	debug(PRIO_LOW, "correlation id = %d\n", response->dlrs_correlation_id);
 }
 
 /**
@@ -72,19 +99,19 @@ on_response(struct request_message *rm, struct response_message *rs)
 int
 main(int argc, char **argv)
 {
-	struct client_configuration cc;
-	char * client_id = DEFAULT_CLIENT_ID;
-	char * topic = DEFAULT_TOPIC;
-	char * hostname = DEFAULT_HOSTNAME;
+	struct dl_client_configuration cc;
+	char * client_id = DLC_DEFAULT_CLIENT_ID;
+	char * topic = DLC_DEFAULT_TOPIC;
+	char * hostname = DLC_DEFAULT_HOSTNAME;
 	char * line;
-	int port = DEFAULT_PORT;
+	int port = DLC_DEFAULT_PORT;
 	int resend_timeout = 40;
 	int opt, rc;
 	size_t len = 0;
 	size_t read = 0;
 
 	/* Parse the utilities command line arguments. */
-	while ((opt = getopt(argc, argv, "c::t::h::p::")) != -1) {
+	while ((opt = getopt(argc, argv, "c::t::h::p::v")) != -1) {
 		switch (opt) {
 		case 'c':
 			client_id = optarg;
@@ -98,6 +125,9 @@ main(int argc, char **argv)
 		case 'p':
 			port = strtoul(optarg, NULL, 10);
 			break;
+		case 'v':
+			PRIO_LOG = PRIO_LOW;
+			break;
 		default:
 			fprintf(stderr, USAGE, argv[0]);
 			exit(EXIT_FAILURE);
@@ -105,26 +135,30 @@ main(int argc, char **argv)
 		}
 	}
 
+	/* Install signal handler to terminate broker cleanly on SIGINT. */	
+	signal(SIGINT, dlc_sigint_handler);
+
+	/* Install signal handler to report broker statistics. */
+	signal(SIGINFO, dlc_siginfo_handler);
+
 	/* Configure and initialise the distributed log client. */
 	cc.to_resend = true;
 	cc.resender_thread_sleep_length = 10;
 	cc.request_notifier_thread_sleep_length = 3;
 	cc.reconn_timeout = 5;
 	cc.poll_timeout = 3000;
-	cc.on_ack = on_ack;
-	cc.on_response = on_response;
+	cc.dlcc_on_ack = dlc_on_ack;
+	cc.dlcc_on_response = dlc_on_response;
 
 	rc = distlog_client_init(hostname, port, &cc);
         if (rc != 0) {
-
 		fprintf(stderr,
-		    "Error initialising the distributed log client %d.\n",
-		    rc);
+		    "Error initialising the distributed log client %d.\n", rc);
 		exit(EXIT_FAILURE);
 	}
   
        	/* Allocate memory for the user input. */	
-	len = DISTLOG_RECORD_SIZE_BYTES; 
+	len = DLC_DISTLOG_RECORD_SIZE_BYTES; 
 	line = malloc(len * sizeof(char));
 
        	/* Echo from the command line to the distributed log. */	
@@ -136,8 +170,8 @@ main(int argc, char **argv)
 			 */
 			line[strlen(line) - 1] = '\0';
 
-			rc = distlog_send_request(0, REQUEST_PRODUCE,
-			    client_id, cc.to_resend, resend_timeout, topic,
+			rc = distlog_send(0, client_id, cc.to_resend,
+			    resend_timeout, topic,
 			    1, "key", line);
 			if (rc != 0) {
 				fprintf(stderr,

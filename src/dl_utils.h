@@ -42,7 +42,7 @@
 #include <pthread.h>
 #include <dirent.h>
 
-#include "dl_protocol_common.h"
+//#include "dl_protocol_common.h"
 
 #define MAX_FILENAME_SIZE 30
 

@@ -37,10 +37,9 @@
 #ifndef _DL_PROTOCOL_ENCODER_H
 #define _DL_PROTOCOL_ENCODER_H
 
-#include "message.h"
 #include "dl_protocol.h"
-#include "dl_protocol_common.h"
 
+/*
 extern int MESSAGESETSIZE_FIELD_SIZE;
 extern int NUM_SOR_FIELD_SIZE;
 extern int NUM_PARTITIONS_FIELD_SIZE;
@@ -136,8 +135,11 @@ extern int OFFSET_FETCH_RESPONSE_SIZE_FIELD_SIZE;
 extern int PARTITIONERRORCODE_FIELD_SIZE;
 extern int PORT_FIELD_SIZE;
 
-extern int dl_encode_requestmessage(struct request_message *, char **);
 extern int dl_encode_responsemessage(struct response_message *, char **,
     enum response_type);
+*/
+
+// TODO: New API
+extern int dl_encode_request(struct dl_request const *, char const *);
 
 #endif

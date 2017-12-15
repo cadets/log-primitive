@@ -58,8 +58,6 @@
 #include "dl_protocol_parser.h"
 #include "dl_utils.h"
 
-#include "message.h"
-
 
 /* TODO: Record statistics for the broker */
 struct dl_broker_statistics {
@@ -77,8 +75,8 @@ struct dl_processor_argument {
 
 static void dl_accept_loop(int, struct broker_configuration *);
 static int dl_assign_to_processor(int, int);
-static int dl_broker_handle(struct request_message * const,
-    struct response_message * const);
+static int dl_broker_handle(struct dl_request * const,
+    struct dl_response * const);
 static void * dl_fsync_thread(void *);
 static void dl_processor(struct dl_processor_argument *);
 static void * dl_processor_thread(void *);
@@ -88,10 +86,9 @@ static void dl_start_processor_threads(
     struct broker_configuration const * const);
 static int dl_allocate_broker_datastructures(struct broker_configuration *);
 static void dl_close_listening_socket(int);
-static int dl_handle_request_produce(struct request_message *,
-    struct response_message *);
-static int dl_handle_request_fetch(struct request_message *,
-    struct response_message *);
+static int dl_handle_request_produce(struct dl_request *,
+    struct dl_response *);
+static int dl_handle_request_fetch(struct dl_request *, struct dl_response *);
 static int dl_free_datastructures();
 static int dl_init_listening_socket(int);
 static void dl_start_fsync_thread(struct broker_configuration *);
@@ -105,7 +102,7 @@ static struct thread_to_proc_pool thread_to_proc_pools[NUM_PROCESSORS];
 static pthread_mutex_t thread_to_proc_pool_mtx[NUM_PROCESSORS];
 
 struct request_pool_element {
-	struct request_message req_msg;
+	struct dl_request req_msg;
 	STAILQ_ENTRY(request_pool_element) entries;
 	int fd;
 };
@@ -113,7 +110,7 @@ STAILQ_HEAD(request, request_pool_element);
 static struct request unprocessed_requests;
 
 struct response_pool_element {
-	struct response_message rsp_msg;
+	struct dl_response rsp_msg;
 	STAILQ_ENTRY(response_pool_element) entries;
 	int fd;
 };
@@ -185,36 +182,37 @@ dl_assign_to_processor(int processorid, int conn_fd)
 
 // TODO: In the current implementation response can be NULL, need to fix
 static int
-dl_broker_handle(struct request_message * const request,
-    struct response_message * const response)
+dl_broker_handle(struct dl_request * const request,
+    struct dl_response * const response)
 {
 	DL_ASSERT(request != NULL, "RequestMessage cannot be NULL");
 	DL_ASSERT(response != NULL, "ResponseMessage cannot be NULL");
 
-	clear_responsemessage(response, request->api_key);
-	response->correlation_id = request->correlation_id;
+	// TODO: remove this
+	// clear_responsemessage(response, request->dlrqm_api_key);
+	response->dlrs_correlation_id = request->dlrqm_correlation_id;
 	
 	debug(PRIO_NORMAL, "CorrelationId: %d ClientID: %s\n",
-	    request->correlation_id, request->client_id);
-	switch (request->api_key) {
-	case REQUEST_PRODUCE:;
+	    request->dlrqm_correlation_id, request->dlrqm_client_id);
+	switch (request->dlrqm_api_key) {
+	case DL_PRODUCE_REQUEST:;
 		debug(PRIO_NORMAL, "Got a request_process message\n");
 		dl_handle_request_produce(request, response);
 		break;
-	case REQUEST_OFFSET_COMMIT:
-		break;
-	case REQUEST_OFFSET:
-		break;
-	case REQUEST_FETCH:
+	case DL_FETCH_REQUEST:
 		debug(PRIO_NORMAL, "Got a request_fetch message\n");
 		// TODO: handle return codes properly
 		return dl_handle_request_fetch(request, response);
 		break;
-	case REQUEST_OFFSET_FETCH:
+	case DL_OFFSET_REQUEST:
 		break;
-	case REQUEST_METADATA:
+	case DL_OFFSET_COMMIT_REQUEST:
 		break;
-	case REQUEST_GROUP_COORDINATOR:
+	case DL_OFFSET_FETCH_REQUEST:
+		break;
+	case DL_METADATA_REQUEST:
+		break;
+	case DL_COORDINATOR_REQUEST:
 		break;
 	}
 	debug(PRIO_LOW, "Finished dl_broker_handle\n");
@@ -222,11 +220,12 @@ dl_broker_handle(struct request_message * const request,
 }
 
 static int
-dl_handle_request_fetch( struct request_message *req_msg,
-    struct response_message *rsp_msg)
+dl_handle_request_fetch(struct dl_request *req_msg,
+    struct dl_response *rsp_msg)
 {
-	struct fetch_request *curfreq;
-	struct fetch_response *curfres = &rsp_msg->rm.fetch_response;
+	struct dl_fetch_request *curfreq;
+	struct dl_fetch_response *curfres =
+	    &rsp_msg->dlrs_message.dlrs_fetch_response;
 	int csfr = 0, cssfr = 0, curm = 0, first_time = 1;
 	int topic_name_len;
 	int bytes_so_far = 0;
@@ -237,8 +236,8 @@ dl_handle_request_fetch( struct request_message *req_msg,
 
 	debug(PRIO_NORMAL, "Request: %p Response: %p\n", req_msg, rsp_msg);
 
-	curfreq = &req_msg->rm.fetch_request;
-	current_topic_name = curfreq->topic_name.topic_name;
+	curfreq = &req_msg->dlrqm_message.dlrqmt_fetch_request;
+	current_topic_name = curfreq->dlfr_topic_name;
 	topic_name_len = strlen(current_topic_name);
 
 	debug(PRIO_NORMAL, "The associated topic name is: %s\n",
@@ -246,14 +245,17 @@ dl_handle_request_fetch( struct request_message *req_msg,
 
 	debug(PRIO_NORMAL,
 	    "Fetching messages from %s starting at offset %ld\n",
-	    curfreq->topic_name.topic_name, curfreq->fetch_offset);
+	    curfreq->dlfr_topic_name, curfreq->dlfr_fetch_offset);
 
 	long handle_start = time(NULL);
 
-	long current_offset = curfreq->fetch_offset;
+	long current_offset = curfreq->dlfr_fetch_offset;
 
-	curfres->num_sfr = 0; //Currently the only supported mode
-	while ((time(NULL) - handle_start) < curfreq->max_wait_time) {
+       	// TODO: Currently the only supported mode, this is nonsense
+	// that again needs fixing
+	/*
+	curfres->dlfrs_num_responses = 0;
+	while ((time(NULL) - handle_start) < curfreq->dlfr_max_wait_time) {
 		if (first_time) {
 			debug(PRIO_NORMAL,
 			    "The first time for the given configuration:\n\t"
@@ -261,7 +263,7 @@ dl_handle_request_fetch( struct request_message *req_msg,
 			    curm);
 			memcpy(curfres->sfr[csfr].topic_name.topic_name,
 				current_topic_name, topic_name_len);
-			curfres->throttle_time = 0; //TODO: IMPLEMENT IF NEEDED
+			curfres->dlfrs_throttle_time = 0; //TODO: IMPLEMENT IF NEEDED
 			//TODO: implement getting the last possible offset
 			curfres->sfr[csfr].ssfr[cssfr].highway_mark_offset = 0;
 			curfres->sfr[csfr].ssfr[cssfr].partition = 0;
@@ -326,12 +328,13 @@ dl_handle_request_fetch( struct request_message *req_msg,
 		curm += 1;
 		current_offset += 1;
 
-		if (bytes_so_far >=curfreq->max_bytes) {
+		if (bytes_so_far >=curfreq->dlfr_max_bytes) {
 			break;
 		}
 	}
+	*/
 
-	if (bytes_so_far < curfreq->min_bytes) {
+	if (bytes_so_far < curfreq->dlfr_min_bytes) {
 		// Do not send anything
 		return 0;
 	}
@@ -340,8 +343,8 @@ dl_handle_request_fetch( struct request_message *req_msg,
 }
 
 static int
-dl_handle_request_produce(struct request_message *req_msg,
-    struct response_message *rsp_msg)
+dl_handle_request_produce(struct dl_request *req_msg,
+    struct dl_response *rsp_msg)
 {
 	char * current_topic_name;
 
@@ -351,16 +354,18 @@ dl_handle_request_produce(struct request_message *req_msg,
 	debug(PRIO_NORMAL,
 		"Inserting messages into the topicname '%s'\n",
 		current_topic_name);
-	
+
+	// TODO: this doesn't appear to handle batching correctly	
 	current_topic_name =
-	    req_msg->rm.produce_request.spr.topic_name.topic_name;
+	    req_msg->dlrqm_message.dlrqmt_produce_request.dlpr_topic_name;
+	    //req_msg->dlrqm_message.dlrqmt_produce_request.spr.topic_name.topic_name;
 
 	if (rsp_msg) {
 		int topic_name_len = strlen(current_topic_name);
 		debug(PRIO_NORMAL, "There is a response needed [%d]\n",
-		    req_msg->correlation_id);
-
-		/* Get the current subproduce */
+		    req_msg->dlrqm_correlation_id);
+		/*
+		// Get the current subproduce
 		int current_subreply =
 		    rsp_msg->rm.produce_response.num_sub;
 
@@ -411,9 +416,10 @@ dl_handle_request_produce(struct request_message *req_msg,
 			curr_sspr->error_code = curr_repl;
 			// TODO: implement the proper partitions
 			curr_sspr->partition = 1;
-		}
+		}*/
 	} else {
 		debug(PRIO_LOW, "There is no response needed\n");
+		/*
 		for (int i = 0;
 			i < req_msg->rm.produce_request.spr.sspr.mset.num_elems;
 			i++) {
@@ -432,6 +438,7 @@ dl_handle_request_produce(struct request_message *req_msg,
 				// TODO: What to do if the CRCs don't match?
 			}
 		}
+		*/
 	}
 	return 0;
 }
@@ -545,8 +552,6 @@ dl_processor(struct dl_processor_argument *pa)
 	char send_out_buf[MTU];
 	struct pollfd ufds[CONNECTIONS_PER_PROCESSOR];
 
-	debug(PRIO_LOW, "Processor thread with id %d started...\n", pa->index);
-
 	/* Defer cancellation of the thread until the cancellation point 
 	 * pthread_testcancel(). This ensures that thread isn't cancelled until
 	 * outstanding requests have been processed.
@@ -582,6 +587,7 @@ dl_processor(struct dl_processor_argument *pa)
 				
 					msg_size = read_msg(
 					    ufds[connection].fd, pbuf);
+
 					if (msg_size > 0) {
 						struct request_pool_element *request;
 						request = (struct request_pool_element *)
@@ -589,10 +595,14 @@ dl_processor(struct dl_processor_argument *pa)
 						if (request != NULL) {
 							debug(PRIO_LOW, "Enqueuing: '%s'\n", pbuf);
 
-							clear_requestmessage(
-							&request->req_msg,
-							dl_get_apikey(pbuf));
-							dl_parse_requestmessage(&request->req_msg, pbuf);
+							// TODO: add new function to parse the binary Kafak request
+							//clear_requestmessage(
+							//    &request->req_msg,
+							//    dl_get_apikey(pbuf));
+
+							//dl_parse_requestmessage(&request->req_msg, pbuf);
+							// TODO: 
+							//
 							request->fd = ufds[connection].fd;
 						
 							// TODO: Not MT safe	
@@ -611,6 +621,7 @@ dl_processor(struct dl_processor_argument *pa)
 						//This is the disconnect. Maybe need to clean the
 						//responses to this guy. Not sure how to do that
 						//yet. TODO: decide
+						printf("Here\n");
 						pthread_mutex_lock(
 						    &thread_to_proc_pool_mtx[pa->index]);
 						LIST_REMOVE(element, entries);
@@ -639,17 +650,15 @@ dl_processor(struct dl_processor_argument *pa)
 			struct response_pool_element *response =
 			    (struct response_pool_element *) distlog_alloc(sizeof(struct response_pool_element));;
 
-			struct request_message *rmsg =
-				(struct request_message *) &rq_temp->req_msg;
-			struct request_message *req_msg =
-				(struct Request_message*) &rq_temp->req_msg;
+			struct dl_request *rmsg = &rq_temp->req_msg;
+			struct dl_request *req_msg = &rq_temp->req_msg;
 			response->fd = rq_temp->fd;
 
 			int sh = dl_broker_handle(req_msg, &response->rsp_msg);
 			if (sh > 0) {
 				debug(PRIO_NORMAL,
-					"dl_broker_handle finished "
-					"with code %d\n", sh);
+				    "dl_broker_handle finished with code %d\n",
+				    sh);
 				if(pa->config->val &
 					BROKER_FSYNC_ALWAYS) {
 					lock_seg(ptr_seg);
@@ -657,13 +666,14 @@ dl_processor(struct dl_processor_argument *pa)
 					fsync(ptr_seg->_index);
 					ulock_seg(ptr_seg);
 
-					if ((rmsg->api_key == REQUEST_PRODUCE) &&
-						(!rmsg->rm.produce_request.required_acks)) {
-						struct response_message* myres = &response->rsp_msg;
-						int fi = wrap_with_size(&response->rsp_msg, &pbuf, send_out_buf, rmsg->api_key);
+					if ((rmsg->dlrqm_api_key == DL_PRODUCE_REQUEST) &&
+						(!rmsg->dlrqm_message.dlrqmt_produce_request.dlpr_required_acks)) {
+						struct dl_response *myres = &response->rsp_msg;
+						//int fi = wrap_with_size(&response->rsp_msg, pbuf, send_out_buf, rmsg->api_key);
+						// TODO: encode response in send_out_buf?
 						debug(PRIO_NORMAL, "Sending: '%s'\n", send_out_buf);
 						// TODO: handle return codes
-						send(response->fd, send_out_buf, fi, 0);
+						//send(response->fd, send_out_buf, fi, 0);
 
 						distlog_free(response);
 						/* Return the response to the
@@ -752,19 +762,15 @@ dl_fsync_thread(void *vargp)
 		}
 		pthread_mutex_unlock(&unfsynced_responses_mtx);
 
-		STAILQ_FOREACH_SAFE(response,
-			&responses, entries,
-			response_temp) {
+		STAILQ_FOREACH_SAFE(response, &responses, entries,
+		    response_temp) {
 			debug(PRIO_LOW, "Unfsynching: %d\n",
-			response->rsp_msg.correlation_id);
+			    response->rsp_msg.dlrs_correlation_id);
 		
-			int fi = wrap_with_size(
-				&response->rsp_msg, &pbuf,
-				send_out_buf,
-				(enum request_type) response->fd);
-			debug(PRIO_NORMAL, "Sending: '%s'\n",
-				send_out_buf);
-			rc = send(response->fd, send_out_buf, fi, 0);
+			//int fi = wrap_with_size(&response->rsp_msg, pbuf,
+			//    send_out_buf, (enum request_type) response->fd);
+			debug(PRIO_NORMAL, "Sending: '%s'\n", send_out_buf);
+			//rc = send(response->fd, send_out_buf, fi, 0);
 			if (rc != -1) {
 				/* Response has been ack'd, remove it from the
 				 * unfsynced_responses and return to the
@@ -809,14 +815,12 @@ dl_start_fsync_thread(struct broker_configuration *conf)
 {
 	int ret;
 
-	fsy_args.tid   = NULL;
-	fsy_args.config = conf;
-	fsy_args.index = 0;
-
 	/* TODO: handle error creating thread */
 	ret = pthread_create(&fsy_thread, NULL, dl_fsync_thread, &fsy_args);
 	if (ret == 0) {
 		fsy_args.tid = &fsy_thread;
+		fsy_args.config = conf;
+		fsy_args.index = 0;
 	}
 }
 
@@ -830,7 +834,7 @@ dl_close_listening_socket(int sockfd)
 static void
 dl_siginfo_handler(int dummy)
 {
-	debug(PRIO_NORMAL, "Caught SIGIFO[%d]\n", dummy);
+	debug(PRIO_LOW, "Caught SIGIFO[%d]\n", dummy);
 }
 
 static void

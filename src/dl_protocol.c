@@ -39,99 +39,173 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+//#include "message.h"
+//#include "dl_protocol_common.h"
+
+#include "dl_assert.h"
 #include "dl_protocol.h"
-#include "dl_protocol_common.h"
-#include "message.h"
 #include "dl_common.h"
+#include "dl_utils.h"
 
-void
-build_req(struct request_message* rq, enum request_type rt, int correlation_id,
-	char* client_id, va_list varlist)
+int
+read_msg(int fd, char *saveto)
 {
-	rq->api_key = rt;
-	memcpy(rq->client_id, client_id, strlen(client_id));
-	rq->correlation_id = correlation_id;
+	char *buffer = saveto;
+	struct dl_request_or_response req_or_res;
+	int ret;
+	int total = 0;
 
-	char* topic_name;
+	printf("buffer = %p\n", buffer);
 
-	switch (rt) {
-	case REQUEST_PRODUCE:
-	    topic_name = va_arg(varlist, char*);
-	    int ms_size = va_arg(varlist, int);
+	/* Read the size of the request or response to process. */
+	ret = recv(fd, buffer, sizeof(req_or_res.dlrx_size), 0);
+	debug(PRIO_LOW, "Read %d bytes (%s)...\n", ret, buffer);
+	if (ret > 0) {
+		if (dl_decode_request_or_response(&req_or_res, buffer)) {
+			debug(PRIO_LOW, "\tNumber of bytes: %d\n",
+			    req_or_res.dlrx_size);
 
-	    rq->rm.produce_request.required_acks = 1;
-	    rq->rm.produce_request.timeout = -1;
-	    memcpy(rq->rm.produce_request.spr.topic_name.topic_name,
-		topic_name, strlen(topic_name));
+			buffer += sizeof(int32_t);
 
-	    rq->rm.produce_request.spr.sspr.message_set_size = ms_size;
-	    rq->rm.produce_request.spr.sspr.mset.num_elems = ms_size;
+			while (total < req_or_res.dlrx_size) {
+				ret = recv(fd, &buffer[total], req_or_res.dlrx_size-total, 0);
+				debug(PRIO_LOW, "\tRead %d characters; expected %d\n",
+				ret, req_or_res.dlrx_size);
+				total += ret;
+			}
 
-	    long timestamp = time(NULL);
-	    for (int i=0; i<ms_size; i++) {
-		char* remp = va_arg(varlist, char*);
+			for (int b = 0; b < req_or_res.dlrx_size; b++) {
+				printf("0x%02X\n", buffer[b]);
+			}
 
-		memcpy(
-		    rq->rm.produce_request.spr.sspr.mset.elems[i].message.value,
-		    remp, strlen(remp));
-		rq->rm.produce_request.spr.sspr.mset.elems[i].message.timestamp =
-		    timestamp;
-		rq->rm.produce_request.spr.sspr.mset.elems[i].message.crc =
-		    get_crc(remp, strlen(remp));
-	    }
-	    break;
-	case REQUEST_FETCH:
-		topic_name = va_arg(varlist, char*);
-		long fetch_offset = va_arg(varlist, long);
-		int maxbytes = va_arg(varlist, int);
-		int minbytes = va_arg(varlist, int);
-		memcpy(rq->rm.fetch_request.topic_name.topic_name, topic_name,
-			strlen(topic_name));
-		rq->rm.fetch_request.replica_id = -1;
-		rq->rm.fetch_request.partition = 1;
-		rq->rm.fetch_request.max_wait_time = 100;
-		rq->rm.fetch_request.max_bytes = maxbytes;
-		rq->rm.fetch_request.min_bytes = minbytes;
-		rq->rm.fetch_request.fetch_offset = fetch_offset;
-		break;
-	case REQUEST_OFFSET:
-		/* FALLTHROUGH */
-	case REQUEST_OFFSET_COMMIT:
-		/* FALLTHROUGH */
-	case REQUEST_OFFSET_FETCH:
-		/* FALLTHROUGH */
-	case REQUEST_METADATA:
-		/* FALLTHROUGH */
-	case REQUEST_GROUP_COORDINATOR:
-		/* FALLTHROUGH */
-	default:
-		break;
+			return ret;
+		}
+	} else {
+		return -1;
 	}
 }
 
+void
+dl_build_fetch_request(struct dl_request *req_msg,
+    int32_t correlation_id, char *client_id, va_list varlist)
+{
+	struct dl_fetch_request *request;
+	long timestamp;
+	int message_it;
+
+	DL_ASSERT(req_msg != NULL, "Request message cannot be NULL");
+	    
+	char *topic_name = va_arg(varlist, char*);
+	long fetch_offset = va_arg(varlist, long);
+	int maxbytes = va_arg(varlist, int);
+	int minbytes = va_arg(varlist, int);
+
+	printf("fetch request topic = %s\n", topic_name);
+	printf("fetch request address = %p\n", req_msg);
+	
+	/* Construct the produce request header. */	
+	req_msg->dlrqm_api_key = DL_FETCH_REQUEST;
+	req_msg->dlrqm_api_version = 1; // TODO: fixed version of API
+	req_msg->dlrqm_correlation_id = correlation_id;
+	strlcpy(req_msg->dlrqm_client_id, client_id, DL_MAX_CLIENT_ID);
+
+        /* Construct the fetch request body. */
+	request = &req_msg->dlrqm_message.dlrqmt_fetch_request;
+
+	request->dlfr_replica_id = -1;
+	request->dlfr_max_wait_time = 1000;
+	request->dlfr_min_bytes = minbytes;
+	strlcpy(request->dlfr_topic_name, topic_name, TOPIC_NAME_SIZE);
+	request->dlfr_partition = 0;
+	request->dlfr_fetch_offset = fetch_offset;
+	request->dlfr_max_bytes = maxbytes;
+}
+
+void
+dl_build_produce_request(struct dl_request *req_msg,
+    int32_t correlation_id, char *client_id, va_list varlist)
+{
+	struct dl_produce_request *produce_request;
+	long timestamp;
+	int message_it;
+
+	DL_ASSERT(req_msg != NULL, "Request message cannot be NULL");
+	    
+	char *topic_name = va_arg(varlist, char*);
+	int message_set_size = va_arg(varlist, int);
+
+	printf("topic = %s, mss = %d\n", topic_name, message_set_size);
+	
+	/* Construct the produce request header. */	
+	req_msg->dlrqm_api_key = DL_PRODUCE_REQUEST;
+	// TODO remove this
+	//req_msg->dlrqm_api_version = 1; // TODO: fixed version of API
+	req_msg->dlrqm_correlation_id = correlation_id;
+	strlcpy(req_msg->dlrqm_client_id, client_id, DL_MAX_CLIENT_ID);
+
+        /* Construct the produce request body. */
+	produce_request = &req_msg->dlrqm_message.dlrqmt_produce_request;
+
+	// TODO: surely this comes from the client or the configuration
+	produce_request->dlpr_required_acks = 1;
+	// TODO: the time to await a response
+	produce_request->dlpr_timeout = 0; //-1;
+	strlcpy(produce_request->dlpr_topic_name, topic_name,
+	    TOPIC_NAME_SIZE);
+	// TODO :default partition = 0
+	produce_request->dlpr_partition = 0;
+	
+	timestamp = time(NULL);
+	produce_request->dlpr_message_set_size = message_set_size;
+	for (message_it = 0; message_it < message_set_size; message_it++) {
+		char *key = va_arg(varlist, char *);
+		char *value = va_arg(varlist, char *);
+		/*
+		 *
+		 * offset and size needed for encoding only?
+		produce_request->dlpr_message_setset[message].dlms_message.crc =
+		produce_request->dlpr_message_setset[message].dlms_message.crc =
+		*/
+
+		/* Construct the message. */
+		struct dl_message *message =
+		    &produce_request->dlpr_message_set[message_it].dlms_message;
+		printf("build = %p\n", message);
+
+		message->dlm_crc = 0; // get_crc(value, strlen(value));
+		message->dlm_magic_byte = 1; // TODO: const
+                message->dlm_attributes = 0; // TODO: &= DL_MSG_ATTR_LOG_APPEND_TIME;
+		message->dlm_timestamp = timestamp;
+		// TODO: The key can be NULL
+		memcpy(message->dlm_key, key, strlen(key));
+		memcpy(message->dlm_value, value, strlen(value));
+	}
+}
+
+/*
 enum response_type
 match_requesttype(enum request_type rt)
 {
 	switch(rt){
-		case REQUEST_PRODUCE:
-			return RESPONSE_PRODUCE;
-		case REQUEST_FETCH:
-			return RESPONSE_FETCH;
-		case REQUEST_OFFSET:
-			return RESPONSE_OFFSET;
-		case REQUEST_METADATA:
-			return RESPONSE_METADATA;
-		case REQUEST_OFFSET_FETCH:
-			return RESPONSE_OFFSET_FETCH;
-		case REQUEST_OFFSET_COMMIT:
-			return RESPONSE_OFFSET_COMMIT;
-		case REQUEST_GROUP_COORDINATOR:
-			return RESPONSE_GROUP_COORDINATOR;
+	case REQUEST_PRODUCE:
+		return RESPONSE_PRODUCE;
+	case REQUEST_FETCH:
+		return RESPONSE_FETCH;
+	case REQUEST_OFFSET:
+		return RESPONSE_OFFSET;
+	case REQUEST_METADATA:
+		return RESPONSE_METADATA;
+	case REQUEST_OFFSET_FETCH:
+		return RESPONSE_OFFSET_FETCH;
+	case REQUEST_OFFSET_COMMIT:
+		return RESPONSE_OFFSET_COMMIT;
+	case REQUEST_GROUP_COORDINATOR:
+		return RESPONSE_GROUP_COORDINATOR;
 	}
 	return RESPONSE_PRODUCE;
 }
 
-correlationId_t
+dl_correlation_id
 get_corrid(char *beg)
 {
 	return get_int(beg, CORRELATIONID_FIELD_SIZE);
@@ -206,32 +280,32 @@ clear_group_coordinator_responsemessage(struct group_coordinator_response *gcr)
 void
 clear_responsemessage(struct response_message *rm, enum request_type rt)
 {
-    switch(rt){
-        case REQUEST_FETCH:
+	switch(rt){
+	case REQUEST_FETCH:
 		clear_fetch_responsemessage(&rm->rm.fetch_response);
 		break;
-        case REQUEST_OFFSET:
+	case REQUEST_OFFSET:
 		clear_offset_responsemessage(&rm->rm.offset_response);
 		break;
-        case REQUEST_PRODUCE:
+	case REQUEST_PRODUCE:
 		clear_produce_responsemessage(&rm->rm.produce_response);
 		break;
-        case REQUEST_METADATA:
+	case REQUEST_METADATA:
 		clear_metadata_responsemessage(&rm->rm.metadata_response);
 		break;
-        case REQUEST_OFFSET_FETCH:
+	case REQUEST_OFFSET_FETCH:
 		clear_offsetfetch_responsemessage(
-		    &rm->rm.offset_fetch_response);
+			&rm->rm.offset_fetch_response);
 		break;
-        case REQUEST_OFFSET_COMMIT:
+	case REQUEST_OFFSET_COMMIT:
 		clear_offsetcommit_responsemessage(
-		    &rm->rm.offset_commit_response);
+			&rm->rm.offset_commit_response);
 		break;
-        case REQUEST_GROUP_COORDINATOR:
+	case REQUEST_GROUP_COORDINATOR:
 		clear_group_coordinator_responsemessage(
-		    &rm->rm.group_coordinator_response);
+			&rm->rm.group_coordinator_response);
 		break;
-    }
+	}
 }
 
 void
@@ -280,6 +354,7 @@ clear_group_coordinator_requestmessage(struct group_coordinator_request *gcr)
 void
 clear_requestmessage(struct request_message *rm, enum request_type rt)
 {
+	printf("rt = %d\n", rt);
 	switch(rt) {
 	case REQUEST_FETCH:
 		clear_fetch_requestmessage(&rm->rm.fetch_request);
@@ -306,3 +381,4 @@ clear_requestmessage(struct request_message *rm, enum request_type rt)
 		break;
 	}       
 }
+*/

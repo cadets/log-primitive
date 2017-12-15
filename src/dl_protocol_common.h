@@ -142,7 +142,7 @@ struct message_holder {
 	int fd;
 };
 
-extern correlationId_t get_corrid(char *);
+extern dl_correlation_id get_corrid(char *);
 extern void build_req(struct request_message *, enum request_type,
 	int, char *, va_list);
 

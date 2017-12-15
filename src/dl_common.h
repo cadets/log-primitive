@@ -41,7 +41,35 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+//#include "distlog_client.h"
 #include "dl_protocol.h" 
+
+typedef int32_t dl_correlation_id;
+
+typedef void (* dl_ack_function) (const dl_correlation_id);
+typedef void (* dl_response_function) (struct dl_request const * const,
+    struct dl_response const * const);
+
+enum broker_confs {
+	BROKER_SEND_ACKS = 1 << 1,
+	BROKER_FSYNC_ALWAYS = 1 << 2,
+};
+
+struct broker_configuration {
+	int fsync_thread_sleep_length;
+	int processor_thread_sleep_length;
+	int val;
+};
+
+struct dl_client_configuration {
+	dl_ack_function dlcc_on_ack;
+	dl_response_function dlcc_on_response;
+	int to_resend;
+	int resender_thread_sleep_length;
+	int request_notifier_thread_sleep_length;
+	int reconn_timeout;
+	int poll_timeout;
+};
 
 static const int MAX_NUM_REQUESTS_PER_PROCESSOR  = 128; // Maximum outstanding requests per processor.
 static const int NUM_PROCESSORS                  = 10;   // Number of processors.
@@ -49,33 +77,6 @@ static const int MAX_NUM_RESPONSES_PER_PROCESSOR = 128; // Maximum outstanding r
 static const int CONNECTIONS_PER_PROCESSOR       = 10; // Number of connections per processor.
 static const int MAX_NUM_UNFSYNCED = 20; // Maximum number of unfsynced inserts
 
-typedef void (* ack_function) (unsigned long);
-typedef void (* response_function) (struct request_message *,
-    struct response_message *);
-
-typedef int correlationId_t;
-
-enum broker_confs {
-	BROKER_SEND_ACKS = 1 << 1,
-	BROKER_FSYNC_ALWAYS = 1 << 2,
-};
-
-struct broker_configuration{
-	int	fsync_thread_sleep_length;
-	int	processor_thread_sleep_length;
-	int	val;
-};
-
-struct client_configuration{
-	ack_function		on_ack;
-	response_function	on_response;
-	int 	to_resend;
-	int	resender_thread_sleep_length;
-	int	request_notifier_thread_sleep_length;
-	int	reconn_timeout;
-	int	poll_timeout;
-};
-
-extern void	print_configuration(struct broker_configuration *);
+extern void print_configuration(struct broker_configuration *);
 
 #endif
