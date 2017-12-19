@@ -29,6 +29,17 @@
 # SUCH DAMAGE.
 #
 
-TEST_SUBDIRS+= protocol
 
-.include <bsd.test.mk>
+#MAKEOBJDIRPREFIX:= obj
+#MK_AUTO_OBJ:= yes
+.include <bsd.obj.mk>
+#.include <auto.obj.mk>
+
+LIB:= distlog
+LIBDIR:= /usr/local/lib
+SRCS!= find . -type f -name '*.c'
+
+CFLAGS:= -g -Wextra -Wall -Wno-unused-variable -Wno-unused-parameter \
+	 -Wno-unused-command-line-arguments
+
+.include <bsd.lib.mk>

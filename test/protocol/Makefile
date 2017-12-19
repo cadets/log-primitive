@@ -29,6 +29,7 @@
 # SUCH DAMAGE.
 #
 
-TEST_SUBDIRS+= protocol
+ATF_TESTS_C= atf_protocol_test
+KYUAFILE= yes
 
 .include <bsd.test.mk>

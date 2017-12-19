@@ -29,6 +29,17 @@
 # SUCH DAMAGE.
 #
 
-TEST_SUBDIRS+= protocol
+PROGS= distlog_console_producer distlog_console_consumer
 
-.include <bsd.test.mk>
+SRCS.distlog_console_producer= distlog_console_producer.c
+MAN.distlog_console_producer=
+
+SRCS.distlog_console_consumer= distlog_console_consumer.c
+MAN.ditlog_console_consumer=
+
+LDADD+= -lz
+LDADD+= -lpthread
+LDADD+= -lm
+LDADD+= $(SRCDIR)/libdistlog.a
+
+.include <progs.mk>
