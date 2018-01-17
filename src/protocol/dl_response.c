@@ -39,9 +39,8 @@
 
 #include "dl_assert.h"
 #include "dl_memory.h"
+#include "dl_primitive_types.h"
 #include "dl_protocol.h"
-#include "dl_protocol_parser.h"
-#include "dl_protocol_encoder.h"
 #include "dl_response.h"
 
 // response header?

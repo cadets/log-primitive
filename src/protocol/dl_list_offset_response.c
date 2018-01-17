@@ -40,9 +40,8 @@
 #include "dl_assert.h"
 #include "dl_list_offset_response.h"
 #include "dl_memory.h"
+#include "dl_primitive_types.h"
 #include "dl_protocol.h"
-#include "dl_protocol_parser.h"
-#include "dl_protocol_encoder.h"
 
 int
 dl_decode_offset_response(struct dl_offset_response *response,

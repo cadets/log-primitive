@@ -42,7 +42,6 @@
 #include "dl_memory.h"
 #include "dl_protocol.h"
 #include "dl_request.h"
-#include "dl_protocol_parser.h"
 #include "dl_transport.h"
 #include "dl_utils.h"
 

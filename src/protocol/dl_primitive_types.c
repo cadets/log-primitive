@@ -53,7 +53,6 @@
 #include <stdlib.h>
 
 #include "dl_assert.h"
-#include "dl_protocol_encoder.h"
 
 int8_t
 dl_decode_int8(char const * buffer)

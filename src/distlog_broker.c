@@ -59,10 +59,6 @@
 #include "dl_transport.h"
 #include "dl_utils.h"
 
-// TODO: these shouldn't be needed
-#include "dl_protocol_encoder.h"
-#include "dl_protocol_parser.h"
-
 /* TODO: Record statistics for the broker */
 struct dl_broker_statistics {
 };

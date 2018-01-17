@@ -52,8 +52,6 @@
 #include "distlog_client.h"
 #include "dl_assert.h"
 #include "dl_memory.h"
-#include "dl_protocol_parser.h"
-#include "dl_protocol_encoder.h"
 #include "dl_resender.h"
 #include "dl_transport.h"
 #include "dl_utils.h"
