@@ -1,6 +1,5 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -35,17 +34,15 @@
  *
  */
 
-#ifndef _DL_PROTOCOL_PARSER_H
-#define _DL_PROTOCOL_PARSER_H
+#ifndef _DL_CORRELATION_ID_H
+#define _DL_CORRELATION_ID_H
 
-//#include "message.h"
+struct dl_correlation_id;
 
-//extern enum request_type dl_get_apikey(char *);
-//extern int dl_parse_requestmessage(struct request_message *, char *);
-//extern int dl_parse_responsemessage(struct response_message *, char *,
-//    enum response_type);
+extern struct dl_correlation_id * dl_correlation_id_new();
+extern void dl_correlation_id_fini(struct dl_correlation_id *);
 
-extern int dl_decode_produce_response(struct dl_produce_response *, char *);
-extern int dl_decode_response(struct dl_response *, char *);
+extern int32_t dl_correlation_id_val(struct dl_correlation_id *);
+extern int32_t dl_correlation_id_inc(struct dl_correlation_id *);
 
 #endif

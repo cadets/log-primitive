@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,50 +34,35 @@
  *
  */
 
-#ifndef _DL_COMMON_H
-#define _DL_COMMON_H
+#ifndef _DL_REQUEST_H
+#define _DL_REQUEST_H
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include "dl_protocol.h"
+#include "dl_fetch_request.h"
+#include "dl_list_offset_request.h"
+#include "dl_produce_request.h"
 
-//#include "distlog_client.h"
-#include "dl_protocol.h" 
-#include "dl_response.h" 
-
-//typedef int32_t dl_correlation_id;
-
-typedef void (* dl_ack_function) (const int32_t );
-typedef void (* dl_response_function) (struct dl_request const * const,
-    struct dl_response const * const);
-
-enum broker_confs {
-	BROKER_SEND_ACKS = 1 << 1,
-	BROKER_FSYNC_ALWAYS = 1 << 2,
+union dl_request_message {
+	struct dl_produce_request dlrqmt_produce_request;
+	struct dl_fetch_request dlrqmt_fetch_request;
+	struct dl_offset_request dlrqmt_offset_request;
+	//struct dl_metadata_request dlrqmt_metadata_request[1];
+	//struct dl_offset_commit_request dlrqmt_offset_commit_request;
+	//struct dl_offset_fetch_request dlrqmt_offset_fetch_request;
+	//struct dl_group_coordinator_request dlrqmt_group_coordinator_request;
 };
 
-struct broker_configuration {
-	int fsync_thread_sleep_length;
-	int processor_thread_sleep_length;
-	int val;
+struct dl_request {
+	int32_t dlrqm_size;
+	int16_t dlrqm_api_key;
+	int16_t dlrqm_api_version;
+	int32_t dlrqm_correlation_id;
+	char dlrqm_client_id[DL_MAX_CLIENT_ID];
+	union dl_request_message dlrqm_message;
 };
 
-struct dl_client_configuration {
-	dl_ack_function dlcc_on_ack;
-	dl_response_function dlcc_on_response;
-	int to_resend;
-	int resender_thread_sleep_length;
-	int request_notifier_thread_sleep_length;
-	int reconn_timeout;
-	int poll_timeout;
-};
-
-static const int MAX_NUM_REQUESTS_PER_PROCESSOR  = 128; // Maximum outstanding requests per processor.
-static const int NUM_PROCESSORS                  = 10;   // Number of processors.
-static const int MAX_NUM_RESPONSES_PER_PROCESSOR = 128; // Maximum outstanding responses per processor.
-static const int CONNECTIONS_PER_PROCESSOR       = 10; // Number of connections per processor.
-static const int MAX_NUM_UNFSYNCED = 20; // Maximum number of unfsynced inserts
-
-extern void print_configuration(struct broker_configuration *);
+extern int dl_decode_request(struct dl_request *, char *);
+extern int dl_encode_request(struct dl_request const *,
+    struct dl_buffer const *);
 
 #endif

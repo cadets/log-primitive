@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,11 +35,34 @@
  *
  */
 
-#ifndef _CAML_BROKER_H
-#define _CAML_BROKER_H
+#ifndef _DL_PROTOCOL_ENCODER_H
+#define _DL_PROTOCOL_ENCODER_H
 
-#include "caml_common.h"
+#include <sys/types.h>
 
-void broker_busyloop(int portnumber, const char* p_name, struct broker_configuration *conf);
+#define DISTLOG_API_V1 1
+#define DISTLOG_API_VERSION DISTLOG_API_V1
+
+#define DL_ENCODE_API_KEY(buffer, value) dl_encode_int16(buffer, value)
+#define DL_ENCODE_API_VERSION(buffer) \
+    dl_encode_int16(buffer, DISTLOG_API_VERSION)
+#define DL_ENCODE_CLIENT_ID(buffer, value) \
+    dl_encode_string(buffer, value, DL_MAX_CLIENT_ID)
+#define DL_ENCODE_CORRELATION_ID(buffer, value) dl_encode_int32(buffer, value)
+#define DL_ENCODE_PARTITION(buffer, value) dl_encode_int32(buffer, value)
+#define DL_ENCODE_REPLICAID(buffer, value) dl_encode_int32(buffer, value)
+#define DL_ENCODE_SIZE(buffer, value) dl_encode_int32(buffer, value)
+#define DL_ENCODE_TIMESTAMP(buffer, value) dl_encode_int64(buffer, value)
+#define DL_ENCODE_TOPIC_NAME(buffer, value) \
+    dl_encode_string(buffer, value, DL_MAX_TOPIC_NAME_LEN)
+
+
+/* Functions for encoding primitive types. */
+extern int32_t dl_encode_int8(char *, const int8_t);
+extern int32_t dl_encode_int16(char *, const int16_t);
+extern int32_t dl_encode_int32(char *, const int32_t);
+extern int32_t dl_encode_int64(char *, const int64_t);
+extern int32_t dl_encode_string(char *, char const * const, size_t);
+extern int32_t dl_encode_bytes(char *, char *, const int32_t);
 
 #endif

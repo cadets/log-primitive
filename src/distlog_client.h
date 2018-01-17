@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2017 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -43,21 +44,33 @@
 #include <stdbool.h>
 #endif
 
-#include "dl_protocol.h"
+#include <sys/queue.h>
+#include <sys/tree.h>
+
+#include "dl_request.h"
 #include "dl_common.h"
 
-struct distlog_handle {
-	int64_t dlh_offset;
+// TODO: Is this really the right place for this?
+struct dl_request_element {
+	struct dl_request dlrq_msg;
+	time_t last_sent;
+	time_t resend_timeout;
+	bool should_resend;
+	STAILQ_ENTRY(dl_request_element) entries;
+	RB_ENTRY(dl_request_element)linkage;
 };
+
+struct distlog_handle;
 
 extern int distlog_client_init(const char * const, const int,
     struct dl_client_configuration const * const);
-extern int distlog_client_open(struct distlog_handle *);
+extern struct distlog_handle * distlog_client_open(const char * const,
+    const int, struct dl_client_configuration const * const);
 extern int distlog_client_close(struct distlog_handle *);
 extern int distlog_client_fini();
 
-extern int distlog_recv(int, char *, bool, int, ...);
-extern int distlog_send(int, char *, bool, int, ...);
-extern int distlog_offsets(int, char *, bool, int, ...);
+extern int distlog_offsets(struct distlog_handle *, int, char *, bool, int);
+extern int distlog_recv(struct distlog_handle *, int, char *, bool, int, ...);
+extern int distlog_send(struct distlog_handle *, int, char *, bool, int, ...);
 
 #endif

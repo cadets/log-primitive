@@ -1,5 +1,5 @@
-#-
-# Copyright (c) 2017 (Graeme Jenkinson)
+#
+# Copyright (c) 2018 (Graeme Jenkinson)
 # All rights reserved.
 #
 # This software was developed by BAE Systems, the University of Cambridge
@@ -29,17 +29,39 @@
 # SUCH DAMAGE.
 #
 
-
-#MAKEOBJDIRPREFIX:= obj
-#MK_AUTO_OBJ:= yes
-.include <bsd.obj.mk>
-#.include <auto.obj.mk>
+MK_AUTO_OBJ:= yes
+.include <auto.obj.mk>
+#.include <bsd.obj.mk>
 
 LIB:= distlog
 LIBDIR:= /usr/local/lib
-SRCS!= find . -type f -name '*.c'
+SRCS= distlog_broker.c \
+      distlog_client.c \
+      distlog_consumer.c \
+      distlog_producer.c \
+      dl_common.c \
+      dl_correlation_id.c \
+      dl_resender.c \
+      dl_utils.c \
+      dl_transport.c \
+      dl_memory.c \
+      dl_thread.c \
+      dl_primitive_types.c \
+      dl_request.c \
+      dl_fetch_request.c \
+      dl_list_offset_request.c \
+      dl_produce_request.c \
+      dl_response.c \
+      dl_fetch_response.c \
+      dl_list_offset_response.c \
+      dl_produce_response.c
 
-CFLAGS:= -g -Wextra -Wall -Wno-unused-variable -Wno-unused-parameter \
-	 -Wno-unused-command-line-arguments
+.PATH: osal
+.PATH: protocol
+.PATH: transport
+
+CFLAGS+= -Iprotocol
+CFLAGS+= -Itransport
+CFLAGS+= -Iosal
 
 .include <bsd.lib.mk>

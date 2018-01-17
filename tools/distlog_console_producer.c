@@ -42,7 +42,7 @@
 #include "dl_utils.h"
 
 /* Configure the distributed log logging level. */
-unsigned short PRIO_LOG = PRIO_HIGH;
+unsigned short PRIO_LOG = PRIO_LOW;
 
 static char const * const USAGE =
     "%s: [-p port number] [-t topic] [-h hostname] [-v]\n";
@@ -55,7 +55,7 @@ static const int DLC_DISTLOG_RECORD_SIZE_BYTES = 4096;
 
 static void dlc_siginfo_handler(int);
 static void dlc_sigint_handler(int);
-static void dlc_on_ack(const dl_correlation_id);
+static void dlc_on_ack(const int32_t);
 static void dlc_on_response(struct dl_request const * const,
     struct dl_response const * const);
 
@@ -80,7 +80,7 @@ dlc_sigint_handler(int sig)
 }
 
 static void
-dlc_on_ack(const dl_correlation_id id)
+dlc_on_ack(const int32_t id)
 {
 	debug(PRIO_LOW, "Broker acknowledged request: %d\n", id);
 }
@@ -99,6 +99,7 @@ dlc_on_response(struct dl_request const * const request,
 int
 main(int argc, char **argv)
 {
+	struct distlog_handle *handle;
 	struct dl_client_configuration cc;
 	char * client_id = DLC_DEFAULT_CLIENT_ID;
 	char * topic = DLC_DEFAULT_TOPIC;
@@ -150,10 +151,10 @@ main(int argc, char **argv)
 	cc.dlcc_on_ack = dlc_on_ack;
 	cc.dlcc_on_response = dlc_on_response;
 
-	rc = distlog_client_init(hostname, port, &cc);
-        if (rc != 0) {
+	handle = distlog_client_open(hostname, port, &cc);
+        if (NULL == handle) {
 		fprintf(stderr,
-		    "Error initialising the distributed log client %d.\n", rc);
+		    "Error initialising the distributed log client.\n");
 		exit(EXIT_FAILURE);
 	}
   
@@ -170,9 +171,8 @@ main(int argc, char **argv)
 			 */
 			line[strlen(line) - 1] = '\0';
 
-			rc = distlog_send(0, client_id, cc.to_resend,
-			    resend_timeout, topic,
-			    1, "key", line);
+			rc = distlog_send(handle, 0, client_id, cc.to_resend,
+			    resend_timeout, topic, 1, "key", line);
 			if (rc != 0) {
 				fprintf(stderr,
 				    "Failed writing to the log %d\n", rc); 

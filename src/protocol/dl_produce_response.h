@@ -1,12 +1,12 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
  * Computer Laboratory, and Memorial University under DARPA/AFRL contract
  * FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent Computing
  * (TC) research program.
- * 
+ *
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory under DARPA/AFRL contract FA8750-10-C-0237
  * ("CTSRD"), as part of the DARPA CRASH research programme.
@@ -31,23 +31,21 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
+ *
  */
 
-#include <atf-c.h>
+#ifndef _DL_PRODUCE_RESPONSE_H
+#define _DL_PRODUCE_RESPONSE_H
 
-ATF_TC(test1);
-ATF_TC_HEAD(test1, tc)
-{
-	atf_tc_set_md_var(tc, "desc", "This is test 1");
-}
-ATF_TC_BODY(test1, tc)
-{
-	ATF_REQUIRE(1);
-}
+#include <sys/types.h>
 
-ATF_TP_ADD_TCS(tp)
-{
-		ATF_TP_ADD_TC(tp, test1);
+struct dl_produce_response {
+	int32_t dlprs_num_responses;
+	struct dl_pr_response *dlprs_responses;
+	//struct dl_pr_response dlprs_responses[1];
+	int32_t dlprs_throttle_time;
+};
 
-		return atf_no_error();
-}
+extern int dl_decode_produce_response(struct dl_produce_response *, char *);
+
+#endif

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,55 +34,63 @@
  *
  */
 
-#ifndef _CAML_COMMON_H
-#define _CAML_COMMON_H
-
+#include <string.h>
+#include <time.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <stdarg.h>
 
-#include "protocol.h" 
+#include "dl_assert.h"
+#include "dl_primitive_types.h"
+#include "dl_list_offset_request.h"
 
-static int MAX_NUM_REQUESTS_PER_PROCESSOR  = 128; // Maximum outstanding requests per processor.
-static int NUM_PROCESSORS                  = 10;   // Number of processors.
-static int MAX_NUM_RESPONSES_PER_PROCESSOR = 128; // Maximum outstanding responses per processor.
-static int CONNECTIONS_PER_PROCESSOR       = 10; // Number of connections per processor.
-static int MAX_NUM_UNFSYNCED = 20; // Maximum number of unfsynced inserts
+#define DL_ENCODE_PARTITION(buffer, value) dl_encode_int32(buffer, value)
+#define DL_ENCODE_TOPIC_NAME(buffer, value) \
+    dl_encode_string(buffer, value, DL_MAX_TOPIC_NAME_LEN)
+#define DL_ENCODE_REPLICAID(buffer, value) dl_encode_int32(buffer, value)
+#define DL_ENCODE_TIMESTAMP(buffer, value) dl_encode_int64(buffer, value)
 
-typedef void* (*mallocfunctiontype)(unsigned long);
-typedef void (*freefunctiontype)(void*);
+/**
+ * Encode the ListOffsetRequest.
+ *
+ * ListOffsetRequest = ReplicaId [Topics]
+ * Topics = Topic [Partitions]
+ * Topic
+ * Partitions = Partition Timestamp
+ * Partition
+ * Timestamp
+ */
+int
+dl_encode_listoffset_request(struct dl_offset_request *request, char *buffer)
+{
+	int32_t request_size = 0;
 
-typedef void (*ack_function)(unsigned long);
-typedef void (*response_function)(struct RequestMessage *rm, struct ResponseMessage *rs);
+	DL_ASSERT(request != NULL, "Offset request cannot be NULL");
+	DL_ASSERT(buffer != NULL, "Buffer used for encoding cannot be NULL");
 
-static mallocfunctiontype ilia_alloc = &malloc;
-static freefunctiontype ilia_free = &free;
+	/* Encode the ListOffsetRequest ReplicaId into the buffer. */
+	request_size += DL_ENCODE_REPLICAID(&buffer[request_size],
+	    request->dlor_replica_id);
+	
+	// TODO: topics
+	request_size += dl_encode_int32(&buffer[request_size], 1);
+	
+	/* Encode the ListOffsetRequest Topic Name into the buffer. */
+	request_size += DL_ENCODE_TOPIC_NAME(&buffer[request_size],
+	    request->dlor_topic_name);
 
-typedef int correlationId_t;
+	// TODO: partitions
+	request_size += dl_encode_int32(&buffer[request_size], 1);
 
-enum broker_confs{
-    BROKER_SEND_ACKS= 1 << 1,
-    BROKER_FSYNC_ALWAYS= 1 << 2,
-};
-
-struct broker_configuration{
-    int fsync_thread_sleep_length;
-    int processor_thread_sleep_length;
-    int val;
-};
-
-struct client_configuration{
-    int to_resend;
-    int resender_thread_sleep_length;
-    int request_notifier_thread_sleep_length;
-
-    int reconn_timeout;
-    int poll_timeout;
-
-    ack_function on_ack;
-    response_function on_response;
-};
-
-void print_configuration(struct broker_configuration* bc);
-
-#endif
+	// TODO: Fixed 12 bytes
+	
+	/* Encode the ListOffsetRequest Partition into the buffer. */
+	request_size += DL_ENCODE_PARTITION(&buffer[request_size],
+	    request->dlor_partition);
+	
+	/* Encode the ListOffsetRequest Timestamp into the buffer. */
+	// TODO: Earliest
+	request_size += DL_ENCODE_TIMESTAMP(&buffer[request_size],
+	    request->dlor_time);
+	
+	return request_size;
+}

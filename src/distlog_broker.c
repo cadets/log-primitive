@@ -54,10 +54,14 @@
 #include "dl_common.h"
 #include "dl_memory.h"
 #include "dl_protocol.h"
-#include "dl_protocol_encoder.h"
-#include "dl_protocol_parser.h"
+#include "dl_request.h"
+#include "dl_response.h"
+#include "dl_transport.h"
 #include "dl_utils.h"
 
+// TODO: these shouldn't be needed
+#include "dl_protocol_encoder.h"
+#include "dl_protocol_parser.h"
 
 /* TODO: Record statistics for the broker */
 struct dl_broker_statistics {
@@ -418,6 +422,9 @@ dl_handle_request_produce(struct dl_request *req_msg,
 			curr_sspr->partition = 1;
 		}*/
 	} else {
+		// TODO: This doesn't appear sensible
+		// The CRC checking needs to be done in the decoding
+
 		debug(PRIO_LOW, "There is no response needed\n");
 		/*
 		for (int i = 0;
@@ -531,10 +538,17 @@ dl_processor_thread(void *vargp)
 {
 	struct dl_processor_argument *pa =
 	    (struct dl_processor_argument *) vargp;
+	int old_cancel_state;
 	
 	DL_ASSERT(vargp != NULL, "processor thread argument cannot be NULL");
 	
 	debug(PRIO_LOW, "Processor thread with id %d started...\n", pa->index);
+
+	/* Defer cancellation of the thread until the cancellation point 
+	 * pthread_testcancel(). This ensures that thread isn't cancelled until
+	 * outstanding requests have been processed.
+	 */	
+	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
 
 	dl_processor(pa);
 	return NULL;
@@ -546,31 +560,24 @@ dl_processor(struct dl_processor_argument *pa)
 	struct thread_to_proc_pool_element *element;
 	struct request_pool_element *temp;
 	int msg_size;
-	int old_cancel_state;
 	int rv;
 	char buffer[MTU], *pbuf = buffer;
 	char send_out_buf[MTU];
 	struct pollfd ufds[CONNECTIONS_PER_PROCESSOR];
-
-	/* Defer cancellation of the thread until the cancellation point 
-	 * pthread_testcancel(). This ensures that thread isn't cancelled until
-	 * outstanding requests have been processed.
-	 */	
-	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
+	int connection, max_connection;
 
 	for (;;) {
 		pthread_testcancel();
-					
-		int connection = 0, max_connection = 0;
+
+		max_connection = 0;		
 		pthread_mutex_lock(&thread_to_proc_pool_mtx[pa->index]);
 		LIST_FOREACH(element,
 		    &thread_to_proc_pools[pa->index], entries) {
 			ufds[connection].fd = element->fd;
 			ufds[connection].events = POLLIN;
-			connection++;
+			max_connection++;
 		}
 		pthread_mutex_unlock(&thread_to_proc_pool_mtx[pa->index]);
-		max_connection = connection;
 			
 		/* Poll the connections assigned to this processor */
 		rv = poll(ufds, connection, POLL_TIMEOUT_MS);
@@ -578,9 +585,12 @@ dl_processor(struct dl_processor_argument *pa)
 			pa->index, rv);
 		if (rv == 0) {
 			debug(PRIO_LOW, "POLL Timeout\n");
-		}
+		} else if (rv == -1) {
+			debug(PRIO_HIGH, "POLL ERROR\n");
+			// TODO: What to do here
+			exit(EXIT_FAILURE);
 
-		if (rv != 0) {
+		} else {
 			for (connection = 0; connection < max_connection;
 			    connection++) {
 				if (ufds[connection].revents & POLLIN) {
@@ -589,20 +599,14 @@ dl_processor(struct dl_processor_argument *pa)
 					    ufds[connection].fd, pbuf);
 
 					if (msg_size > 0) {
-						struct request_pool_element *request;
-						request = (struct request_pool_element *)
+						struct request_pool_element *request = (struct request_pool_element *)
 						    distlog_alloc(sizeof(struct request_pool_element));;
 						if (request != NULL) {
 							debug(PRIO_LOW, "Enqueuing: '%s'\n", pbuf);
 
-							// TODO: add new function to parse the binary Kafak request
-							//clear_requestmessage(
-							//    &request->req_msg,
-							//    dl_get_apikey(pbuf));
-
-							//dl_parse_requestmessage(&request->req_msg, pbuf);
-							// TODO: 
-							//
+							// TODO: Some error
+							// handling 
+							dl_decode_request(&request->req_msg, pbuf);
 							request->fd = ufds[connection].fd;
 						
 							// TODO: Not MT safe	
@@ -621,7 +625,6 @@ dl_processor(struct dl_processor_argument *pa)
 						//This is the disconnect. Maybe need to clean the
 						//responses to this guy. Not sure how to do that
 						//yet. TODO: decide
-						printf("Here\n");
 						pthread_mutex_lock(
 						    &thread_to_proc_pool_mtx[pa->index]);
 						LIST_REMOVE(element, entries);
@@ -631,11 +634,6 @@ dl_processor(struct dl_processor_argument *pa)
 					}
 				}
 			}
-		}
-		if (rv == -1) {
-			debug(PRIO_HIGH, "POLL ERROR\n");
-			// TODO: What to do here
-			exit(-1);
 		}
 
 		// This is a completely orthoganl concern
@@ -769,6 +767,7 @@ dl_fsync_thread(void *vargp)
 		
 			//int fi = wrap_with_size(&response->rsp_msg, pbuf,
 			//    send_out_buf, (enum request_type) response->fd);
+			// TODO: dl_encode_response();
 			debug(PRIO_NORMAL, "Sending: '%s'\n", send_out_buf);
 			//rc = send(response->fd, send_out_buf, fi, 0);
 			if (rc != -1) {
@@ -824,6 +823,7 @@ dl_start_fsync_thread(struct broker_configuration *conf)
 	}
 }
 
+// TODO: This isn't even used!
 static void
 dl_close_listening_socket(int sockfd)
 {
@@ -835,25 +835,18 @@ static void
 dl_siginfo_handler(int dummy)
 {
 	debug(PRIO_LOW, "Caught SIGIFO[%d]\n", dummy);
+
+	/* Report the broker statistics. */
+	// TODO
 }
 
 static void
 dl_sigint_handler(int dummy)
 {
-	int processor;
+	debug(PRIO_LOW, "Caught SIGINT[%d]\n", dummy);
+	distlog_broker_fini();
 
-	debug(PRIO_NORMAL, "Caught SIGINT[%d]\n", dummy);
-
-	for (processor = 0; processor < NUM_PROCESSORS; processor++) {
-		pthread_cancel(processor_threads[processor]);
-	}
-
-	for (processor = 0; processor < NUM_PROCESSORS; processor++) {
-		pthread_join(processor_threads[processor], NULL);
-	}
-
-	dl_free_datastructures();
-	exit(0);
+	exit(EXIT_SUCCESS);
 }
 
 static void
@@ -873,33 +866,37 @@ dl_start_processor_threads(struct broker_configuration const * const conf)
 	}
 }
 
-/* TODO allow client to specify whcih network interface to bind to */
+/* TODO allow client to specify which network interface to bind to */
 void
-distlog_broker_init(int portnumber, const char *p_name,
+distlog_broker_init(int portnumber, const char *partition_name,
     struct broker_configuration *conf)
 {
 	int sockfd;
 
-	DL_ASSERT(p_name != NULL, "??? cannot be NULL");
+	DL_ASSERT(partition_name != NULL, "Partition name cannot be NULL");
 	DL_ASSERT(conf != NULL, "Broker configuration cannot be NULL");
 	
-	/* TODO: need to check that the portnumber is within correct range. */ 
-
-	/* Install signal handler to terminate broker cleanly on SIGINT. */	
+	/* Install signal handler to terminate broker cleanly. */	
 	signal(SIGINT, dl_sigint_handler);
 
 	/* Install signal handler to report broker statistics. */
 	signal(SIGINFO, dl_siginfo_handler);
 
+	// TODO: NEED TO MOVE IT SOMEWHERE
+	// TODO: the names of these functions are a bit shoddy; what is the
+	// 1024*1024?
+	del_folder(partition_name);
+	make_folder(partition_name);
+	ptr_seg = make_segment(0, 1024*1024, partition_name);
+
 	print_configuration(conf);
 	dl_allocate_broker_datastructures(conf);
 	dl_start_processor_threads(conf);
 
-	// TODO: NEED TO MOVE IT SOMEWHERE
-	del_folder(p_name);
-	make_folder(p_name);
-	ptr_seg = make_segment(0, 1024*1024, p_name);
-
+	/* If the broker isn't configured to fsync produce requests
+	 * immediately, create and start a thread to asynchronously fsync
+	 * requests to disk.
+	 */
 	if (!(conf->val & BROKER_FSYNC_ALWAYS)) {
 		dl_start_fsync_thread(conf);
 	}
@@ -916,4 +913,19 @@ distlog_broker_init(int portnumber, const char *p_name,
 void
 distlog_broker_fini()
 {
+	int processor;
+
+	for (processor = 0; processor < NUM_PROCESSORS; processor++) {
+		pthread_cancel(processor_threads[processor]);
+	}
+
+	for (processor = 0; processor < NUM_PROCESSORS; processor++) {
+		pthread_join(processor_threads[processor], NULL);
+	}
+	
+	//if (!(conf->val & BROKER_FSYNC_ALWAYS)) {
+	//	pthread_cancel(fsy_thread);
+	//}
+
+	dl_free_datastructures();
 }

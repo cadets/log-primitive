@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,22 +34,24 @@
  *
  */
 
-#include "distlog_broker.h"
-#include "dl_utils.h"
+#ifndef _DL_LIST_OFFSET_REQUEST_H
+#define _DL_LIST_OFFSET_REQUEST_H
 
-unsigned short PRIO_LOG = PRIO_LOW;
+#include "dl_protocol.h"
 
-int
-main()
-{
-	struct broker_configuration bc;
+struct dl_offset_request {
+	int32_t dlor_replica_id;
+	// List of values	
+	// topics
+	// ntopics
+	char dlor_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	// List of values
+	// partitions
+	// npartitions
+	int32_t dlor_partition;
+	int64_t dlor_time;
+};
 
-	bc.fsync_thread_sleep_length = 5;
-	bc.processor_thread_sleep_length = 5;
-    	bc.val = 0;
+extern int dl_encode_listoffset_request(struct dl_offset_request *, char *);
 
-	distlog_broker_init(9999, "test_partition", &bc);
-	distlog_broker_fini();
-
-	return 0;
-}
+#endif

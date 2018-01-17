@@ -41,6 +41,7 @@
 #include "dl_assert.h"
 #include "dl_memory.h"
 #include "dl_protocol.h"
+#include "dl_request.h"
 #include "dl_protocol_parser.h"
 #include "dl_transport.h"
 #include "dl_utils.h"
@@ -50,12 +51,15 @@ dl_transport_connect(struct dl_transport *self,
     const char * const hostname, const int portnumber)
 {
 	struct sockaddr_in dest;
-	int sockfd;
+	int sockfd = -1;
 
 	DL_ASSERT(self != NULL, "Transport cannot be NULL\n");
 
+#ifdef _KERNEL
  	// socreate(int dom, struct socket **aso, int	type, int proto,
      	// struct	ucred *cred, struct thread *td);
+#else
+#endif
 	if ((self->dlt_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 		return -1;
 
@@ -85,6 +89,8 @@ dl_transport_read_msg(struct dl_transport *self, char *saveto)
 	struct dl_request_or_response req_or_res;
 	int ret;
 	int total = 0;
+	
+	DL_ASSERT(self != NULL, "Transport cannot be NULL");
 
 	/* Read the size of the request or response to process. */
 #ifdef _KERNEL
@@ -124,42 +130,47 @@ int
 dl_transport_send_request(const struct dl_transport *self,
     const struct dl_request *request)
 {
-	int nbytes_sent = 0, nbytes_to_send;
-	char *buffer;
+	int octets_sent = -1, octets_to_send;
+	struct dl_buffer *buffer;
 	
 	DL_ASSERT(self != NULL, "Transport cannot be NULL");
 	DL_ASSERT(request != NULL, "Request cannot be NULL");
 
-	buffer = (char *) distlog_alloc((sizeof(char) * MTU));
+	buffer = (struct dl_buffer *) distlog_alloc(
+	    sizeof(struct dl_buffer_hdr) + (sizeof(char) * MTU));
 	if (buffer != NULL) {
 
-		nbytes_to_send = dl_encode_request(request, buffer);
+		buffer->dlb_hdr.dlbh_data = buffer->dlb_databuf;
+		buffer->dlb_hdr.dlbh_len = MTU;
+
+		octets_to_send = dl_encode_request(request, buffer);
 		DISTLOGTR1(PRIO_NORMAL, "Sending request: %d bytes\n",
-		    nbytes_to_send);
+		    octets_to_send);
 #ifdef _KERNEL
-		// sosend(struct socket *so, struct sockaddr *addr, struct uio *uio,
+		// octets_sent = sosend(struct socket *so, struct sockaddr *addr, struct uio *uio,
 		// 	 struct	mbuf *top, struct mbuf *control, int flags,
 		// 	 	 struct	thread *td);
 #else
-		nbytes_sent = send(self->dlt_sock, buffer, nbytes_to_send, 0);
+		octets_sent = send(self->dlt_sock, buffer->dlb_databuf,
+		    octets_to_send, 0);
 #endif
 		distlog_free(buffer);
 	}
-	return nbytes_sent;
+	return octets_sent;
 }
 
 int
 dl_transport_poll(const struct dl_transport *self, int timeout)
 {
+
+#ifdef _KERNEL
+	//return sopoll(struct socket *so, int events, struct ucred
+	//*active_cred, structthread *td);
+#else
 	struct pollfd ufd;
 
 	ufd.fd = self->dlt_sock;
 	ufd.events = POLLIN;
-
-#ifdef _KERNEL
-	//rv = sopoll(struct socket *so, int events, struct ucred
-	//*active_cred, structthread *td);
-#else
 	return poll(&ufd, 1, timeout);
 #endif
 }

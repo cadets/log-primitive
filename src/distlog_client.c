@@ -35,17 +35,14 @@
  */
 
 #include <errno.h>
-#include <arpa/inet.h>
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/param.h>
-#include <sys/poll.h>
 #include <sys/queue.h>
-#include <sys/socket.h>
-#include <sys/tree.h>
+#include <sys/time.h>
 #ifdef _KERNEL
 #include <sys/types.h>
 #else
@@ -54,14 +51,21 @@
 
 #include "distlog_client.h"
 #include "dl_assert.h"
+#include "dl_correlation_id.h"
 #include "dl_memory.h"
 #include "dl_protocol_parser.h"
 #include "dl_protocol_encoder.h"
+#include "dl_resender.h"
+#include "dl_request.h"
+#include "dl_transport.h"
 #include "dl_utils.h"
 
 // TODO: I don't think FreeBSD defines this
 // if not should it be 63 or 255?
 #define HOST_NAME_MAX 255
+	
+STAILQ_HEAD(notify_queue, notify_queue_element);
+STAILQ_HEAD(dl_request_queue, dl_request_element);
 
 struct dl_notifier_argument {
 	dl_ack_function dlna_on_ack;
@@ -69,6 +73,9 @@ struct dl_notifier_argument {
 	struct dl_client_configuration *dlna_config;
 	pthread_t *dlna_tid;
 	int dlna_index;
+	struct notify_queue notify_queue;
+	pthread_mutex_t notify_queue_mtx;
+	pthread_cond_t notify_queue_cond;
 };
 
 struct dl_reader_argument {
@@ -77,204 +84,77 @@ struct dl_reader_argument {
 	int dlra_index;
 	int dlra_portnumber;
 	char dlra_hostname[HOST_NAME_MAX];
+	struct dl_request_queue *request_queue;
+	pthread_mutex_t *dl_request_queue_mtx;
+	pthread_cond_t *dl_request_queue_cond;
+	struct notify_queue *notify_queue;
+	pthread_mutex_t *notify_queue_mtx;
+	pthread_cond_t *notify_queue_cond;
 };
 
 static int const NUM_NOTIFIERS = 5;
 static int const NUM_READERS   = 1;
 static int const REQUESTS_PER_NOTIFIER = 10;
 /* Maximum number of outstanding un-acked messages */
-static int const NODE_POOL_SIZE = 128; 
+//static int const NODE_POOL_SIZE = 128; 
 
 struct notify_queue_element {
 	char pbuf[MTU];
 	STAILQ_ENTRY(notify_queue_element) entries;
 };
-STAILQ_HEAD(notify_queue, notify_queue_element);
-static struct notify_queue notify_queue;
-static pthread_mutex_t notify_queue_mtx;
-static pthread_cond_t notify_queue_cond;
-
-// Array containing arguments to the reader threads
-static struct dl_reader_argument *ras;
-static pthread_t *notifiers;
-
-// Array containing arguments to the notifier threads
-static struct dl_notifier_argument *nas;
-static pthread_t *readers;
-
-static struct dl_reader_argument resender_arg;
-static pthread_t resender;
-
-static int num_readers;
-
-struct dl_request_element {
-	struct dl_request dlrq_msg;
-	time_t last_sent;
-	time_t resend_timeout;
-	bool should_resend;
-	STAILQ_ENTRY(dl_request_element) entries;
-	RB_ENTRY(dl_request_element)linkage;
-};
-static STAILQ_HEAD(dl_request_pool, dl_request_element) request_pool;
-static pthread_mutex_t request_pool_mtx;
-
-STAILQ_HEAD(dl_request_queue, dl_request_element);
-static struct dl_request_queue request_queue;
-static pthread_mutex_t dl_request_queue_mtx;
-static pthread_cond_t dl_request_queue_cond;
-
-STAILQ_HEAD(dl_unackd_request_queue, dl_request_element);
-static struct dl_unackd_request_queue unackd_request_queue;
-static pthread_mutex_t unackd_request_queue_mtx;
-static pthread_cond_t unackd_request_queue_cond;
-
-RB_HEAD(dl_unackd_requests, dl_request_element) unackd_requests;
-static pthread_mutex_t unackd_requests_mtx;
-static pthread_cond_t unackd_requests_cond;
-
-static int
-dl_request_element_cmp(struct dl_request_element *el1,
-    struct dl_request_element *el2)
-{
-	return el2->dlrq_msg.dlrqm_correlation_id -
-	    el1->dlrq_msg.dlrqm_correlation_id;
-}
-
-RB_PROTOTYPE(dl_unackd_requests, dl_request_element, linkage,
-    dl_request_element_cmp);
-RB_GENERATE(dl_unackd_requests, dl_request_element, linkage,
-    dl_request_element_cmp);
 
 struct dl_response_element {
 	struct dl_response rsp_msg;
 	LIST_ENTRY(dl_response_element) entries;
 };
-static LIST_HEAD(response_pool, dl_response_element) response_pool;
-static pthread_mutex_t response_pool_mtx;
+
+static int num_readers;
+
+struct distlog_handle {
+	struct dl_notifier_argument *nas;
+	pthread_t *notifiers;
+	struct dl_reader_argument *ras;
+	pthread_t *readers;
+	struct dl_request_queue request_queue;
+	pthread_mutex_t dl_request_queue_mtx;
+	pthread_cond_t dl_request_queue_cond;
+	struct notify_queue notify_queue;
+	pthread_mutex_t notify_queue_mtx;
+	pthread_cond_t notify_queue_cond;
+	struct dl_correlation_id *correlation_id;
+};
+
+static struct distlog_handle handle;
 
 static int dl_allocate_client_datastructures(struct dl_client_configuration *);
+static int dl_enqueue_request(struct dl_request_element *);
 static int dl_free_client_datastructures();
-static int dl_connect_to_server(const char *, const int);
 static int dl_notify_response(struct notify_queue_element *,
     struct dl_notifier_argument *);
-static void dl_process_request(const int, struct dl_request_element *);
+static void dl_process_request(const struct dl_transport *,
+    struct dl_request_element *);
 static void * dl_reader_thread(void *);
 static void * dl_request_notifier_thread(void *);
-static void * dl_resender_thread(void *);
-static void dl_start_notifiers(struct dl_client_configuration *);
-static void dl_start_reader_threads(struct dl_client_configuration *, int,
-    char *, int);
-static void dl_start_resender(struct dl_client_configuration *);
-
-static dl_correlation_id correlation_id = 0;
-
-static int
-dl_connect_to_server(const char *hostname, const int portnumber)
-{
-	struct sockaddr_in dest;
-	int sockfd;
-
- 	// socreate(int dom, struct socket **aso, int	type, int proto,
-     	// struct	ucred *cred, struct thread *td);
-	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-		return -1;
-
-	bzero(&dest, sizeof(dest));
-	dest.sin_family = AF_INET;
-	dest.sin_port = htons(portnumber);
-
-	if (inet_pton(AF_INET, hostname, &(dest.sin_addr)) == 0)
-		return -2;
-
-	// socreate(int dom, struct socket **aso, int	type, int proto,
-	// 	 struct	ucred *cred, struct thread *td);
-	if (connect(sockfd, (struct sockaddr *) &dest, sizeof(dest)) != 0)
-		return -3;
-
-	return sockfd;
-}
-
-static void *
-dl_resender_thread(void *vargp)
-{
-	struct dl_reader_argument *ra = (struct dl_reader_argument *) vargp;
-	struct dl_request_element *request, *request_temp;
-	time_t now;
-	int old_cancel_state;
-
-	DL_ASSERT(vargp != NULL, "Resender thread arguments cannot be NULL");
-
-	DISTLOGTR0(PRIO_LOW, "Resender thread started\n");
-
-	/* Defer cancellation of the thread until the cancellation point 
-	 * pthread_testcancel(). This ensures that thread isn't cancelled until
-	 * outstanding requests have been processed.
-	 */	
-	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
-
-	for (;;) {
-		// TODO: should probably check that this is empty
-		pthread_testcancel();
-
-		pthread_mutex_lock(&unackd_requests_mtx);
-		RB_FOREACH_SAFE(request, dl_unackd_requests, &unackd_requests,
-		    request_temp) {
-			if (request->should_resend) {
-				now = time(NULL);
-				DISTLOGTR4(PRIO_LOW, "Was sent %lu now is %lu. "
-				    "Resend when the difference is %lu. "
-				    "Current: %lu\n",
-				    request->last_sent, now,
-				    request->resend_timeout,
-				    request->last_sent);
-
-				if ((now - request->last_sent) >
-				    request->resend_timeout) {
-					request->last_sent = time(NULL);
-
-					RB_REMOVE(dl_unackd_requests,
-					    &unackd_requests, request);
-
-					pthread_mutex_lock(
-					    &dl_request_queue_mtx);
-					STAILQ_INSERT_TAIL(&request_queue,
-					    request, entries);
-					pthread_cond_signal(
-					    &dl_request_queue_cond);
-					pthread_mutex_unlock(
-					    &dl_request_queue_mtx);
-
-					DISTLOGTR0(PRIO_LOW, "Done.\n");
-				}
-			}
-		}
-		pthread_mutex_unlock(&unackd_requests_mtx);
-
-		DISTLOGTR1(PRIO_LOW,
-		    "Resender thread is going to sleep for %d seconds\n",
-		    ra->dlra_config->resender_thread_sleep_length);
-
-		// TODO: sleep_length is a slight odd name
-		// and it is in seconds
-		sleep(ra->dlra_config->resender_thread_sleep_length);
-	}
-	return NULL;
-}
+static void dl_start_notifiers(struct distlog_handle *,
+    struct dl_client_configuration *);
+static void dl_start_reader_threads(struct distlog_handle *,
+    struct dl_client_configuration *, int, char *, int);
 
 static void *
 dl_reader_thread(void *vargp)
 {
-	struct dl_request_queue local_request_queue;
-	struct pollfd ufd;
 	struct dl_reader_argument *ra = (struct dl_reader_argument *) vargp;
+	struct dl_request_queue local_request_queue;
 	struct dl_request_element *request, *request_temp;
-	int server_conn = -1, rv, msg_size;
-	int old_cancel_state;
+	struct dl_transport transport;
 	struct timespec ts;
 	struct timeval now;
-
+	int rv, msg_size, old_cancel_state;
+	
 	DL_ASSERT(vargp != NULL, "Reader thread arguments cannot be NULL");
-
+	
+	DISTLOGTR1(PRIO_LOW, "Reader thread %d started...\n", ra->dlra_index);
+	
 	/* Initialize a local queue, used to enqueue requests from the
 	 * request queue prior to processing.
 	 */
@@ -286,27 +166,26 @@ dl_reader_thread(void *vargp)
 	 */	
 	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
 
+	transport.dlt_sock = -1;
 	for (;;) {
-
-		if (server_conn < 0) {
+		if (transport.dlt_sock < 0) {
 			DISTLOGTR2(PRIO_NORMAL, "Connecting to '%s:%d'\n",
 			    ra->dlra_hostname, ra->dlra_portnumber);
-			server_conn = dl_connect_to_server(ra->dlra_hostname,
-				ra->dlra_portnumber);
-			if (server_conn < 0) {
+
+			dl_transport_connect(&transport,
+			    ra->dlra_hostname, ra->dlra_portnumber);
+			if (transport.dlt_sock < 0) {
 				DISTLOGTR0(PRIO_NORMAL,
 				    "Error connecting...\n");
+
+				// TODO: Timer event for retries
 				sleep(ra->dlra_config->reconn_timeout);
+				continue;
 			}
-
-			continue;
 		}
-		ufd.fd = server_conn;
-		ufd.events = POLLIN;
 
-		//rv = sopoll(struct socket *so, int events, struct ucred
-		//*active_cred, structthread *td);
-		rv = poll(&ufd, 1, ra->dlra_config->poll_timeout);
+		rv = dl_transport_poll(&transport,
+		    ra->dlra_config->poll_timeout);
 		DISTLOGTR1(PRIO_NORMAL, "Reader thread polling ... %d\n", rv);
 		if (rv == -1) {
 			DISTLOGTR0(PRIO_HIGH, "Poll error...");
@@ -316,23 +195,24 @@ dl_reader_thread(void *vargp)
        			struct notify_queue_element *temp_el =
 			    (struct notify_queue_element *) distlog_alloc(
 				sizeof(struct notify_queue_element));
-			msg_size = read_msg(ufd.fd, temp_el->pbuf);
+			msg_size = dl_transport_read_msg(&transport,
+			    temp_el->pbuf);
 			if (msg_size > 0) {
 				DISTLOGTR1(PRIO_LOW, "Reader thread read %d "
 				    "bytes\n", msg_size);
 
-				pthread_mutex_lock(&notify_queue_mtx);
-				STAILQ_INSERT_TAIL(&notify_queue,
+				pthread_mutex_lock(ra->notify_queue_mtx);
+				STAILQ_INSERT_TAIL(ra->notify_queue,
 				    temp_el, entries);
-				pthread_cond_signal(&notify_queue_cond);
-				pthread_mutex_unlock(&notify_queue_mtx);
+				pthread_cond_signal(ra->notify_queue_cond);
+				pthread_mutex_unlock(ra->notify_queue_mtx);
 			} else {
-				server_conn = -1;
+				transport.dlt_sock = -1;
 			}
 		}
 
-		pthread_mutex_lock(&dl_request_queue_mtx);		
-		while (STAILQ_EMPTY(&request_queue) != 0 ) {
+		pthread_mutex_lock(ra->dl_request_queue_mtx);		
+		while (STAILQ_EMPTY(ra->request_queue) != 0 ) {
 			/* There are no elements in the reader's
 			 * queue check whether the thread has been
 			 * canceled.
@@ -346,39 +226,39 @@ dl_reader_thread(void *vargp)
 			gettimeofday(&now, NULL);
 			ts.tv_sec = now.tv_sec + 2;
 			ts.tv_nsec = 0;
-			pthread_cond_timedwait(&dl_request_queue_cond,
-			    &dl_request_queue_mtx, &ts);
+			pthread_cond_timedwait(ra->dl_request_queue_cond,
+			    &ra->dl_request_queue_mtx, &ts);
 		}
 
-		while (STAILQ_EMPTY(&request_queue) == 0 ) {
-			request = STAILQ_FIRST(&request_queue);
-			STAILQ_REMOVE_HEAD(&request_queue, entries);
+		while (STAILQ_EMPTY(ra->request_queue) == 0 ) {
+			request = STAILQ_FIRST(ra->request_queue);
+			STAILQ_REMOVE_HEAD(ra->request_queue, entries);
 
 			STAILQ_INSERT_TAIL(&local_request_queue,
 				request, entries);
 		}
-		pthread_mutex_unlock(&dl_request_queue_mtx);
+		pthread_mutex_unlock(ra->dl_request_queue_mtx);
 
 		STAILQ_FOREACH_SAFE(request, &local_request_queue, entries,
 		    request_temp) {
 			STAILQ_REMOVE_HEAD(&local_request_queue, entries);
-			dl_process_request(server_conn, request);
+			dl_process_request(&transport, request);
+			// TODO: proper errro handling is necessary
+			//DISTLOGTR0(PRIO_NORMAL, "socket send error\n");
 		}
 	}
 	return NULL;
 }
 
 static void
-dl_process_request(const int server_conn, struct dl_request_element *request)
+dl_process_request(const struct dl_transport *transport,
+    struct dl_request_element *request)
 {
-	char *pbuf, *request_buffer;
 	struct dl_request *request_msg = &request->dlrq_msg;
 	ssize_t nbytes;
 
+	DL_ASSERT(transport != NULL, "Transport cannot be NULL");
 	DL_ASSERT(request != NULL, "Request cannot be NULL");
-
-	pbuf = (char *) distlog_alloc(sizeof(char) * MTU);
-	request_buffer = (char *) distlog_alloc(sizeof(char) * MTU);
 
 	DISTLOGTR1(PRIO_LOW, "Dequeued request with address %p\n",
 	    request);
@@ -387,29 +267,17 @@ dl_process_request(const int server_conn, struct dl_request_element *request)
 	DISTLOGTR1(PRIO_LOW, "request_msg->CorrelationId %d\n",
 	    request_msg->dlrqm_correlation_id);
 
-	int fi = dl_encode_request(request_msg, pbuf);
-	
-	DISTLOGTR1(PRIO_NORMAL, "Sending: '%s'\n", pbuf);
-	DISTLOGTR1(PRIO_NORMAL, "Sending: '%d bytes'\n", fi);
-	DISTLOGTR1(PRIO_NORMAL, "Sending: '%s'\n", request_buffer);
-	// sosend(struct socket *so, struct sockaddr *addr, struct uio *uio,
-	// 	 struct	mbuf *top, struct mbuf *control, int flags,
-	// 	 	 struct	thread *td);
-	//nbytes = send(server_conn, request_buffer, fi, 0);
-	nbytes = send(server_conn, pbuf, fi, 0);
+	nbytes = dl_transport_send_request(transport, request_msg);
 	if (nbytes != -1) {
 		DISTLOGTR1(PRIO_LOW, "Request last_sent = %d\n",
 			request->should_resend);
 
-		if (request_msg->dlrqm_api_key == DL_PRODUCE_REQUEST&&
-			!request_msg->dlrqm_message.dlrqmt_produce_request.dlpr_required_acks) {
+		if (request_msg->dlrqm_api_key == DL_PRODUCE_REQUEST &&
+		    !request_msg->dlrqm_message.dlrqmt_produce_request.dlpr_required_acks) {
 			/* The request does not require an acknowledgment;
-			 * as we have finished processing the request return it
-			 * to the request pool.
+			 * as we have finished processing the request free it.
 			 */
-			pthread_mutex_lock(&request_pool_mtx);
-			STAILQ_INSERT_TAIL(&request_pool, request, entries);
-			pthread_mutex_unlock(&request_pool_mtx);
+			 distlog_free(request);
 		} else {
 			/* The request must be acknowledged, store
 			 * the request until an acknowledgment is
@@ -425,11 +293,8 @@ dl_process_request(const int server_conn, struct dl_request_element *request)
 			    "Inserting into the tree with key %d\n",
 			    request_msg->dlrqm_correlation_id);
 
-			pthread_mutex_lock(&unackd_requests_mtx);
-			RB_INSERT(dl_unackd_requests, &unackd_requests,
-			    request);
-			pthread_mutex_unlock(&unackd_requests_mtx);
-			
+			// TODO: Add error handling
+			dl_resender_unackd_request(request);
 			DISTLOGTR1(PRIO_NORMAL, "Processed request %d\n",
 			    request_msg->dlrqm_correlation_id);
 		}
@@ -437,9 +302,6 @@ dl_process_request(const int server_conn, struct dl_request_element *request)
 		// TODO: proper errro handling is necessary
 		DISTLOGTR0(PRIO_NORMAL, "socket send error\n");
 	}
-
-	distlog_free(pbuf);
-	distlog_free(request_buffer);
 }
 
 static void *
@@ -456,7 +318,7 @@ dl_request_notifier_thread(void *vargp)
 	DL_ASSERT(vargp != NULL,
 	    "Request notifier thread argument cannot be NULL");	
 
-	DISTLOGTR1(PRIO_LOW, "Request notifier thread %d started...\n",
+	DISTLOGTR1(PRIO_LOW, "Notifier thread %d started...\n",
 	    na->dlna_index);
 	
 	/* Initialize a local queue, used to enqueue requests from the
@@ -474,8 +336,8 @@ dl_request_notifier_thread(void *vargp)
 		/* Copy elements from the notifier queue,
 		 * to a thread local queue prior to processing.
 		 */
-		pthread_mutex_lock(&notify_queue_mtx);		
-		while (STAILQ_EMPTY(&notify_queue) != 0 ) {
+		pthread_mutex_lock(&na->notify_queue_mtx);		
+		while (STAILQ_EMPTY(&na->notify_queue) != 0 ) {
 			/* There are no elements in the notifier's
 			 * queue check whether the thread has been
 			 * canceled.
@@ -489,16 +351,16 @@ dl_request_notifier_thread(void *vargp)
 			gettimeofday(&now, NULL);
 			ts.tv_sec = now.tv_sec + 2;
 			ts.tv_nsec = 0;
-			pthread_cond_timedwait(&notify_queue_cond,
-			    &notify_queue_mtx, &ts);
+			pthread_cond_timedwait(&na->notify_queue_cond,
+			    &na->notify_queue_mtx, &ts);
 		}
 
-		while ((notify = STAILQ_FIRST(&notify_queue))) {
-			STAILQ_REMOVE_HEAD(&notify_queue, entries);
+		while ((notify = STAILQ_FIRST(&na->notify_queue))) {
+			STAILQ_REMOVE_HEAD(&na->notify_queue, entries);
 			STAILQ_INSERT_TAIL(&local_notify_queue, notify,
 			    entries);
 		}
-		pthread_mutex_unlock(&notify_queue_mtx);		
+		pthread_mutex_unlock(&na->notify_queue_mtx);		
 
 		/* Process the elements in the thread local queue,
 		 * notifying the lients for each response.
@@ -522,7 +384,7 @@ static int
 dl_notify_response(struct notify_queue_element *notify,
     struct dl_notifier_argument *na)
 {
-	struct dl_request_element find, *request;	
+	struct dl_request_element *request;	
 	struct dl_response_element *response;
 	struct dl_request *req_m;
 	struct dl_response *res_m;
@@ -531,11 +393,9 @@ dl_notify_response(struct notify_queue_element *notify,
 	DL_ASSERT(notify != NULL, "Notifier element cannot be NULL");
 	DL_ASSERT(na != NULL, "Notifier thread argument cannot be NULL");
 
-	pthread_mutex_lock(&response_pool_mtx);
-	response = LIST_FIRST(&response_pool);
-	LIST_REMOVE(response, entries);
-	pthread_mutex_unlock(&response_pool_mtx);
-	if (response) {
+	response = (struct dl_response_element *) distlog_alloc(
+	    sizeof(struct dl_response_element));
+	if (NULL != response) {
 		/* Deserialise the response message. */
 		res_m = &response->rsp_msg;
 		if (dl_decode_response(res_m, pbuf) == 0) {
@@ -545,34 +405,12 @@ dl_notify_response(struct notify_queue_element *notify,
 			DISTLOGTR1(PRIO_NORMAL, "Got acknowledged: %d\n",
 			    res_m->dlrs_correlation_id);
 
-			//DISTLOGTR2(PRIO_NORMAL,
-			//    "Requester[%d] got the following message '%s'\n",
-			//    na->dlna_index, pbuf);
-
-			/* Lookup the unacknowledged Request message based
+			/* Acknowledge the request message based
 			 * on the CorrelationId returned in the response.
 			 */
-			find.dlrq_msg.dlrqm_correlation_id =
-			    res_m->dlrs_correlation_id;
-
-			printf("here\n");
-			pthread_mutex_lock(&unackd_requests_mtx);
-			request = RB_FIND(dl_unackd_requests,
-			    &unackd_requests, &find);
-			printf("here2 %p\n", request);
-			if (request != NULL) {
-				DISTLOGTR1(PRIO_NORMAL,
-				    "Found unacknowledged request id: %d\n",
-				    request->dlrq_msg.dlrqm_correlation_id);
-
-				/* Remove the unacknowledged request
-				 * and process the Response.
-				 */
-				request = RB_REMOVE(dl_unackd_requests,
-				    &unackd_requests, request);
-			}
-			pthread_mutex_unlock(&unackd_requests_mtx);
-			if (request != NULL) {
+			request = dl_resender_ackd_request(
+			    res_m->dlrs_correlation_id);
+			if (NULL != request) {
 				req_m = &request->dlrq_msg;
 
 				// TODO: Add error checking
@@ -606,19 +444,15 @@ dl_notify_response(struct notify_queue_element *notify,
 
 				if (na->dlna_on_response != NULL)
 					na->dlna_on_response(req_m, res_m);
-				
-				pthread_mutex_lock(&response_pool_mtx);
-				LIST_INSERT_HEAD(&response_pool,
-					response, entries);
-				pthread_mutex_unlock(&response_pool_mtx);
+			
+				// TOOD: who is responsible for freeing the 
+				// memory?	
+				distlog_free(response);
 			} else {
-			printf("here5\n");
 				DISTLOGTR1(PRIO_HIGH,
-				    "Couldn't find the unacknowledge request "
+				    "Couldn't find the unacknowledged request "
 				    "id: %d\n", res_m->dlrs_correlation_id);
-				pthread_mutex_lock(&response_pool_mtx);
-				LIST_INSERT_HEAD(&response_pool, response, entries);
-				pthread_mutex_unlock(&response_pool_mtx);
+				distlog_free(response);
 			}
 		}
 	} else {
@@ -629,38 +463,31 @@ dl_notify_response(struct notify_queue_element *notify,
 }
 
 static void
-dl_start_notifiers(struct dl_client_configuration *cc)
+dl_start_notifiers(struct distlog_handle *handle,
+    struct dl_client_configuration *cc)
 {
 	int notifier;
 
 	for (notifier = 0; notifier < NUM_NOTIFIERS; notifier++) {
-		nas[notifier].dlna_index = notifier;
-		nas[notifier].dlna_tid = NULL;
-		nas[notifier].dlna_config = cc;
-		nas[notifier].dlna_on_ack = cc->dlcc_on_ack;
-		nas[notifier].dlna_on_response = cc->dlcc_on_response;
 
-		if (pthread_create(&notifiers[notifier], NULL,
-		    dl_request_notifier_thread, &nas[notifier]) == 0){
-			nas[notifier].dlna_tid = &notifiers[notifier];
+		handle->nas[notifier].dlna_index = notifier;
+		handle->nas[notifier].dlna_tid = NULL;
+		handle->nas[notifier].dlna_config = cc;
+		handle->nas[notifier].dlna_on_ack = cc->dlcc_on_ack;
+		handle->nas[notifier].dlna_on_response = cc->dlcc_on_response;
+		handle->nas[notifier].notify_queue = handle->notify_queue;
+		handle->nas[notifier].notify_queue_mtx =
+		    handle->notify_queue_mtx;
+		handle->nas[notifier].notify_queue_cond =
+		    handle->notify_queue_cond;
+
+		if (0 == pthread_create(&handle->notifiers[notifier], NULL,
+		    dl_request_notifier_thread, &handle->nas[notifier])) {
+
+			handle->nas[notifier].dlna_tid =
+			    &handle->notifiers[notifier];
 		}
 	}
-}
-
-static void
-dl_start_resender(struct dl_client_configuration *cc)
-{
-	int ret;
-
-	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
-
-	ret = pthread_create(&resender, NULL, dl_resender_thread,
-	    &resender_arg);
-	if (ret == 0) {
-		resender_arg.dlra_tid = &resender;
-		resender_arg.dlra_index = 0;
-		resender_arg.dlra_config = cc;
-	} 
 }
 
 static int
@@ -671,91 +498,85 @@ dl_allocate_client_datastructures(struct dl_client_configuration *cc)
 	/* Allocate memory for the notifier threads. These threads
 	 * asynchronously report ack's requests back to the client.
 	 */
-	nas = (struct dl_notifier_argument *) distlog_alloc(
+	handle.nas = (struct dl_notifier_argument *) distlog_alloc(
 		sizeof(struct dl_notifier_argument) * NUM_NOTIFIERS);
 
-	notifiers = (pthread_t *) distlog_alloc(
+	handle.notifiers = (pthread_t *) distlog_alloc(
 		sizeof(pthread_t) * NUM_NOTIFIERS);
 
 	/* Allocate memory for the reader threads. These threads read response
 	 * from the distributed log broker. 
 	 */
-	readers = (pthread_t *) distlog_alloc(
+	handle.readers = (pthread_t *) distlog_alloc(
 		sizeof(pthread_t) * NUM_READERS);
 
-	ras = (struct dl_reader_argument *) distlog_alloc(
+	handle.ras = (struct dl_reader_argument *) distlog_alloc(
 		sizeof(struct dl_reader_argument) * NUM_READERS);
+	
+	/* Initialise the notify queue. Responses to be notified back to
+	 * the client are enqueued onto this queue.
+	 */
+	STAILQ_INIT(&handle.notify_queue);
+	pthread_mutex_init(&handle.notify_queue_mtx, NULL);
+	pthread_cond_init(&handle.notify_queue_cond, NULL);
 
 	/* Initialise the response queue (on which client requests are
 	 * enqueued).
 	 */
-	STAILQ_INIT(&request_queue);
-	pthread_mutex_init(&dl_request_queue_mtx, NULL);
-	pthread_cond_init(&dl_request_queue_cond, NULL);
+	STAILQ_INIT(&handle.request_queue);
+	pthread_mutex_init(&handle.dl_request_queue_mtx, NULL);
+	pthread_cond_init(&handle.dl_request_queue_cond, NULL);
 
 	/* Initialise (preallocate) a pool of requests.
 	 * TODO: Change this to work like the kaudit_queue.
 	 */
-	STAILQ_INIT(&request_pool);
+	/*STAILQ_INIT(&handle.request_pool);
 
 	for (processor = 0; processor < MAX_NUM_REQUESTS_PER_PROCESSOR;
 	    processor++) {
 		struct dl_request_element * list_entry =
 		    distlog_alloc(sizeof(struct dl_request_element));
-		STAILQ_INSERT_HEAD(&request_pool, list_entry, entries);
+		STAILQ_INSERT_HEAD(&handle.request_pool, list_entry, entries);
 	}
-
-	pthread_mutex_init(&request_pool_mtx, NULL);
-
-	/* Initialise the notify queue. Responses to be notified back to
-	 * the client are enqueued onto this queue.
-	 * */
-	STAILQ_INIT(&notify_queue);
-	pthread_mutex_init(&notify_queue_mtx, NULL);
-	pthread_cond_init(&notify_queue_cond, NULL);
-
-	/* Initialise (preallocate) a pool of responses.
-	 * TODO: Change this to work like the kaudit_queue.
-	 */
-	LIST_INIT(&response_pool);
-
-	for (processor = 0; processor < MAX_NUM_RESPONSES_PER_PROCESSOR;
-	    processor++) {
-		struct dl_response_element * list_entry =
-		    distlog_alloc(sizeof(struct dl_response_element));
-		LIST_INSERT_HEAD(&response_pool, list_entry, entries);
-	}
-
-	pthread_mutex_init(&response_pool_mtx, NULL);
-
-	/* Initialise a red/black tree used to index the unacknowledge
-	 * responses.
-	 */
-	RB_INIT(&unackd_requests);
-	pthread_mutex_init(&unackd_requests_mtx, NULL);
 	
-	STAILQ_INIT(&unackd_request_queue);
-	pthread_mutex_init(&unackd_request_queue_mtx, NULL);
-	pthread_cond_init(&unackd_request_queue_cond, NULL);
+	pthread_mutex_init(&handle.request_pool_mtx, NULL);
+	*/
+
+	/* Instantiate a correlation id. */
+	handle.correlation_id = dl_correlation_id_new();
 
 	return 1;
+}
+
+static int 
+dl_enqueue_request(struct dl_request_element *request)
+{
+	pthread_mutex_lock(&handle.dl_request_queue_mtx);
+	STAILQ_INSERT_TAIL(&handle.request_queue, request, entries);
+	pthread_cond_signal(&handle.dl_request_queue_cond);
+	pthread_mutex_unlock(&handle.dl_request_queue_mtx);
+
+	return 0;
 }
 
 static int
 dl_free_client_datastructures()
 {
 	/* Free the memory associated with the reader threads */
-	distlog_free(readers);
-	distlog_free(ras);
+	distlog_free(handle.readers);
+	distlog_free(handle.ras);
 
 	/* Free the memory associated with the notifier threads */
-	distlog_free(notifiers);
-	distlog_free(nas);
+	distlog_free(handle.notifiers);
+	distlog_free(handle.nas);
+
+	/* Free the correlation id. */	
+	dl_correlation_id_fini(handle.correlation_id);
 }
 
 static void
-dl_start_reader_threads(struct dl_client_configuration *cc, int num,
-    char * hostname, int port)
+dl_start_reader_threads(struct distlog_handle *handle,
+    struct dl_client_configuration *cc, int num, char * hostname, int port)
 {
 	int reader;
 
@@ -765,15 +586,30 @@ dl_start_reader_threads(struct dl_client_configuration *cc, int num,
 	num_readers = MIN(NUM_READERS, num);
 
 	for (reader = 0; reader < num_readers; reader++) {
-		if (0 == pthread_create(&readers[reader], NULL,
-		    dl_reader_thread, &ras[reader])) {
 
-			ras[reader].dlra_tid = &readers[reader];
-			ras[reader].dlra_index = reader;
-			ras[reader].dlra_config = cc;
-			strlcpy(ras[reader].dlra_hostname, hostname,
-			    HOST_NAME_MAX);
-			ras[reader].dlra_portnumber = port;
+		handle->ras[reader].dlra_index = reader;
+		handle->ras[reader].dlra_tid = NULL;
+		handle->ras[reader].dlra_config = cc;
+		// TODO: In-kernel strlcpy
+		strlcpy(handle->ras[reader].dlra_hostname, hostname,
+			HOST_NAME_MAX);
+		handle->ras[reader].dlra_portnumber = port;
+		handle->ras[reader].request_queue = &handle->request_queue;
+		handle->ras[reader].dl_request_queue_mtx =
+		    &handle->dl_request_queue_mtx;
+		handle->ras[reader].dl_request_queue_cond =
+		    &handle->dl_request_queue_cond;
+		handle->ras[reader].notify_queue = &handle->notify_queue;
+		handle->ras[reader].notify_queue_mtx =
+		    &handle->notify_queue_mtx;
+		handle->ras[reader].notify_queue_cond =
+		    &handle->notify_queue_cond;
+
+		if (0 == pthread_create(&handle->readers[reader], NULL,
+		    dl_reader_thread, &handle->ras[reader])) {
+
+			handle->ras[reader].dlra_tid =
+			    &handle->readers[reader];
 		}
 	}
 }
@@ -786,7 +622,7 @@ distlog_client_fini()
 	/* Cancel the reader threads */
 	cancelled_threads = 0;
 	for (reader = 0; reader < num_readers; reader++) {
-		rc = pthread_cancel(readers[reader]);
+		rc = pthread_cancel(handle.readers[reader]);
 		if (rc != ESRCH)
 			cancelled_threads++;
 	}
@@ -797,7 +633,7 @@ distlog_client_fini()
 	/* Cancel the notifier threads */
 	cancelled_threads = 0;
 	for (notifier = 0; notifier < NUM_NOTIFIERS; notifier++) {
-		rc = pthread_cancel(notifiers[notifier]);
+		rc = pthread_cancel(handle.notifiers[notifier]);
 		if (rc != ESRCH)
 			cancelled_threads++;
 	}
@@ -806,7 +642,7 @@ distlog_client_fini()
 	    cancelled_threads, NUM_NOTIFIERS);
 
 	/* Cancel the resender thread */
-	rc = pthread_cancel(resender);
+	dl_resender_stop();
 	if (rc != ESRCH)
 		DISTLOGTR0(PRIO_NORMAL, "Cancelled resender thread\n");
 	else
@@ -818,7 +654,32 @@ distlog_client_fini()
 	return 0;
 }
 
-// Need to split imto init and open
+// Need to split into init and open
+struct distlog_handle *
+distlog_client_open(char const * const hostname,
+    const int portnumber, struct dl_client_configuration const * const cc)
+{
+	int ret;
+	
+	DL_ASSERT(hostname != NULL, "Hostname cannot be NULL");
+	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
+
+	DISTLOGTR0(PRIO_NORMAL, "Initialising the distlog client...\n");
+
+	ret  = dl_allocate_client_datastructures(cc);
+	if (ret > 0) {
+		DISTLOGTR0(PRIO_NORMAL, "Finished allocation...\n");
+
+		dl_start_notifiers(&handle, cc);
+		dl_start_reader_threads(&handle, cc, 1, hostname, portnumber);
+
+		dl_resender_init(cc);
+		dl_resender_start(cc);
+		return &handle;
+	}
+	return NULL;
+}
+
 int
 distlog_client_init(char const * const hostname,
     const int portnumber, struct dl_client_configuration const * const cc)
@@ -834,20 +695,31 @@ distlog_client_init(char const * const hostname,
 	if (ret > 0) {
 		DISTLOGTR0(PRIO_NORMAL, "Finished allocation...\n");
 
-		dl_start_notifiers(cc);
-		dl_start_reader_threads(cc, 1, hostname, portnumber);
-		dl_start_resender(cc);
+		dl_start_notifiers(&handle, cc);
+		dl_start_reader_threads(&handle, cc, 1, hostname, portnumber);
+
+		dl_resender_init(cc);
+		dl_resender_start(cc);
 		return 0;
 	}
 	return 1;
 }
 
 int
-distlog_send(int server_id, char *client_id, bool should_resend,
-    int resend_timeout, ...)
+distlog_client_close(struct distlog_handle *handle)
 {
+	return 0;
+}
+
+int
+distlog_send(struct distlog_handle *handle, int server_id, char *client_id,
+    bool should_resend, int resend_timeout, ...)
+//    int resend_timeout, char *topic, int num_msgs, ...)
+{
+	struct dl_buffer *buffer;
+	struct dl_request_element *request;
 	int result = 0;
-	struct dl_request_element * request;
+	int octets_to_send;
 	va_list ap;
 
 	DL_ASSERT(client_id != NULL, "Client ID cannot be NULL");
@@ -856,15 +728,14 @@ distlog_send(int server_id, char *client_id, bool should_resend,
 
 	DISTLOGTR1(PRIO_LOW,
 	    "User requested to send a message with correlation id = %d\n",
-	    correlation_id);
+	    dl_correlation_id_val(handle->correlation_id));
 
-	// TODO replace this with an allocated value
-
-	/* Take a new request from the pool */
-	pthread_mutex_lock(&request_pool_mtx);
-	request = STAILQ_FIRST(&request_pool);
-	STAILQ_REMOVE_HEAD(&request_pool, entries);
-	pthread_mutex_unlock(&request_pool_mtx);
+	/* Allocate a new request; this stores the encoded request
+	 * along with associate metadata allowing correlation of reuqets
+	 * and responses and specifying policy for resending requests.
+	 */
+	request = (struct dl_request_element *) distlog_alloc(
+	    sizeof(struct dl_request_element));
 	if (request) {
 		/* Construct the request */
 		request->should_resend = should_resend;
@@ -878,43 +749,43 @@ distlog_send(int server_id, char *client_id, bool should_resend,
 		}
 
 		DISTLOGTR1(PRIO_LOW, "Building request message "
-		    "(correlation_id = %d)\n", correlation_id);
+		    "(correlation_id = %d)\n",
+		    dl_correlation_id_val(handle->correlation_id));
 
-		// TODO: replace this
-		dl_build_produce_request(&request->dlrq_msg,
-			correlation_id, client_id, ap);
-		
+		/* Instantiate a new produce request */
+		dl_produce_request_new(&request->dlrq_msg,
+		    	dl_correlation_id_val(handle->correlation_id),
+			client_id, ap);
+	
 		DISTLOGTR0(PRIO_LOW, "Constructed request message\n");
 
-		/* Enque the request for processing */
-		pthread_mutex_lock(&dl_request_queue_mtx);
-		STAILQ_INSERT_TAIL(&request_queue, request, entries);
-		pthread_cond_signal(&dl_request_queue_cond);
-		pthread_mutex_unlock(&dl_request_queue_mtx);
-	
-		DISTLOGTR0(PRIO_LOW, "User request finished\n");
-
+		/* Enqueue the request for processing */
+		if (0 == dl_enqueue_request(request)) {
+			
+			/* Increment the monotonic correlation id. */
+			dl_correlation_id_inc(handle->correlation_id);
+		} else {
+			DISTLOGTR0(PRIO_HIGH, "Error enquing request\n");
+		}
 	} else {
         	DISTLOGTR0(PRIO_HIGH,
 		    "Error borrowing the request to perform user send\n");
 		result = -1;
 	}
 		
-	/* Increment the monotonically increasing correlation id. */
-	// TODO: this action isn't atomic
-	correlation_id++;
-
 	va_end(ap);
 
 	return result;
 }
 
 int
-distlog_recv(int server_id, char *client_id, bool should_resend,
-    int resend_timeout, ...)
+distlog_recv(struct distlog_handle *handle, int server_id, char *client_id,
+    bool should_resend, int resend_timeout, ...)
 {
+	struct dl_buffer *buffer;
+	struct dl_request_element *request;
 	int result = 0;
-	struct dl_request_element * request;
+	int octets_to_send;
 	va_list ap;
 
 	DL_ASSERT(client_id != NULL, "Client ID cannot be NULL");
@@ -923,15 +794,72 @@ distlog_recv(int server_id, char *client_id, bool should_resend,
 
 	DISTLOGTR1(PRIO_LOW,
 	    "User requested to send a message with correlation id = %d\n",
-	    correlation_id);
+	    dl_correlation_id_val(handle->correlation_id));
 
-	// TODO replace this with an allocated value
+	/* Allocate a new request; this stores the encoded request
+	 * along with associate metadata allowing correlation of reuqets
+	 * and responses and specifying policy for resending requests.
+	 */
+	request = (struct dl_request_element *) distlog_alloc(
+	    sizeof(struct dl_request_element));
+	if (NULL != request) {
+		/* Construct the request */
+		request->should_resend = should_resend;
+		request->resend_timeout = resend_timeout;
 
-	/* Take a new request from the pool */
-	pthread_mutex_lock(&request_pool_mtx);
-	request = STAILQ_FIRST(&request_pool);
-	STAILQ_REMOVE_HEAD(&request_pool, entries);
-	pthread_mutex_unlock(&request_pool_mtx);
+		DISTLOGTR1(PRIO_LOW, "Request should_resend = %d\n",
+		    request->should_resend);
+		if (should_resend) {
+			DISTLOGTR1(PRIO_LOW, "Request resenid_timeout = %d\n",
+			    request->resend_timeout);
+		}
+
+		DISTLOGTR1(PRIO_LOW, "Building request message "
+		    "(correlation_id = %d)\n",
+		    dl_correlation_id_val(handle->correlation_id));
+
+		dl_fetch_request_new(&request->dlrq_msg,
+		    dl_correlation_id_val(handle->correlation_id), client_id, ap);
+
+		/* Enqueue the request for processing */
+		if (0 == dl_enqueue_request(request)) {
+			
+			/* Increment the monotonic correlation id. */
+			dl_correlation_id_inc(handle->correlation_id);
+		} else {
+			DISTLOGTR0(PRIO_HIGH, "Error enquing request\n");
+		}
+	} else {
+        	DISTLOGTR0(PRIO_HIGH,
+		    "Error borrowing the request to perform user send\n");
+		result = -1;
+	}
+		
+	va_end(ap);
+
+	return result;
+}
+
+int
+distlog_offset(struct distlog_handle *handle, int server_id, char *client_id,
+    bool should_resend, int resend_timeout)
+{
+	int result = 0;
+	struct dl_request_element * request;
+
+	// TODO: In fact I think that the protocol allows this!
+	DL_ASSERT(client_id != NULL, "Client ID cannot be NULL");
+
+	DISTLOGTR1(PRIO_LOW,
+	    "User requested to send a message with correlation id = %d\n",
+	    dl_correlation_id_val(handle->correlation_id));
+
+	/* Allocate a new request; this stores the encoded request
+	 * along with associate metadata allowing correlation of reuqets
+	 * and responses and specifying policy for resending requests.
+	 */
+	request = (struct dl_request_element *) distlog_alloc(
+	    sizeof(struct dl_request_element));
 	if (request) {
 		/* Construct the request */
 		request->should_resend = should_resend;
@@ -945,79 +873,15 @@ distlog_recv(int server_id, char *client_id, bool should_resend,
 		}
 
 		DISTLOGTR1(PRIO_LOW, "Building request message "
-		    "(correlation_id = %d)\n", correlation_id);
-
-		dl_build_fetch_request(&request->dlrq_msg,
-			correlation_id, client_id, ap);
-
-		DISTLOGTR0(PRIO_LOW, "Constructed request message\n");
-
-		/* Enque the request for processing */
-		pthread_mutex_lock(&dl_request_queue_mtx);
-		STAILQ_INSERT_TAIL(&request_queue, request, entries);
-		pthread_cond_signal(&dl_request_queue_cond);
-		pthread_mutex_unlock(&dl_request_queue_mtx);
-	
-		DISTLOGTR0(PRIO_LOW, "User request finished\n");
-
-	} else {
-        	DISTLOGTR0(PRIO_HIGH,
-		    "Error borrowing the request to perform user send\n");
-		result = -1;
-	}
-		
-	/* Increment the monotonically increasing correlation id. */
-	correlation_id++;
-
-	va_end(ap);
-
-	return result;
-}
-
-int
-distlog_offset(int server_id, char *client_id, bool should_resend,
-    int resend_timeout, ...)
-{
-	int result = 0;
-	struct dl_request_element * request;
-	va_list ap;
-
-	// TODO: If fact I think that the protocol allows this!
-	DL_ASSERT(client_id != NULL, "Client ID cannot be NULL");
-
-	va_start(ap, resend_timeout);
-
-	DISTLOGTR1(PRIO_LOW,
-	    "User requested to send a message with correlation id = %d\n",
-	    correlation_id);
-
-	// TODO replace this with an allocated value
-
-	/* Take a new request from the pool */
-	pthread_mutex_lock(&request_pool_mtx);
-	request = STAILQ_FIRST(&request_pool);
-	STAILQ_REMOVE_HEAD(&request_pool, entries);
-	pthread_mutex_unlock(&request_pool_mtx);
-	if (request) {
-		/* Construct the request */
-		request->should_resend = should_resend;
-		request->resend_timeout = resend_timeout;
-
-		DISTLOGTR1(PRIO_LOW, "Request should_resend = %d\n",
-		    request->should_resend);
-		if (should_resend) {
-			DISTLOGTR1(PRIO_LOW, "Request resenid_timeout = %d\n",
-			    request->resend_timeout);
-		}
-
-		DISTLOGTR1(PRIO_LOW, "Building request message "
-		    "(correlation_id = %d)\n", correlation_id);
+		    "(correlation_id = %d)\n",
+		    dl_correlation_id_val(handle->correlation_id));
 
 		// TODO: Temporarily send an OffsetRequest
 		// need a constructor for this
 		request->dlrq_msg.dlrqm_api_key = DL_OFFSET_REQUEST;
 		request->dlrq_msg.dlrqm_api_version = 1;
-		request->dlrq_msg.dlrqm_correlation_id = correlation_id;
+		request->dlrq_msg.dlrqm_correlation_id =
+			dl_correlation_id_val(handle->correlation_id);
 		strcpy(&request->dlrq_msg.dlrqm_client_id, "consumer");
 		request->dlrq_msg.dlrqm_message.dlrqmt_offset_request.dlor_replica_id = -1;
 		strcpy(&request->dlrq_msg.dlrqm_message.dlrqmt_offset_request.dlor_topic_name,
@@ -1027,24 +891,19 @@ distlog_offset(int server_id, char *client_id, bool should_resend,
 
 		DISTLOGTR0(PRIO_LOW, "Constructed request message\n");
 
-		/* Enque the request for processing */
-		pthread_mutex_lock(&dl_request_queue_mtx);
-		STAILQ_INSERT_TAIL(&request_queue, request, entries);
-		pthread_cond_signal(&dl_request_queue_cond);
-		pthread_mutex_unlock(&dl_request_queue_mtx);
-	
-		DISTLOGTR0(PRIO_LOW, "User request finished\n");
-
+		/* Enqueue the request for processing */
+		if (0 == dl_enqueue_request(request)) {
+			
+			/* Increment the monotonic correlation id. */
+			dl_correlation_id_inc(handle->correlation_id);
+		} else {
+			DISTLOGTR0(PRIO_HIGH, "Error enquing request\n");
+		}
 	} else {
         	DISTLOGTR0(PRIO_HIGH,
 		    "Error borrowing the request to perform user send\n");
 		result = -1;
 	}
-		
-	/* Increment the monotonically increasing correlation id. */
-	correlation_id++;
-
-	va_end(ap);
-
+	
 	return result;
 }

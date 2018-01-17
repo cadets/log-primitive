@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,50 +34,67 @@
  *
  */
 
-#ifndef _DL_COMMON_H
-#define _DL_COMMON_H
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-
-//#include "distlog_client.h"
-#include "dl_protocol.h" 
-#include "dl_response.h" 
-
-//typedef int32_t dl_correlation_id;
-
-typedef void (* dl_ack_function) (const int32_t );
-typedef void (* dl_response_function) (struct dl_request const * const,
-    struct dl_response const * const);
-
-enum broker_confs {
-	BROKER_SEND_ACKS = 1 << 1,
-	BROKER_FSYNC_ALWAYS = 1 << 2,
-};
-
-struct broker_configuration {
-	int fsync_thread_sleep_length;
-	int processor_thread_sleep_length;
-	int val;
-};
-
-struct dl_client_configuration {
-	dl_ack_function dlcc_on_ack;
-	dl_response_function dlcc_on_response;
-	int to_resend;
-	int resender_thread_sleep_length;
-	int request_notifier_thread_sleep_length;
-	int reconn_timeout;
-	int poll_timeout;
-};
-
-static const int MAX_NUM_REQUESTS_PER_PROCESSOR  = 128; // Maximum outstanding requests per processor.
-static const int NUM_PROCESSORS                  = 10;   // Number of processors.
-static const int MAX_NUM_RESPONSES_PER_PROCESSOR = 128; // Maximum outstanding responses per processor.
-static const int CONNECTIONS_PER_PROCESSOR       = 10; // Number of connections per processor.
-static const int MAX_NUM_UNFSYNCED = 20; // Maximum number of unfsynced inserts
-
-extern void print_configuration(struct broker_configuration *);
-
+#ifdef __APPLE__
+#include <stdatomic.h>
+#else
+#include <sys/types.h>
+#include <machine/atomic.h>
 #endif
+
+#include "dl_assert.h"
+#include "dl_correlation_id.h"
+#include "dl_memory.h"
+
+struct dl_correlation_id
+{
+#ifdef __APPLE__
+	atomic_int_least32_t val;
+#else
+	int32_t val;
+#endif
+};
+
+struct dl_correlation_id *
+dl_correlation_id_new()
+{
+	struct dl_correlation_id *cid = (struct dl_correlation_id *)
+	    distlog_alloc(sizeof(struct dl_correlation_id));
+#ifdef __APPLE__
+	atomic_init(&cid->val, 0);
+#else
+	cid->val = 0;
+#endif
+	return cid;
+}
+
+int32_t
+dl_correlation_id_inc(struct dl_correlation_id * self)
+{
+	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
+
+#ifdef __APPLE__
+	return atomic_fetch_add(&self->val, 1);
+#else
+	return atomic_add_32(&self->val, 1);
+#endif
+}
+
+int32_t
+dl_correlation_id_val(struct dl_correlation_id *self)
+{
+	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
+
+#ifdef __APPLE__
+	return atomic_load(&self->val);
+#else
+	return atomic_load_32(&self->val);
+#endif
+}
+
+void
+dl_correlation_id_fini(struct dl_correlation_id *self)
+{
+	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
+
+	distlog_free(self);
+}

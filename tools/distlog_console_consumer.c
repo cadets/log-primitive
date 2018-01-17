@@ -52,7 +52,7 @@ static char const * const DEFAULT_TOPIC  = "test";
 static char const * const DEFAULT_HOSTNAME  = "localhost";
 static const int DEFAULT_PORT = 9092;
 
-static void on_ack(const cl_correlation_id);
+static void on_ack(const int32_t);
 static void on_response(struct dl_request *, struct dl_response *);
 
 static void dlc_siginfo_handler(int);
@@ -83,7 +83,7 @@ dlc_sigint_handler(int sig)
 
 
 static void
-on_ack(const dl_correlation_id correlation_id)
+on_ack(const int32_t correlation_id)
 {
 	debug(PRIO_NORMAL, "Broker acknowledged message "
 	    "(correlation ID = %lu\n)", correlation_id);
@@ -148,6 +148,7 @@ on_response(struct dl_request *request, struct dl_response *response)
 int
 main(int argc, char **argv)
 {
+	struct distlog_handle *handle;
 	struct dl_client_configuration cc;
 	char * client_id = DEFAULT_CLIENT_ID;
 	char * topic = DEFAULT_TOPIC;
@@ -201,19 +202,20 @@ main(int argc, char **argv)
 	cc.dlcc_on_ack = on_ack;
 	cc.dlcc_on_response = on_response;
 
-	if (distlog_client_init(hostname, port, &cc) != 0) {
+	handle = distlog_client_open(hostname, port, &cc);
+	if (NULL == handle) {
 		fprintf(stderr,
 		    "Error initialising the distributed log client.\n");
 		exit(EXIT_FAILURE);
 	}
 
-	distlog_offset(0, client_id, cc.to_resend, resend_timeout,
-		topic, wantoff, maxbytes, minbytes);
+	distlog_offset(handle, 0, client_id, cc.to_resend, resend_timeout,
+	    topic, wantoff, maxbytes, minbytes);
 
        	/* Echo to the command line from the distributed log. */	
 	for (;;) {
-		//distlog_recv(0, client_id, cc.to_resend, resend_timeout,
-		//    topic, wantoff, maxbytes, minbytes);
+		//distlog_recv(handle, 0, client_id, cc.to_resend,
+		//resend_timeout, topic, wantoff, maxbytes, minbytes);
 
 		// print response to stdout
 		sleep(10);
