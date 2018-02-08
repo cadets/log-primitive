@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -148,13 +148,15 @@ main(int argc, char **argv)
 	signal(SIGINFO, dlc_siginfo_handler);
 
 	/* Configure and initialise the distributed log client. */
+	cc.dlcc_on_ack = dlc_on_ack;
+	cc.dlcc_on_response = dlc_on_response;
+	cc.client_id = client_id;
 	cc.to_resend = true;
+	cc.resend_timeout = resend_timeout;
 	cc.resender_thread_sleep_length = 10;
 	cc.request_notifier_thread_sleep_length = 3;
 	cc.reconn_timeout = 5;
 	cc.poll_timeout = 3000;
-	cc.dlcc_on_ack = dlc_on_ack;
-	cc.dlcc_on_response = dlc_on_response;
 
 	handle = dlog_client_open(hostname, port, &cc);
         if (handle == NULL) {
@@ -176,8 +178,7 @@ main(int argc, char **argv)
 			 */
 			line[strlen(line) - 1] = '\0';
 
-			rc = dlog_produce(handle, client_id, cc.to_resend,
-			    resend_timeout, topic, "key", strlen("key"),
+			rc = dlog_produce(handle, topic,"key", strlen("key"),
 			    line, strlen(line));
 			if (rc != 0) {
 				fprintf(stderr,

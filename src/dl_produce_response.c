@@ -105,6 +105,13 @@ dl_decode_produce_response(char *source)
 	return produce_response;
 }
 
+int32_t
+dl_produce_response_encode(struct dl_produce_response * response, char * target)
+{
+	// TODO: 
+	return 0;
+}
+
 static struct dl_produce_partition_responses * 
 dl_decode_produce_partition_responses(char *source)
 {

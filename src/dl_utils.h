@@ -42,7 +42,6 @@
 #include <pthread.h>
 #include <dirent.h>
 
-#define MAX_FILENAME_SIZE 30
 
 #ifdef _KERNEL
 #define DISTLOGTR0(event_mask, format) \
@@ -75,6 +74,12 @@
 #define DISTLOGTR6(event_mask, format, p1, p2, p3, p4, p5, p6) \
 	debug(event_mask, format, p1, p2, p3, p4, p5, p6)
 #endif
+
+#define PRIO_HIGH   1 << 1
+#define PRIO_NORMAL 1 << 2
+#define PRIO_LOW    1 << 3
+
+#define MAX_FILENAME_SIZE 30
 
 static int index_size_entry = 8;
 static int log_size_entry = 8;
@@ -122,10 +127,6 @@ extern void	close_segment(segment *);
 extern int	insert_message(segment *, char *, int);
 extern int	get_message_by_offset(segment *, int, void *);
 extern int	remove_directory(const char *);
-
-#define PRIO_HIGH   1 << 1
-#define PRIO_NORMAL 1 << 2
-#define PRIO_LOW    1 << 3
 
 extern unsigned short PRIO_LOG;
 

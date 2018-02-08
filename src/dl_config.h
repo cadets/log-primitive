@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -61,6 +62,7 @@ struct dl_client_configuration {
 	dl_response_function dlcc_on_response;
 	char *client_id;
 	int to_resend;
+	int resend_timeout;
 	int resender_thread_sleep_length;
 	int request_notifier_thread_sleep_length;
 	int reconn_timeout;

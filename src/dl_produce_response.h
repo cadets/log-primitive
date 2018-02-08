@@ -64,5 +64,6 @@ struct dl_produce_response {
 };
 
 extern struct dl_produce_response * dl_decode_produce_response(char *);
+extern dl_produce_response_encode(struct dl_produce_response *, char *);
 
 #endif

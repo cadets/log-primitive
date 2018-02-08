@@ -57,11 +57,10 @@ extern struct dlog_handle * dlog_client_open(const char * const,
     const int, struct dl_client_configuration const * const);
 extern int dlog_client_close(struct dlog_handle *);
 
-extern int dlog_fetch(struct dlog_handle *, char *, char *, 
-    const int32_t, const int32_t,  const int64_t, const int32_t, bool, int);
-extern int dlog_list_offset(struct dlog_handle *, char *, bool, int, char *,
-    int64_t);
-extern int dlog_produce(struct dlog_handle *, char const * const, bool, int, char *,
-   char *, int, char *, int); 
+extern int dlog_fetch(struct dlog_handle *, char *, 
+    const int32_t, const int32_t,  const int64_t, const int32_t);
+extern int dlog_list_offset(struct dlog_handle *, char *, int64_t);
+extern int dlog_produce(struct dlog_handle *, char *, char *, int, char *,
+    int); 
 
 #endif

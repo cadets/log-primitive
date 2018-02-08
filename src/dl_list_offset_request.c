@@ -48,6 +48,9 @@
 #define DL_ENCODE_REPLICA_ID(target, value) dl_encode_int32(target, value)
 #define DL_ENCODE_TIMESTAMP(target, value) dl_encode_int64(target, value)
 
+/**
+ * TODO
+ */
 struct dl_request *
 dl_list_offset_request_new(int32_t correlation_id, char *client_id,
     char *topic_name, int64_t time)
@@ -146,4 +149,22 @@ dl_list_offset_request_encode(struct dl_list_offset_request *self,
 	}
 
 	return request_size;
+}
+
+/**
+ * Decode the ListOffsetRequest.
+ *
+ * ListOffsetRequest = ReplicaId [Topics]
+ * Topics = TopicName [Partitions]
+ * TopicName
+ * Partitions = Partition Timestamp
+ * Partition
+ * Timestamp
+ */
+struct dl_list_offset_request *
+dl_list_offset_request_decode(char *source)
+{
+	// TODO: decode a ListOffsetRequest
+
+	return NULL;
 }

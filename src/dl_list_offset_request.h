@@ -67,6 +67,7 @@ struct dl_list_offset_request {
 
 extern struct dl_request * dl_list_offset_request_new(int32_t, char *, char *,
     int64_t);
+extern struct dl_list_offset_request * dl_list_offset_request_decode(char *);
 extern int dl_list_offset_request_encode(struct dl_list_offset_request *,
     char *);
 

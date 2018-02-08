@@ -46,8 +46,8 @@ SLIST_HEAD(dl_message_set, dl_message);
 
 struct dl_message {
 	SLIST_ENTRY(dl_message) dlm_entries;
-	char *dlm_key;
-	char *dlm_value;
+	char const *dlm_key;
+	char const *dlm_value;
 	int32_t dlm_key_len;
 	int32_t dlm_value_len;
 };	

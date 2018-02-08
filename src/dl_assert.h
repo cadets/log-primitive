@@ -41,7 +41,8 @@
 
 #if _KERNEL
 #include <sys/param.h>
-#include <sys/systm.h>
+#include <sys/system.h>
+
 #define DL_ASSERT(exp, msg)	KASSERT(exp, msg)
 #else
 #include <assert.h>

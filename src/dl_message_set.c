@@ -74,6 +74,7 @@ static int32_t dl_message_get_size(struct dl_message *);
 struct dl_message_set *
 dl_message_set_decode(char const * const source)
 {
+	struct dl_message_set message_set;
 	int32_t message_it, nmessages;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
@@ -82,6 +83,18 @@ dl_message_set_decode(char const * const source)
 	nmessages = dl_decode_int32(source);
 
 	for (message_it = 0; message_it < nmessages; message_it++) {
+
+		/* Encode the MessageSet Offset into the buffer. */
+		//msg_set_size += DL_ENCODE_OFFSET(&target[msg_set_size],
+		//    DL_DEFAULT_OFFSET);
+
+		/* Encode the MessageSize. */
+		//msg_set_size += DL_ENCODE_MESSAGE_SIZE(&target[msg_set_size],
+		//    dl_message_get_size(message));
+
+		/* Encode the Message. */
+		//msg_set_size += dl_message_encode(message,
+		//    &target[msg_set_size]);
 	}
 
 	return NULL;
@@ -126,9 +139,12 @@ dl_message_encode(struct dl_message *message, char const *target)
 	DL_ASSERT(message != NULL, "Message cannot be NULL");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 
+#ifdef _KERNEL
 	// TODO: In-kernel timestamp ms since epoch?
+#else
 	timestamp = time(NULL);
-	
+#endif
+
 	/* Encode the CRC (placeholder value). */
 	msg_size += DL_ENCODE_CRC(target, 0);
 
@@ -157,15 +173,6 @@ dl_message_encode(struct dl_message *message, char const *target)
 	return msg_size;
 }
 
-static int32_t dl_message_get_size(struct dl_message *message)
-{
-	DL_ASSERT(message != NULL, "Message cannot be NULL");
-
-	return DL_CRC_SIZE + DL_MAGIC_BYTE_SIZE + DL_ATTRIBUTES_SIZE +
-	    DL_TIMESTAMP_SIZE + sizeof(int32_t) + message->dlm_key_len +
-	    sizeof(int32_t) + message->dlm_value_len;
-}
-
 int32_t dl_message_set_get_size(struct dl_message_set *message_set)
 {
 	struct dl_message const *message;
@@ -178,3 +185,13 @@ int32_t dl_message_set_get_size(struct dl_message_set *message_set)
 	}
 	return msg_set_size;
 }
+
+static int32_t dl_message_get_size(struct dl_message *message)
+{
+	DL_ASSERT(message != NULL, "Message cannot be NULL");
+
+	return DL_CRC_SIZE + DL_MAGIC_BYTE_SIZE + DL_ATTRIBUTES_SIZE +
+	    DL_TIMESTAMP_SIZE + sizeof(int32_t) + message->dlm_key_len +
+	    sizeof(int32_t) + message->dlm_value_len;
+}
+

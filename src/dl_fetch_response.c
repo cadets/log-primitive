@@ -57,7 +57,6 @@ dl_decode_fetch_response(char *buffer)
 	int32_t partition_response, response_it;
 	int16_t topic_name_len;
        
-
 	response = (struct dl_fetch_response *) dlog_alloc(
 		sizeof(struct dl_fetch_response));
 
@@ -116,6 +115,8 @@ dl_decode_fetch_response(char *buffer)
 			buffer += sizeof(int32_t);
 			
 			// TODO decode the MessageSet
+			// dl_message_set_decode(buffer);
+
 		    	dl_decode_int64(buffer);
 
 		    	dl_decode_int32(buffer);

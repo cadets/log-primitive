@@ -70,6 +70,7 @@ struct dl_fetch_request {
 
 extern struct dl_request * dl_fetch_request_new(const int32_t, char *, char *,
     const int32_t, const int32_t,  const int64_t, const int32_t);
+extern struct dl_fetch_request * dl_fetch_request_decode(char *);
 extern int dl_fetch_request_encode(struct dl_fetch_request *, char *);
 
 #endif

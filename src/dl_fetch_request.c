@@ -164,3 +164,10 @@ dl_fetch_request_encode(struct dl_fetch_request *self, char *target)
 
 	return request_size;
 }
+
+struct dl_fetch_request *
+dl_fetch_request_decode(char *source)
+{
+	// TODO: Decode a FetchRequest
+	return NULL;
+}

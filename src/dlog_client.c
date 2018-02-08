@@ -70,7 +70,6 @@
 	
 struct dl_reader_argument {
 	struct dl_client_configuration *dlra_config;
-	int dlra_index;
 	int dlra_portnumber;
 	char dlra_hostname[HOST_NAME_MAX];
 	struct dl_request_queue *request_queue;
@@ -80,25 +79,22 @@ struct dl_reader_argument {
 };
 
 struct dlog_handle {
+	struct dl_client_configuration *dlh_config;
 	struct dl_notifier *dlh_notifier;
-	struct dl_reader_argument *ras;
-	pthread_t *readers;
+	struct dl_reader_argument ra;
+	pthread_t reader;
 	struct dl_request_queue request_queue;
 	pthread_mutex_t dl_request_queue_mtx;
 	pthread_cond_t dl_request_queue_cond;
 	struct dl_correlation_id *correlation_id;
 };
 
-// TODO: Does it even make sense that there are more than one readero
-static int const NUM_READERS   = 1;
-static int num_readers;
-
 static int dl_enqueue_request(struct dlog_handle *, struct dl_buffer*,
-    int32_t, bool, int, int32_t, int16_t);
+    int32_t, int32_t, int16_t);
 static void dl_process_request(const struct dl_transport *,
     struct dl_request_element *);
 static void * dl_reader_thread(void *);
-static void dl_start_reader_threads(struct dlog_handle *,
+static void dl_start_reader_thread(struct dlog_handle *,
     struct dl_client_configuration *, int, char *, int);
 
 static void *
@@ -114,7 +110,8 @@ dl_reader_thread(void *vargp)
 	
 	DL_ASSERT(vargp != NULL, "Reader thread arguments cannot be NULL");
 	
-	DISTLOGTR1(PRIO_LOW, "Reader thread %d started...\n", ra->dlra_index);
+	DISTLOGTR1(PRIO_LOW, "%s: Reader thread started...\n",
+	    ra->dlra_config->client_id);
 	
 	/* Initialize a local queue, used to enqueue requests from the
 	 * request queue prior to processing.
@@ -277,8 +274,7 @@ dl_process_request(const struct dl_transport *transport,
 
 static int 
 dl_enqueue_request(struct dlog_handle *handle, struct dl_buffer *buffer,
-    int32_t buffer_len, bool should_resend, int resend_timeout,
-    int32_t correlation_id, int16_t api_key)
+    int32_t buffer_len, int32_t correlation_id, int16_t api_key)
 {
 	struct dl_request_element *request;
 
@@ -294,15 +290,16 @@ dl_enqueue_request(struct dlog_handle *handle, struct dl_buffer *buffer,
 		/* Construct the request */
 		request->dlrq_buffer = buffer;
 		request->dlrq_buffer_len = buffer_len;
-		request->dlrq_should_resend = should_resend;
-		request->dlrq_resend_timeout = resend_timeout;
+		request->dlrq_should_resend = handle->dlh_config->to_resend;
+		request->dlrq_resend_timeout =
+		    handle->dlh_config->resend_timeout;
 		request->dlrq_correlation_id = correlation_id;
 		request->dlrq_api_key = api_key;
 		request->dlrq_required_acks = 1; // message->dlrqm_message.dlrqmt_produce_request->dlrqm_required_acks;
 
 		DISTLOGTR1(PRIO_LOW, "Request should_resend = %d\n",
 		    request->dlrq_should_resend);
-		if (should_resend) {
+		if (request->dlrq_should_resend) {
 			DISTLOGTR1(PRIO_LOW, "Request resend_timeout = %d\n",
 			    request->dlrq_resend_timeout);
 		}
@@ -323,35 +320,27 @@ dl_enqueue_request(struct dlog_handle *handle, struct dl_buffer *buffer,
 }
 
 static void
-dl_start_reader_threads(struct dlog_handle *handle,
+dl_start_reader_thread(struct dlog_handle *handle,
     struct dl_client_configuration *cc, int num, char * hostname, int port)
 {
-	int reader;
-
 	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
 	DL_ASSERT(hostname != NULL, "Hostname cannot be NULL");
 
-	num_readers = MIN(NUM_READERS, num);
+	handle->ra.dlra_config = cc;
+	// TODO: In-kernel strlcpy
+	strlcpy(handle->ra.dlra_hostname, hostname,
+		HOST_NAME_MAX);
+	handle->ra.dlra_portnumber = port;
+	handle->ra.request_queue = &handle->request_queue;
+	handle->ra.dl_request_queue_mtx =
+		&handle->dl_request_queue_mtx;
+	handle->ra.dl_request_queue_cond =
+		&handle->dl_request_queue_cond;
+	handle->ra.notifier = handle->dlh_notifier;
 
-	for (reader = 0; reader < num_readers; reader++) {
+	if (0 == pthread_create(&handle->reader, NULL,
+		dl_reader_thread, &handle->ra)) {
 
-		handle->ras[reader].dlra_index = reader;
-		handle->ras[reader].dlra_config = cc;
-		// TODO: In-kernel strlcpy
-		strlcpy(handle->ras[reader].dlra_hostname, hostname,
-			HOST_NAME_MAX);
-		handle->ras[reader].dlra_portnumber = port;
-		handle->ras[reader].request_queue = &handle->request_queue;
-		handle->ras[reader].dl_request_queue_mtx =
-		    &handle->dl_request_queue_mtx;
-		handle->ras[reader].dl_request_queue_cond =
-		    &handle->dl_request_queue_cond;
-		handle->ras[reader].notifier = handle->dlh_notifier;
-
-		if (0 == pthread_create(&handle->readers[reader], NULL,
-		    dl_reader_thread, &handle->ras[reader])) {
-
-		}
 	}
 }
 
@@ -367,6 +356,9 @@ dlog_client_open(char const * const hostname,
 	
 	handle = (struct dlog_handle *) dlog_alloc(
 	    sizeof(struct dlog_handle));
+	
+	/* Store the client configuration. */
+	handle->dlh_config = cc;
 
 	/* Instatiate the client notifier. */
 	handle->dlh_notifier = dl_notifier_new(cc);
@@ -376,15 +368,6 @@ dlog_client_open(char const * const hostname,
 	/* Instatiate the client resender. */
 	dl_resender_init(cc);
 
-	/* Allocate memory for the reader threads. These threads read response
-	 * from the distributed log broker. 
-	 */
-	handle->readers = (pthread_t *) dlog_alloc(
-		sizeof(pthread_t) * NUM_READERS);
-
-	handle->ras = (struct dl_reader_argument *) dlog_alloc(
-		sizeof(struct dl_reader_argument) * NUM_READERS);
-	
 	/* Initialise the response queue (on which client requests are
 	 * enqueued).
 	 */
@@ -399,11 +382,10 @@ dlog_client_open(char const * const hostname,
 
 	DISTLOGTR0(PRIO_NORMAL, "Initialising the dlog client...\n");
 
+	/* Start the client threads. */
 	dl_notifier_start(handle->dlh_notifier, cc);
-
 	dl_resender_start(cc);
-
-	dl_start_reader_threads(handle, cc, 1, hostname, portnumber);
+	dl_start_reader_thread(handle, cc, 1, hostname, portnumber);
 
 	return handle;
 }
@@ -411,23 +393,13 @@ dlog_client_open(char const * const hostname,
 int
 dlog_client_close(struct dlog_handle *handle)
 {
-	int reader, rc, cancelled_threads;
+	int rc;
 
 	/* Cancel the reader threads */
-	cancelled_threads = 0;
-	for (reader = 0; reader < num_readers; reader++) {
-		rc = pthread_cancel(handle->readers[reader]);
-		if (rc != ESRCH)
-			cancelled_threads++;
-	}
-
-	DISTLOGTR2(PRIO_HIGH, "Cancelled %d/%d reader threads\n",
-	    cancelled_threads, num_readers);
+	rc = pthread_cancel(handle->reader);
+	if (rc != 0)
+		DISTLOGTR1(PRIO_HIGH, "Error stopping reader %d\n", rc);
 	
-	/* Free the memory associated with the reader threads */
-	dlog_free(handle->readers);
-	dlog_free(handle->ras);
-
 	/* Cancel the notifier */
 	rc = dl_notifier_stop(handle->dlh_notifier);
 	if (rc != 0)
@@ -448,9 +420,106 @@ dlog_client_close(struct dlog_handle *handle)
 }
 
 int
-dlog_produce(struct dlog_handle *handle, char const * const client_id,
-    bool should_resend, int resend_timeout, char *topic, char *key,
-    int key_len, char *value, int value_len)
+dlog_fetch(struct dlog_handle *handle, char *topic_name, int32_t min_bytes,
+    int32_t max_wait_time, int64_t fetch_offset, int32_t max_bytes)
+{
+	struct dl_buffer *buffer;
+	struct dl_request *message;
+	int result = 0;
+	int32_t buffer_len;
+
+	DISTLOGTR1(PRIO_LOW,
+	    "User requested to send a message with correlation id = %d\n",
+	    dl_correlation_id_val(handle->correlation_id));
+
+	message = dl_fetch_request_new(
+	    dl_correlation_id_val(handle->correlation_id),
+	    handle->dlh_config->client_id, topic_name, min_bytes,
+	    max_wait_time, fetch_offset, max_bytes);
+	
+	DISTLOGTR1(PRIO_LOW, "Constructed request (id = %d)\n",
+	    message->dlrqm_correlation_id);
+
+	/* Allocate and initialise a buffer to encode the request. */
+	buffer = (struct dl_buffer *) dlog_alloc(
+		sizeof(struct dl_buffer_hdr) + (sizeof(char) * MTU));
+	DL_ASSERT(buffer != NULL, "Buffer to encode request cannot be NULL");
+	buffer->dlb_hdr.dlbh_data = buffer->dlb_databuf;
+	buffer->dlb_hdr.dlbh_len = MTU;
+	
+	DISTLOGTR0(PRIO_LOW, "Encoded request message\n");
+	/* Encode the request the request. */	
+	buffer_len = dl_request_encode(message, buffer);
+
+	// mesasge xtor
+
+	DISTLOGTR0(PRIO_LOW, "Encoded request message\n");
+
+	/* Enqueue the request for processing */
+	if (dl_enqueue_request(handle, buffer, buffer_len,
+	    message->dlrqm_correlation_id, message->dlrqm_api_key) == 0) {
+		
+		/* Increment the monotonic correlation id. */
+		dl_correlation_id_inc(handle->correlation_id);
+	} else {
+		DISTLOGTR0(PRIO_HIGH, "Error enqueing request\n");
+	}
+
+	return result;
+}
+
+int
+dlog_list_offset(struct dlog_handle *handle, char *topic, int64_t time)
+{
+	struct dl_buffer *buffer;
+	struct dl_request *message;
+	int result = 0;
+	int32_t buffer_len;
+
+	DISTLOGTR1(PRIO_LOW,
+	    "User requested to send a message with correlation id = %d\n",
+	    dl_correlation_id_val(handle->correlation_id));
+
+	/* Instantiate a new ListOffsetRequest. */
+	message = dl_list_offset_request_new(
+	    dl_correlation_id_val(handle->correlation_id), 
+	    handle->dlh_config->client_id, topic, time);
+	
+	DISTLOGTR0(PRIO_LOW, "Constructed request message\n");
+
+	/* Allocate and initialise a buffer to encode the request. */
+	buffer = (struct dl_buffer *) dlog_alloc(
+		sizeof(struct dl_buffer_hdr) + (sizeof(char) * MTU));
+	DL_ASSERT(buffer != NULL, "Buffer to encode request cannot be NULL");
+	buffer->dlb_hdr.dlbh_data = buffer->dlb_databuf;
+	buffer->dlb_hdr.dlbh_len = MTU;
+	
+	/* Encode the request the request. */	
+	buffer_len = dl_request_encode(message, buffer);
+	
+	// mesasge xtor
+
+	DISTLOGTR0(PRIO_LOW, "Encoded request message\n");
+
+	/* Enqueue the request for processing */
+	if (dl_enqueue_request(handle, buffer, buffer_len,
+	    message->dlrqm_correlation_id, message->dlrqm_api_key) == 0) {
+		
+		DISTLOGTR0(PRIO_HIGH, "Enqued request\n");
+
+		/* Increment the monotonic correlation id. */
+		dl_correlation_id_inc(handle->correlation_id);
+	} else {
+		DISTLOGTR0(PRIO_HIGH, "Error enqueing request\n");
+	}
+	
+
+	return result;
+}
+
+int
+dlog_produce(struct dlog_handle *handle, char *topic, char *key, int key_len,
+    char *value, int value_len)
 {
 	struct dl_buffer *buffer;
 	struct dl_request *message;
@@ -459,7 +528,8 @@ dlog_produce(struct dlog_handle *handle, char const * const client_id,
 
 	/* Instantiate a new ProduceRequest */
 	message = dl_produce_request_new(
-	    dl_correlation_id_val(handle->correlation_id), client_id, topic,
+	    dl_correlation_id_val(handle->correlation_id),
+	    handle->dlh_config->client_id, topic,
 	    key, key_len, value, value_len);
 
 	DISTLOGTR1(PRIO_LOW, "Constructed request (id = %d)\n",
@@ -475,12 +545,13 @@ dlog_produce(struct dlog_handle *handle, char const * const client_id,
 	/* Encode the request the request. */	
 	buffer_len = dl_request_encode(message, buffer);
 	
+	// mesasge xtor
+	
 	DISTLOGTR0(PRIO_LOW, "Encoded request message\n");
 
 	/* Enqueue the request for processing */
-	if (dl_enqueue_request(handle, buffer, buffer_len, should_resend,
-	    resend_timeout, message->dlrqm_correlation_id,
-	    message->dlrqm_api_key) == 0) {
+	if (dl_enqueue_request(handle, buffer, buffer_len,
+	    message->dlrqm_correlation_id, message->dlrqm_api_key) == 0) {
 		
 		/* Increment the monotonic correlation id. */
 		dl_correlation_id_inc(handle->correlation_id);
@@ -489,108 +560,7 @@ dlog_produce(struct dlog_handle *handle, char const * const client_id,
 		result = -1;
 	}
 	
-	// mesasge xtor
-	
 	return result;
 }
 
-int
-dlog_fetch(struct dlog_handle *handle, char *client_id,
-    char *topic_name, int32_t min_bytes, int32_t max_wait_time,
-    int64_t fetch_offset, int32_t max_bytes, bool should_resend,
-    int resend_timeout)
-{
-	struct dl_buffer *buffer;
-	struct dl_request *message;
-	int result = 0;
-	int32_t buffer_len;
 
-	DISTLOGTR1(PRIO_LOW,
-	    "User requested to send a message with correlation id = %d\n",
-	    dl_correlation_id_val(handle->correlation_id));
-
-	message = dl_fetch_request_new(
-	    dl_correlation_id_val(handle->correlation_id), client_id,
-	    topic_name, min_bytes, max_wait_time, fetch_offset, max_bytes);
-	
-	DISTLOGTR1(PRIO_LOW, "Constructed request (id = %d)\n",
-	    message->dlrqm_correlation_id);
-
-	/* Allocate and initialise a buffer to encode the request. */
-	buffer = (struct dl_buffer *) dlog_alloc(
-		sizeof(struct dl_buffer_hdr) + (sizeof(char) * MTU));
-	DL_ASSERT(buffer != NULL, "Buffer to encode request cannot be NULL");
-	buffer->dlb_hdr.dlbh_data = buffer->dlb_databuf;
-	buffer->dlb_hdr.dlbh_len = MTU;
-	
-	DISTLOGTR0(PRIO_LOW, "Encoded request message\n");
-	/* Encode the request the request. */	
-	buffer_len = dl_request_encode(message, buffer);
-
-	DISTLOGTR0(PRIO_LOW, "Encoded request message\n");
-
-	/* Enqueue the request for processing */
-	if (dl_enqueue_request(handle, buffer, buffer_len, should_resend,
-	    resend_timeout, message->dlrqm_correlation_id,
-	    message->dlrqm_api_key) == 0) {
-		
-		/* Increment the monotonic correlation id. */
-		dl_correlation_id_inc(handle->correlation_id);
-	} else {
-		DISTLOGTR0(PRIO_HIGH, "Error enqueing request\n");
-	}
-
-	// mesasge xtor
-
-	return result;
-}
-
-int
-dlog_list_offset(struct dlog_handle *handle, char *client_id,
-    bool should_resend, int resend_timeout, char *topic, int64_t time)
-{
-	struct dl_buffer *buffer;
-	struct dl_request *message;
-	int result = 0;
-	int32_t buffer_len;
-
-	DISTLOGTR1(PRIO_LOW,
-	    "User requested to send a message with correlation id = %d\n",
-	    dl_correlation_id_val(handle->correlation_id));
-
-	/* Instantiate a new ListOffsetRequest. */
-	message = dl_list_offset_request_new(
-	    dl_correlation_id_val(handle->correlation_id), client_id, topic,
-	    time);
-	
-	DISTLOGTR0(PRIO_LOW, "Constructed request message\n");
-
-	/* Allocate and initialise a buffer to encode the request. */
-	buffer = (struct dl_buffer *) dlog_alloc(
-		sizeof(struct dl_buffer_hdr) + (sizeof(char) * MTU));
-	DL_ASSERT(buffer != NULL, "Buffer to encode request cannot be NULL");
-	buffer->dlb_hdr.dlbh_data = buffer->dlb_databuf;
-	buffer->dlb_hdr.dlbh_len = MTU;
-	
-	/* Encode the request the request. */	
-	buffer_len = dl_request_encode(message, buffer);
-	
-	DISTLOGTR0(PRIO_LOW, "Encoded request message\n");
-
-	/* Enqueue the request for processing */
-	if (dl_enqueue_request(handle, buffer, buffer_len, should_resend,
-	    resend_timeout, message->dlrqm_correlation_id,
-	    message->dlrqm_api_key) == 0) {
-		
-		DISTLOGTR0(PRIO_HIGH, "Enqued request\n");
-
-		/* Increment the monotonic correlation id. */
-		dl_correlation_id_inc(handle->correlation_id);
-	} else {
-		DISTLOGTR0(PRIO_HIGH, "Error enqueing request\n");
-	}
-	
-	// mesasge xtor
-
-	return result;
-}

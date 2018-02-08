@@ -103,7 +103,6 @@ on_ack(const int32_t correlation_id)
 static void
 on_response(struct dl_request *request, struct dl_response *response)
 {
-	int resend_timeout = 40;
 	int max_wait_time = 1000;
 	int maxbytes = 1000;
 	int minbytes = 0;
@@ -149,11 +148,11 @@ on_response(struct dl_request *request, struct dl_response *response)
 			debug(PRIO_NORMAL, "Topic: %s\n",
 			    response->dlrs_message.dlrs_offset_response->dlors_topic_name);
 
-			dlog_fetch(handle, client_id, 
+			dlog_fetch(handle, 
 			    response->dlrs_message.dlrs_offset_response->dlors_topic_name,
 			    minbytes, max_wait_time,
 			    response->dlrs_message.dlrs_offset_response->dlors_offset,
-			    maxbytes, true, resend_timeout);
+			    maxbytes);
 			break;
 		default:
 			break;
@@ -208,13 +207,15 @@ main(int argc, char **argv)
 	signal(SIGINFO, dlc_siginfo_handler);
 
 	/* Configure and initialise the distributed log client. */
+	cc.dlcc_on_ack = on_ack;
+	cc.dlcc_on_response = on_response;
+	cc.client_id = client_id;
 	cc.to_resend = true;
+	cc.resend_timeout = resend_timeout;
 	cc.resender_thread_sleep_length = 10;
 	cc.request_notifier_thread_sleep_length = 3;
 	cc.reconn_timeout = 5;
 	cc.poll_timeout = 3000;
-	cc.dlcc_on_ack = on_ack;
-	cc.dlcc_on_response = on_response;
 
 	handle = dlog_client_open(hostname, port, &cc);
 	if (handle == NULL) {
@@ -223,19 +224,17 @@ main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	//dlog_list_offset(handle, client_id, cc.to_resend, resend_timeout,
+	//dlog_list_offset(handle, cc.to_resend,
 	//    topic, -2);
 	
-	dlog_fetch(handle, client_id, topic, 100, 1000,
-		38601, 10000, cc.to_resend,
-		resend_timeout);
+	dlog_fetch(handle, topic, 100, 1000,
+		38601, 10000);
 
        	/* Echo to the command line from the distributed log. */	
 	for (;;) {
 		sleep(1);
-//		dlog_fetch(handle, client_id, topic, 100, 1000,
-//		    38601, 10000, cc.to_resend,
-//		    resend_timeout);
+//		dlog_fetch(handle, topic, 100, 1000,
+//		    38601, 10000);
 	}
 
 	dlog_client_close(handle);
