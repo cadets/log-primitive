@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,16 +34,32 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_LIST_OFFSET_RESPONSE_H
+#define _DL_LIST_OFFSET_RESPONSE_H
 
-#include "dl_config.h"
+#include "dl_protocol.h"
+/*
+struct dl_list_offset_response {
+	char dlors_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	int64_t dlors_offset;
+};
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+struct dl_list_offset_response {
+	char dlors_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	int64_t dlors_offset;
+};
+
+struct dl_list_offset_response {
+	char dlors_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	int64_t dlors_offset;
+};
+*/
+
+struct dl_list_offset_response {
+	char dlors_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	int64_t dlors_offset;
+};
+
+extern struct dl_list_offset_response * dl_decode_list_offset_response(char *);
 
 #endif

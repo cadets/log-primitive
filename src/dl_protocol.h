@@ -1,4 +1,5 @@
 /*-
+ * Copyright (c) 2017 (Ilia Shumailov)
  * Copyright (c) 2017 (Graeme Jenkinson)
  * All rights reserved.
  *
@@ -34,16 +35,80 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_PROTOCOL_H
+#define _DL_PROTOCOL_H
 
-#include "dl_config.h"
+#include <sys/types.h>
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+#define DLOG_API_V1 1
+#define DLOG_API_VERSION DLOG_API_V1
+
+// Topic names should have a maximum length
+// so that when persisted to the filesystem they
+// don't exceed the maximum allowable path length
+#define DL_MAX_TOPIC_NAME_LEN 249
+
+#define CLIENT_ID_SIZE 12
+#define KEY_SIZE 12
+#define VALUE_SIZE 12
+#define MAX_SET_SIZE 8
+#define METADATA_REQUEST_MAX_TOPICS 64
+#define CONSUMER_GROUP_ID_SIZE 16
+#define CONSUMER_ID_SIZE 16
+#define METADATA_SIZE 16
+#define HOST_SIZE 16
+#define MAX_REPLICAS 16
+#define MAX_ISR 16
+#define METADATAS_SIZE 16
+#define MAX_SUB_SUB_SIZE 16
+#define MAX_SUB_SIZE 16
+#define MAX_SUB_FETCH_SIZE 16
+#define MAX_OFFSETS 16
+#define MAX_SUB_SUB_FETCH_SIZE 16
+#define MAX_PART_OFFSETS 16
+#define MAX_SOR 16
+#define GROUP_ID_SIZE 16
+#define CONSUMER_ID_SIZE 16
+#define MAX_SUB_OCR 16
+#define MAX_SUB_SUB_OCR 16
+#define MAX_SUB_OFR 16
+#define MAX_SUB_SUB_OFR 16
+#define MAX_BROKERS 16
+
+#define MTU 2048
+
+
+// TODO: It's a string in the protocol
+#define DL_MAX_CLIENT_ID 12
+// TODO: improve key/value handling
+#define DL_MESSAGE_KEY_SIZE 256
+#define DL_MESSAGE_VALUE_SIZE 256
+
+
+// TODO: simplified mbuf like structure for encoding and decoding
+// messages
+struct dl_buffer_hdr {
+	char * dlbh_data;
+	int dlbh_len;
+};
+
+struct dl_buffer {
+	struct dl_buffer_hdr dlb_hdr;
+	char dlb_databuf[1];
+};
+
+/* ApiKey
+ * Note: Only the Produce, Fetch and Offset APIs are currently implemented.
+ */
+enum dl_api_key {
+	DL_PRODUCE_REQUEST = 0,
+	DL_FETCH_REQUEST = 1,
+	DL_OFFSET_REQUEST = 2,
+	DL_METADATA_REQUEST = 3,
+	DL_OFFSET_COMMIT_REQUEST = 8,
+	DL_OFFSET_FETCH_REQUEST = 9,
+	DL_COORDINATOR_REQUEST = 10
+};
+typedef enum dl_api_key dl_api_key;
 
 #endif

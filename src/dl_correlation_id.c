@@ -58,7 +58,7 @@ struct dl_correlation_id *
 dl_correlation_id_new()
 {
 	struct dl_correlation_id *cid = (struct dl_correlation_id *)
-	    distlog_alloc(sizeof(struct dl_correlation_id));
+	    dlog_alloc(sizeof(struct dl_correlation_id));
 #ifdef __APPLE__
 	atomic_init(&cid->val, 0);
 #else
@@ -96,5 +96,5 @@ dl_correlation_id_fini(struct dl_correlation_id *self)
 {
 	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
 
-	distlog_free(self);
+	dlog_free(self);
 }

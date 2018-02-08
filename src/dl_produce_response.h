@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,16 +34,35 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_PRODUCE_RESPONSE_H
+#define _DL_PRODUCE_RESPONSE_H
 
-#include "dl_config.h"
+#include <sys/types.h>
+#include <sys/queue.h>
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+#include "dl_protocol.h"
+
+SLIST_HEAD(dl_produce_response_q, dl_produce_responses);
+SLIST_HEAD(dl_produce_partition_response_q, dl_produce_partition_responses);
+
+struct dl_produce_partition_responses {
+	SLIST_ENTRY(dl_produce_partition_responses) dlpprs_entries;
+	int64_t dlpprs_base_offset;
+	int32_t dlpprs_partition;
+	int16_t dlpprs_error_code;
+};
+
+struct dl_produce_responses {
+	SLIST_ENTRY(dl_produce_responses) dlprs_entries;
+	struct dl_produce_partition_response_q dlprs_partition_responses;
+	char dlprs_topic_name[DL_MAX_TOPIC_NAME_LEN];
+};	
+
+struct dl_produce_response {
+	struct dl_produce_response_q dlpr_responses;
+	int32_t dlpr_throttle_time;
+};
+
+extern struct dl_produce_response * dl_decode_produce_response(char *);
 
 #endif

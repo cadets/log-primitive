@@ -1,4 +1,5 @@
 /*-
+ * Copyright (c) 2017 (Ilia Shumailov)
  * Copyright (c) 2017 (Graeme Jenkinson)
  * All rights reserved.
  *
@@ -34,16 +35,33 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DLOG_CLIENT_H
+#define _DLOG_CLIENT_H
 
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
+#include <stdbool.h>
+#endif
+
+#include <sys/queue.h>
+#include <sys/tree.h>
+
+#include "dl_response.h" 
+#include "dl_request.h"
 #include "dl_config.h"
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+struct dlog_handle;
+
+extern struct dlog_handle * dlog_client_open(const char * const,
+    const int, struct dl_client_configuration const * const);
+extern int dlog_client_close(struct dlog_handle *);
+
+extern int dlog_fetch(struct dlog_handle *, char *, char *, 
+    const int32_t, const int32_t,  const int64_t, const int32_t, bool, int);
+extern int dlog_list_offset(struct dlog_handle *, char *, bool, int, char *,
+    int64_t);
+extern int dlog_produce(struct dlog_handle *, char const * const, bool, int, char *,
+   char *, int, char *, int); 
 
 #endif

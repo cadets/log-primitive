@@ -1,4 +1,5 @@
 /*-
+ * Copyright (c) 2017 (Ilia Shumailov)
  * Copyright (c) 2017 (Graeme Jenkinson)
  * All rights reserved.
  *
@@ -34,16 +35,19 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_PRODUCE_REQUEST_H
+#define _DL_PRODUCE_REQUEST_H
 
-#include "dl_config.h"
+#include <sys/types.h>
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+#include "dl_protocol.h"
+
+struct dl_produce_request;
+
+extern struct dl_produce_request * dl_produce_request_decode(char *);
+extern int dl_produce_request_encode(struct dl_produce_request const * const,
+    char *);
+extern struct dl_produce_request * dl_produce_request_new(const int32_t,
+    char *, char *, char*, int, char *, int);
 
 #endif

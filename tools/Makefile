@@ -1,5 +1,5 @@
 #-
-# Copyright (c) 2017 (Graeme Jenkinson)
+# Copyright (c) 2018 (Graeme Jenkinson)
 # All rights reserved.
 #
 # This software was developed by BAE Systems, the University of Cambridge
@@ -29,17 +29,20 @@
 # SUCH DAMAGE.
 #
 
-PROGS= distlog_console_producer distlog_console_consumer
+.OBJDIR:= obj
+MK_AUTO_OBJ:= yes
 
-SRCS.distlog_console_producer= distlog_console_producer.c
+PROGS= dlog_console_producer dlog_console_consumer
+
+SRCS.distlog_console_producer= dlog_console_producer.c
 MAN.distlog_console_producer=
 
-SRCS.distlog_console_consumer= distlog_console_consumer.c
+SRCS.distlog_console_consumer= dlog_console_consumer.c
 MAN.ditlog_console_consumer=
 
 LDADD+= -lz
 LDADD+= -lpthread
 LDADD+= -lm
-LDADD+= $(SRCDIR)/libdistlog.a
+LDADD+= $(SRCDIR)/obj/libdlog.a
 
 .include <progs.mk>

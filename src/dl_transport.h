@@ -34,16 +34,27 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_TRANSPORT_H
+#define _DL_TRANSPORT_H
 
-#include "dl_config.h"
+#include "dl_protocol.h"
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+struct dl_transport {
+#ifdef _KERNEL
+#else
+	int dlt_sock;
+#endif
+};
+
+extern int dl_transport_connect(struct dl_transport *,
+    const char * const, const int);
+// TODO: Depreacted
+extern int dl_transport_read_msg(struct dl_transport *, char *);
+//extern int dl_transport_read_request(const dl_trasnport *, int, char *);
+//extern int dl_transport_read_response(const dl_transport *, int, char *);
+extern int dl_transport_send_request(struct dl_transport const *,
+    struct dl_buffer const *, int32_t);
+extern int dl_transport_poll(struct dl_transport const *, int);
+extern int dl_transport_close();
 
 #endif

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,16 +34,36 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_NOTIFIER_H
+#define _DL_NOTIFIER_H
 
 #include "dl_config.h"
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+struct notify_queue_element {
+	char pbuf[MTU];
+	STAILQ_ENTRY(notify_queue_element) entries;
+};
+
+STAILQ_HEAD(notify_queue, notify_queue_element);
+
+struct dl_notifier_argument {
+	dl_ack_function dlna_on_ack;
+	dl_response_function dlna_on_response;
+	int dlna_index;
+	struct notify_queue *notify_queue;
+	pthread_mutex_t *notify_queue_mtx;
+	pthread_cond_t *notify_queue_cond;
+};
+
+struct dl_notifier {
+	pthread_t dln_tid;
+	struct dl_notifier_argument dln_arg;
+	struct notify_queue notify_queue;
+	pthread_mutex_t notify_queue_mtx;
+	pthread_cond_t notify_queue_cond;
+};
+
+extern struct dl_notifier * dl_notifier_new(struct dl_client_configuration *);
+extern void dl_notifier_fini(struct dl_notifier *);
 
 #endif

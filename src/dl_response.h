@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,16 +34,27 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_RESPONSE_H
+#define _DL_RESPONSE_H
 
-#include "dl_config.h"
+#include "dl_fetch_response.h"
+#include "dl_list_offset_response.h"
+#include "dl_produce_response.h"
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+union dl_response_message {
+	struct dl_produce_response *dlrs_produce_response;
+	struct dl_fetch_response *dlrs_fetch_response;
+	struct dl_list_offset_response *dlrs_offset_response;
+};
+
+struct dl_response {
+	int32_t dlrs_size;
+	int32_t dlrs_correlation_id;
+	union dl_response_message dlrs_message;
+};
+
+// TODO: cheange interface
+// extern struct dl_reponse * dl_decode_response(char *);
+extern int dl_decode_response(struct dl_response *, char *);
 
 #endif

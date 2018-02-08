@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,16 +34,61 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#include <stddef.h>
 
-#include "dl_config.h"
+#include "dl_assert.h"
+#include "dl_list_offset_response.h"
+#include "dl_memory.h"
+#include "dl_primitive_types.h"
+#include "dl_protocol.h"
+#include "dl_response.h"
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+#define DL_DECODE_TOPIC_NAME(buffer, value) \
+	dl_decode_string(buffer, value)
 
-#endif
+struct dl_list_offset_response *
+dl_list_offset_response_decode(char *buffer)
+{
+	struct dl_list_offset_response *response;
+	int32_t npartitions, partition_response, response_it;
+	int16_t topic_name_len;
+     
+	DL_ASSERT(buffer != NULL, "Decode buffer cannot be NULL");
+
+	response = (struct dl_list_ioffset_response *) dlog_alloc(
+	    sizeof(struct dl_list_offset_response));
+
+        // TODO: Number of responses	
+	dl_decode_int32(buffer);
+	buffer += sizeof(int32_t);
+
+	/* Decode the TopicName */
+	topic_name_len = DL_DECODE_TOPIC_NAME(buffer,
+	    response->dlors_topic_name);
+	buffer += topic_name_len;
+	printf("topic name = %s\n", response->dlors_topic_name);
+
+	// No. partition offsets	
+	npartitions = dl_decode_int32(buffer);
+	buffer += sizeof(int32_t);
+	printf("npartitions = %d\n", npartitions);
+	
+	/* Decode the Partition */
+	dl_decode_int32(buffer);
+	buffer += sizeof(int32_t);
+	
+	/* Decode the ErrorCode */
+	printf("ec = %d\n", dl_decode_int16(buffer));
+	buffer += sizeof(int16_t);
+	
+	/* Decode the Timestamp */
+	printf("ts = %d\n", dl_decode_int64(buffer));
+	buffer += sizeof(int64_t);
+	
+	/* Decode the Offset*/
+	response->dlors_offset = dl_decode_int64(buffer);
+	printf("off = %d\n", response->dlors_offset);
+	buffer += sizeof(int64_t);
+
+	return 0;
+}

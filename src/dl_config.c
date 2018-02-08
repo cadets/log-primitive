@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2017 (Ilia Shumailov)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,16 +34,10 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
-
 #include "dl_config.h"
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
-
-#endif
+void
+print_configuration(struct broker_configuration *bc)
+{
+	printf("Fsync thread sleep len:\t%d\nProc thread sleep len:\t%d\nVal:\t%d\n", bc->fsync_thread_sleep_length, bc->processor_thread_sleep_length, bc->val);
+}

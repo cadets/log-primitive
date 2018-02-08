@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,16 +34,42 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_FETCH_REQUEST_H
+#define _DL_FETCH_REQUEST_H
 
-#include "dl_config.h"
+#include <sys/queue.h>
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+#include "dl_protocol.h"
+
+struct dl_request;
+
+SLIST_HEAD(dl_fetch_request_q, dl_fetch_request_topic);
+SLIST_HEAD(dl_fetch_request_partition_q, dl_fetch_request_partition);
+
+struct dl_fetch_request_partition {
+	SLIST_ENTRY(dl_fetch_request_partition) dlfrp_entries;
+	int64_t dlfrp_fetch_offset;
+	int32_t dlfrp_max_bytes;
+	int32_t dlfrp_partition;
+};
+
+struct dl_fetch_request_topic {
+	SLIST_ENTRY(dl_fetch_request_topic) dlfrt_entries;
+	struct dl_fetch_request_partition_q dlfrt_partition_requests;
+	char *dlfrt_topic_name;
+	int32_t dlfrt_nrequests;
+};
+
+struct dl_fetch_request {
+	struct dl_fetch_request_q dlfr_requests;
+	int32_t dlfr_nrequests;
+	int32_t dlfr_replica_id;
+	int32_t dlfr_max_wait_time;
+	int32_t dlfr_min_bytes;
+};
+
+extern struct dl_request * dl_fetch_request_new(const int32_t, char *, char *,
+    const int32_t, const int32_t,  const int64_t, const int32_t);
+extern int dl_fetch_request_encode(struct dl_fetch_request *, char *);
 
 #endif

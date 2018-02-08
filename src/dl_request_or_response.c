@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,16 +34,26 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#include <stddef.h>
 
-#include "dl_config.h"
+#include "dl_assert.h"
+#include "dl_memory.h"
+#include "dl_primitive_types.h"
+#include "dl_request_or_response.h"
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+struct dl_request_or_response *
+dl_decode_request_or_response(char *source)
+{
+	struct dl_request_or_response *request_or_response;
 
-#endif
+	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
+
+	request_or_response = (struct dl_request_or_response *) dlog_alloc(
+	    sizeof(struct dl_request_or_response));
+	DL_ASSERT(request_or_response != NULL, "Allocation of Request failed");
+
+	/* Decode the Request/Response size from the source buffer. */
+	request_or_response->dlrx_size = dl_decode_int32(source);
+	
+	return request_or_response;
+}

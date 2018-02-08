@@ -1,4 +1,5 @@
 /*-
+ * Copyright (c) 2017 (Ilia Shumailov)
  * Copyright (c) 2017 (Graeme Jenkinson)
  * All rights reserved.
  *
@@ -34,16 +35,13 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_MEMORY_H
+#define _DL_MEMORY_H
 
-#include "dl_config.h"
+typedef void * (* dlog_malloc_func)(unsigned long);
+typedef void (* dlog_free_func)(void *);
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+extern const dlog_malloc_func dlog_alloc;
+extern const dlog_free_func dlog_free;
 
 #endif

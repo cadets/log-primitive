@@ -82,7 +82,6 @@
 #include <string.h>
 #include <stdarg.h>
 
-#include "dl_common.h"
 #include "dl_memory.h"
 #include "dl_utils.h"
 
@@ -219,7 +218,7 @@ make_segment(long int start_offset, long int length,
     int index_file = make_file(partition_name, temp);
     alloc_big_file(index_file, 0,  length);
 
-    segment* seg = (segment*) distlog_alloc(sizeof(segment));
+    segment* seg = (segment*) dlog_alloc(sizeof(segment));
     seg->_log = log_file;
     seg->_index = index_file;
 

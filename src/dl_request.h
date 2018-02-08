@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,16 +34,31 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_REQUEST_H
+#define _DL_REQUEST_H
 
-#include "dl_config.h"
+#include <sys/types.h>
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+#include "dl_fetch_request.h"
+#include "dl_list_offset_request.h"
+#include "dl_produce_request.h"
+
+union dl_request_message {
+	struct dl_produce_request *dlrqmt_produce_request;
+	struct dl_fetch_request *dlrqmt_fetch_request;
+	struct dl_list_offset_request *dlrqmt_offset_request;
+};
+
+struct dl_request {
+	char * dlrqm_client_id;
+	union dl_request_message dlrqm_message;
+	int32_t dlrqm_correlation_id;
+	int16_t dlrqm_api_key;
+};
+
+extern struct dl_request * dl_request_new(const int16_t, const int32_t, char *);
+extern struct dl_request * dl_decode_request(char *);
+extern int dl_encode_request(struct dl_request const *,
+    struct dl_buffer const *);
 
 #endif

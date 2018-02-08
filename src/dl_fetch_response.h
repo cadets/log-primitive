@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,16 +34,37 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_FETCH_RESPONSE_H
+#define _DL_FETCH_RESPONSE_H
 
-#include "dl_config.h"
+#include <sys/types.h>
+#include <sys/queue.h>
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+#include "dl_protocol.h"
+
+SLIST_HEAD(dl_fetch_response_topics, dl_fetch_response_topic);
+SLIST_HEAD(dl_fetch_response_partitions, dl_fetch_response_partition);
+
+struct dl_fetch_response_partition {
+	SLIST_ENTRY(dl_fetch_response_partition) dlfrp_entries;
+	int64_t dlfrpr_high_watermark;
+	int32_t dlfrpr_partition;
+	int16_t dlfrpr_error_code;
+};
+
+struct dl_fetch_response_topic {
+	struct dl_fetch_response_partitions dlfrt_partitions;
+	SLIST_ENTRY(dl_fetch_response_topic) dlfrt_entries;
+	char const *dlfrt_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	int32_t dlfrt_npartitions;
+};	
+
+struct dl_fetch_response {
+	struct dl_fetch_response_topics dlfr_topics;
+	int32_t dlfr_ntopics;
+	int32_t dlfr_throttle_time;
+};
+
+extern struct dl_fetch_response * dl_decode_fetch_response(char *);
 
 #endif

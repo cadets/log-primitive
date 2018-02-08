@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,16 +34,26 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_MESSAGE_SET_H
+#define _DL_MESSAGE_SET_H
 
-#include "dl_config.h"
+#include <sys/types.h>
+#include <sys/queue.h>
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+#include "dl_protocol.h"
+
+SLIST_HEAD(dl_message_set, dl_message);
+
+struct dl_message {
+	SLIST_ENTRY(dl_message) dlm_entries;
+	char *dlm_key;
+	char *dlm_value;
+	int32_t dlm_key_len;
+	int32_t dlm_value_len;
+};	
+
+extern struct dl_message_set * dl_message_set_decode(char const * const);
+extern int32_t dl_message_set_encode(struct dl_message_set *, char const *);
+extern int32_t dl_message_set_get_size(struct dl_message_set *);
 
 #endif

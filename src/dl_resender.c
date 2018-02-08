@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -49,9 +49,9 @@
 #endif
 #include <errno.h>
 
-#include "distlog_client.h"
 #include "dl_assert.h"
 #include "dl_memory.h"
+#include "dl_request_queue.h"
 #include "dl_resender.h"
 #include "dl_transport.h"
 #include "dl_utils.h"
@@ -73,13 +73,13 @@ static int
 dl_request_element_cmp(struct dl_request_element *el1,
     struct dl_request_element *el2)
 {
-	return el2->dlrq_msg.dlrqm_correlation_id -
-	    el1->dlrq_msg.dlrqm_correlation_id;
+	return el2->dlrq_correlation_id -
+	    el1->dlrq_correlation_id;
 }
 
-RB_PROTOTYPE(dl_unackd_requests, dl_request_element, linkage,
+RB_PROTOTYPE(dl_unackd_requests, dl_request_element, dlrq_linkage,
     dl_request_element_cmp);
-RB_GENERATE(dl_unackd_requests, dl_request_element, linkage,
+RB_GENERATE(dl_unackd_requests, dl_request_element, dlrq_linkage,
     dl_request_element_cmp);
 
 static void * dl_resender_thread(void *);
@@ -110,23 +110,23 @@ dl_resender_thread(void *vargp)
 		pthread_mutex_lock(&unackd_requests_mtx);
 		RB_FOREACH_SAFE(request, dl_unackd_requests, &unackd_requests,
 		    request_temp) {
-			if (request->should_resend) {
+			if (request->dlrq_should_resend) {
 				now = time(NULL);
 				DISTLOGTR4(PRIO_LOW, "Was sent %lu now is %lu. "
 				    "Resend when the difference is %lu. "
 				    "Current: %lu\n",
-				    request->last_sent, now,
-				    request->resend_timeout,
-				    request->last_sent);
+				    request->dlrq_last_sent, now,
+				    request->dlrq_resend_timeout,
+				    request->dlrq_last_sent);
 
-				if ((now - request->last_sent) >
-				    request->resend_timeout) {
-					request->last_sent = time(NULL);
+				if ((now - request->dlrq_last_sent) >
+				    request->dlrq_resend_timeout) {
+					request->dlrq_last_sent = time(NULL);
 
 					RB_REMOVE(dl_unackd_requests,
 					    &unackd_requests, request);
 
-					distlog_free(request);
+					dlog_free(request);
 					DISTLOGTR0(PRIO_LOW, "Done.\n");
 				}
 			}
@@ -200,14 +200,14 @@ dl_resender_ackd_request(int correlation_id)
 	/* Lookup the unacknowledged Request message based
 	 * on the CorrelationId returned in the response.
  	 */
-	find.dlrq_msg.dlrqm_correlation_id = correlation_id;
+	find.dlrq_correlation_id = correlation_id;
 
 	pthread_mutex_lock(&unackd_requests_mtx);
 	request = RB_FIND(dl_unackd_requests, &unackd_requests, &find);
 	if (request != NULL) {
 		DISTLOGTR1(PRIO_NORMAL,
 			"Found unacknowledged request id: %d\n",
-			request->dlrq_msg.dlrqm_correlation_id);
+			request->dlrq_correlation_id);
 
 		/* Remove the unacknowledged request and return it
 		 * to the caller for processing.

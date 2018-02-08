@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,16 +34,40 @@
  *
  */
 
-#ifndef _DL_RESENDER_H
-#define _DL_RESENDER_H
+#ifndef _DL_LIST_OFFSET_REQUEST_H
+#define _DL_LIST_OFFSET_REQUEST_H
 
-#include "dl_config.h"
+#include <sys/queue.h>
 
-extern int dl_resender_init(struct dl_client_configuration *);
-extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+#include "dl_protocol.h"
+
+struct dl_request;
+
+SLIST_HEAD(dl_list_offset_request_topics, dl_list_offset_request_topic);
+SLIST_HEAD(dl_list_offset_request_partitions, dl_list_offset_request_parition);
+
+struct dl_list_offset_request_partition {
+	SLIST_ENTRY(dl_list_offset_request_partition) dlorp_entries;
+	int32_t dlorp_partition;
+	int64_t dlorp_time;
+};
+
+struct dl_list_offset_request_topic {
+	SLIST_ENTRY(dl_list_offset_request_topic) dlort_entries;
+	struct dl_list_offset_request_partitions dlort_partitions;
+	char *dlort_topic_name;
+	int32_t dlort_npartitions;
+};
+
+struct dl_list_offset_request {
+	struct dl_list_offset_request_topics dlor_topics;
+	int32_t dlor_ntopics;
+	int32_t dlor_replica_id;
+};
+
+extern struct dl_request * dl_list_offset_request_new(int32_t, char *, char *,
+    int64_t);
+extern int dl_list_offset_request_encode(struct dl_list_offset_request *,
+    char *);
 
 #endif
