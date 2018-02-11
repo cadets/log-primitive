@@ -131,8 +131,8 @@ dl_encode_string(char * const target, char const * const source,
     const size_t max_len)
 {
 	int32_t encoded_size = 0;
-	char const *string_len = target;
-	char const *string_value = &target[sizeof(uint16_t)];
+	char * const string_len = target;
+	char * const string_value = &target[sizeof(uint16_t)];
 
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
@@ -156,8 +156,8 @@ dl_encode_bytes(char * const target, char const * const source,
     const int32_t source_len)
 {
 	int32_t encoded_len_bytes = 0;
-	char const *bytes_len = target;
-	char const *bytes_value = &target[sizeof(uint32_t)];
+	char * const bytes_len = target;
+	char * const bytes_value = &target[sizeof(uint32_t)];
 
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");

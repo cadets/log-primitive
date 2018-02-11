@@ -124,8 +124,9 @@ dl_transport_read_msg(struct dl_transport *self, char *saveto)
 			}
 
 			for (int b = 0; b < req_or_res->dlrx_size; b++) {
-				printf("0x%02X\n", buffer[b]);
+				DLOGTR1(PRIO_LOW, "<0x%02X>", buffer[b]);
 			}
+			DLOGTR0(PRIO_LOW, "\n");
 
 			return ret;
 		}

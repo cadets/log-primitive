@@ -576,6 +576,7 @@ dl_processor(struct dl_processor_argument *pa)
 		pthread_mutex_unlock(&thread_to_proc_pool_mtx[pa->index]);
 			
 		/* Poll the connections assigned to this processor */
+		//dl_transport_poll
 		rv = poll(ufds, connection, POLL_TIMEOUT_MS);
 		debug(PRIO_NORMAL, "Processor thread [%d] polling... %d\n",
 			pa->index, rv);
@@ -590,7 +591,8 @@ dl_processor(struct dl_processor_argument *pa)
 			for (connection = 0; connection < max_connection;
 			    connection++) {
 				if (ufds[connection].revents & POLLIN) {
-				
+			
+					//dl_transport_read_msg	
 					msg_size = read_msg(
 					    ufds[connection].fd, pbuf);
 

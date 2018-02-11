@@ -200,11 +200,11 @@ dl_produce_request_decode(char *source)
 	    dl_decode_int64(&source[body_size]);
 	body_size += sizeof(int64_t);
 	
-	/* Decode the Message Key. *
+	// Decode the Message Key. *
 	body_size += dl_decode_bytes(&source[body_size],
 	    request->dlpr_message_set[0].dlms_message.dlm_key);
 
-	/* Decode the Message Value. *
+	// Decode the Message Value. *
 	body_size += dl_decode_bytes(&source[body_size],
 	    request->dlpr_message_set[0].dlms_message.dlm_value);
 */
@@ -217,7 +217,6 @@ dl_produce_request_encode(
     char * buffer)
 //    struct dl_buffer const *buffer)
 {
-	uint8_t *ms, *mss, *temp = buffer;
 	int32_t msg_set_size = 0, request_size = 0;
 
 	DL_ASSERT(produce_request != NULL, "ProduceRequest cannot be NULL");
