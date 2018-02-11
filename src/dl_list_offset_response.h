@@ -60,6 +60,6 @@ struct dl_list_offset_response {
 	int64_t dlors_offset;
 };
 
-extern struct dl_list_offset_response * dl_decode_list_offset_response(char *);
+extern struct dl_list_offset_response * dl_list_offset_response_decode(char *);
 
 #endif

@@ -44,7 +44,7 @@
 struct dl_request;
 
 SLIST_HEAD(dl_list_offset_request_topics, dl_list_offset_request_topic);
-SLIST_HEAD(dl_list_offset_request_partitions, dl_list_offset_request_parition);
+SLIST_HEAD(dl_list_offset_request_partitions, dl_list_offset_request_partition);
 
 struct dl_list_offset_request_partition {
 	SLIST_ENTRY(dl_list_offset_request_partition) dlorp_entries;

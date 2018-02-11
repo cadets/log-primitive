@@ -53,7 +53,8 @@ struct dl_message {
 };	
 
 extern struct dl_message_set * dl_message_set_decode(char const * const);
-extern int32_t dl_message_set_encode(struct dl_message_set *, char const *);
-extern int32_t dl_message_set_get_size(struct dl_message_set *);
+extern int32_t dl_message_set_encode(struct dl_message_set const *,
+    char * const);
+extern int32_t dl_message_set_get_size(struct dl_message_set const * const);
 
 #endif

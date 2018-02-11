@@ -38,6 +38,12 @@
 #include <sys/poll.h>
 #include <netinet/ip.h>
 
+#ifdef _KERNEL
+#else
+#include <arpa/inet.h>
+#include <strings.h>
+#endif
+
 #include "dl_assert.h"
 #include "dl_memory.h"
 #include "dl_protocol.h"
@@ -126,6 +132,7 @@ dl_transport_read_msg(struct dl_transport *self, char *saveto)
 	} else {
 		return -1;
 	}
+	return -1;
 }
 
 int

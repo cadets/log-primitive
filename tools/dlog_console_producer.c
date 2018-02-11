@@ -58,20 +58,20 @@ static char const * const DLC_DEFAULT_HOSTNAME  = "localhost";
 static const int DLC_DEFAULT_PORT = 9092;
 static const int DLC_DISTLOG_RECORD_SIZE_BYTES = 4096;
 
-static void dlc_siginfo_handler(int);
-static void dlc_sigint_handler(int);
-static void dlc_on_ack(const int32_t);
-static void dlc_on_response(struct dl_request const * const,
+static void dlp_siginfo_handler(int);
+static void dlp_sigint_handler(int);
+static void dlp_on_ack(const int32_t);
+static void dlp_on_response(int16_t api_key,
     struct dl_response const * const);
 
 static void
-dlc_siginfo_handler(int sig)
+dlp_siginfo_handler(int sig)
 {
 	debug(PRIO_LOW, "Caught SIGIFO[%d]\n", sig);
 }
 
 static void
-dlc_sigint_handler(int sig)
+dlp_sigint_handler(int sig)
 {
 	debug(PRIO_LOW, "Caught SIGINT[%d]\n", sig);
 	
@@ -85,13 +85,13 @@ dlc_sigint_handler(int sig)
 }
 
 static void
-dlc_on_ack(const int32_t id)
+dlp_on_ack(const int32_t id)
 {
 	debug(PRIO_LOW, "Broker acknowledged request: %d\n", id);
 }
 
 static void
-dlc_on_response(struct dl_request const * const request,
+dlp_on_response(int16_t api_key,
     struct dl_response const * const response)
 {
 	debug(PRIO_LOW, "response size = %d\n", response->dlrs_size);
@@ -142,14 +142,14 @@ main(int argc, char **argv)
 	}
 
 	/* Install signal handler to terminate broker cleanly on SIGINT. */	
-	signal(SIGINT, dlc_sigint_handler);
+	signal(SIGINT, dlp_sigint_handler);
 
 	/* Install signal handler to report broker statistics. */
-	signal(SIGINFO, dlc_siginfo_handler);
+	signal(SIGINFO, dlp_siginfo_handler);
 
 	/* Configure and initialise the distributed log client. */
-	cc.dlcc_on_ack = dlc_on_ack;
-	cc.dlcc_on_response = dlc_on_response;
+	cc.dlcc_on_ack = dlp_on_ack;
+	cc.dlcc_on_response = dlp_on_response;
 	cc.client_id = client_id;
 	cc.to_resend = true;
 	cc.resend_timeout = resend_timeout;

@@ -1,4 +1,4 @@
-#
+#-
 # Copyright (c) 2018 (Graeme Jenkinson)
 # All rights reserved.
 #
@@ -34,24 +34,24 @@ MK_AUTO_OBJ:= yes
 
 LIB:= dlog
 SRCS= dlog_broker.c \
-      dlog_client.c \
-      dl_config.c \
-      dl_correlation_id.c \
-      dl_resender.c \
-      dl_utils.c \
-      dl_transport.c \
-      dl_thread.c \
-      dl_fetch_request.c \
-      dl_fetch_response.c \
-      dl_list_offset_request.c \
-      dl_list_offset_response.c \
-      dl_message_set.c \
-      dl_notifier.c \
-      dl_primitive_types.c \
-      dl_produce_request.c \
-      dl_produce_response.c \
-      dl_request.c \
-      dl_request_or_response.c \
-      dl_response.c
+	dlog_client.c \
+	dl_config.c \
+	dl_correlation_id.c \
+	dl_resender.c \
+	dl_utils.c \
+	dl_transport.c \
+	dl_thread.c \
+	dl_fetch_request.c \
+	dl_fetch_response.c \
+	dl_list_offset_request.c \
+	dl_list_offset_response.c \
+	dl_message_set.c \
+	dl_notifier.c \
+	dl_primitive_types.c \
+	dl_produce_request.c \
+	dl_produce_response.c \
+	dl_request.c \
+	dl_request_or_response.c \
+	dl_response.c
 
 .include <bsd.lib.mk>

@@ -63,13 +63,14 @@ static struct dlog_handle *handle;
 static char * client_id = DEFAULT_CLIENT_ID;
 static char * topic = DEFAULT_TOPIC;
 
-static void on_ack(const int32_t);
-static void on_response(struct dl_request *, struct dl_response *);
+static void dlc_on_ack(const int32_t);
+static void dlc_on_response(const int16_t,
+    struct dl_response const * const);
 
 static void dlc_siginfo_handler(int);
 static void dlc_sigint_handler(int);
 static void dlc_on_ack(const dl_correlation_id);
-static void dlc_on_response(struct dl_request const * const,
+static void dlc_on_response(const int16_t,
     struct dl_response const * const);
 
 static void
@@ -94,27 +95,27 @@ dlc_sigint_handler(int sig)
 
 
 static void
-on_ack(const int32_t correlation_id)
+dlc_on_ack(const int32_t correlation_id)
 {
 	debug(PRIO_NORMAL, "Broker acknowledged message "
 	    "(correlation ID = %lu)\n", correlation_id);
 }
 
 static void
-on_response(struct dl_request *request, struct dl_response *response)
+dlc_on_response(const int16_t api_key,
+    struct dl_response const * const response)
 {
 	int max_wait_time = 1000;
 	int maxbytes = 1000;
 	int minbytes = 0;
 
-	DL_ASSERT(request != NULL, "Request cannot be NULL\n");
 	DL_ASSERT(response != NULL, "Response cannot be NULL\n");
 
 	debug(PRIO_NORMAL, "Response was recieved with correlation ID %d\n",
-		response->dlrs_correlation_id);
+	    response->dlrs_correlation_id);
 
-	printf("here %p\n", request);
-	switch (request->dlrqm_api_key) {
+	//switch (response->dlrs_api_key) {
+	switch (api_key) {
 		case DL_PRODUCE_REQUEST:
 			debug(PRIO_NORMAL,
 			    "Produced the following messages: \n");
@@ -207,8 +208,8 @@ main(int argc, char **argv)
 	signal(SIGINFO, dlc_siginfo_handler);
 
 	/* Configure and initialise the distributed log client. */
-	cc.dlcc_on_ack = on_ack;
-	cc.dlcc_on_response = on_response;
+	cc.dlcc_on_ack = dlc_on_ack;
+	cc.dlcc_on_response = dlc_on_response;
 	cc.client_id = client_id;
 	cc.to_resend = true;
 	cc.resend_timeout = resend_timeout;
@@ -227,8 +228,7 @@ main(int argc, char **argv)
 	//dlog_list_offset(handle, cc.to_resend,
 	//    topic, -2);
 	
-	dlog_fetch(handle, topic, 100, 1000,
-		38601, 10000);
+	dlog_fetch(handle, topic, 100, 1000, 38601, 10000);
 
        	/* Echo to the command line from the distributed log. */	
 	for (;;) {

@@ -42,28 +42,31 @@
 
 #include "dl_protocol.h"
 
-SLIST_HEAD(dl_produce_response_q, dl_produce_responses);
-SLIST_HEAD(dl_produce_partition_response_q, dl_produce_partition_responses);
+SLIST_HEAD(dl_produce_response_topics, dl_produce_response_topic);
+SLIST_HEAD(dl_produce_response_partitions, dl_produce_response_partition);
 
-struct dl_produce_partition_responses {
-	SLIST_ENTRY(dl_produce_partition_responses) dlpprs_entries;
-	int64_t dlpprs_base_offset;
-	int32_t dlpprs_partition;
-	int16_t dlpprs_error_code;
+struct dl_produce_response_partition {
+	SLIST_ENTRY(dl_produce_response_partition) dlprp_entries;
+	int64_t dlprp_base_offset;
+	int32_t dlprp_partition;
+	int16_t dlprp_error_code;
 };
 
-struct dl_produce_responses {
-	SLIST_ENTRY(dl_produce_responses) dlprs_entries;
-	struct dl_produce_partition_response_q dlprs_partition_responses;
-	char dlprs_topic_name[DL_MAX_TOPIC_NAME_LEN];
+struct dl_produce_response_topic {
+	SLIST_ENTRY(dl_produce_response_topic) dlprt_entries;
+	struct dl_produce_response_partitions dlprt_partitions;
+	int32_t dlprt_npartitions;
+	char dlprt_topic_name[DL_MAX_TOPIC_NAME_LEN];
 };	
 
 struct dl_produce_response {
-	struct dl_produce_response_q dlpr_responses;
+	struct dl_produce_response_topics dlpr_topics;
+	int32_t dlpr_ntopics;
 	int32_t dlpr_throttle_time;
 };
 
-extern struct dl_produce_response * dl_decode_produce_response(char *);
-extern dl_produce_response_encode(struct dl_produce_response *, char *);
+extern struct dl_produce_response * dl_produce_response_decode(char const * const);
+extern int32_t dl_produce_response_encode(struct dl_produce_response *,
+    char *);
 
 #endif

@@ -48,13 +48,13 @@ union dl_response_message {
 };
 
 struct dl_response {
+	union dl_response_message dlrs_message;
 	int32_t dlrs_size;
 	int32_t dlrs_correlation_id;
-	union dl_response_message dlrs_message;
+	//int16_t dlrs_api_key;
 };
 
-// TODO: cheange interface
-// extern struct dl_reponse * dl_decode_response(char *);
 extern int dl_decode_response(struct dl_response *, char *);
+extern struct int32_t dl_encode_response(struct dl_response *, char *);
 
 #endif

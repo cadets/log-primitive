@@ -68,8 +68,8 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 #define DL_ENCODE_OFFSET(target, value) dl_encode_int64(target, value)
 #define DL_ENCODE_TIMESTAMP(target, value) dl_encode_int64(target, value)
 
-static int32_t dl_message_encode(struct dl_message *, char const *);
-static int32_t dl_message_get_size(struct dl_message *);
+static int32_t dl_message_encode(struct dl_message const *, char * const);
+static int32_t dl_message_get_size(struct dl_message const * const);
 
 struct dl_message_set *
 dl_message_set_decode(char const * const source)
@@ -104,7 +104,8 @@ dl_message_set_decode(char const * const source)
  * N.B. MessageSets are not preceded by an int32 like other array elements.
  */
 int32_t
-dl_message_set_encode(struct dl_message_set *message_set, char const *target)
+dl_message_set_encode(struct dl_message_set const *message_set,
+    char * const target)
 {
 	struct dl_message const *message;
 	int32_t msg_set_size = 0;
@@ -131,7 +132,7 @@ dl_message_set_encode(struct dl_message_set *message_set, char const *target)
 }
 
 static int32_t
-dl_message_encode(struct dl_message *message, char const *target)
+dl_message_encode(struct dl_message const *message, char * const target)
 {
 	int32_t msg_size = 0;
 	unsigned long crc_value, timestamp;
@@ -173,7 +174,7 @@ dl_message_encode(struct dl_message *message, char const *target)
 	return msg_size;
 }
 
-int32_t dl_message_set_get_size(struct dl_message_set *message_set)
+int32_t dl_message_set_get_size(struct dl_message_set const * const message_set)
 {
 	struct dl_message const *message;
 	int32_t msg_set_size = 0;
@@ -186,7 +187,8 @@ int32_t dl_message_set_get_size(struct dl_message_set *message_set)
 	return msg_set_size;
 }
 
-static int32_t dl_message_get_size(struct dl_message *message)
+static int32_t
+dl_message_get_size(struct dl_message const * const message)
 {
 	DL_ASSERT(message != NULL, "Message cannot be NULL");
 

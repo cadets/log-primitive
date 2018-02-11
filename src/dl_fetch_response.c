@@ -56,7 +56,9 @@ dl_decode_fetch_response(char *buffer)
 	struct dl_fetch_response_partition *partition;
 	int32_t partition_response, response_it;
 	int16_t topic_name_len;
-       
+      
+	//response = dl_response_new();
+
 	response = (struct dl_fetch_response *) dlog_alloc(
 		sizeof(struct dl_fetch_response));
 

@@ -41,6 +41,7 @@
 #include <string.h>
 #include <sys/param.h>
 #include <sys/queue.h>
+#include <sys/time.h>
 #include <sys/tree.h>
 #ifdef _KERNEL
 #include <sys/types.h>
@@ -80,8 +81,8 @@ dl_notifier_thread(void *vargp)
 	DL_ASSERT(vargp != NULL,
 	    "Request notifier thread argument cannot be NULL");	
 
-	DISTLOGTR1(PRIO_LOW, "Notifier thread %d started...\n",
-	    na->dlna_index);
+	DLOGTR1(PRIO_LOW, "%s: Notifier thread started...\n",
+	    na->dlna_config->client_id);
 	
 	/* Initialize a local queue, used to enqueue requests from the
 	 * notify queue prior to processing.
@@ -130,7 +131,7 @@ dl_notifier_thread(void *vargp)
 		STAILQ_FOREACH_SAFE(notify, &local_notify_queue, entries,
 		    notify_temp) {
 			if (dl_notify_response(notify, na) != 0) {
-				DISTLOGTR0(PRIO_HIGH,
+				DLOGTR0(PRIO_HIGH,
 				    "Failed notifying client\n");
 
 			}
@@ -148,7 +149,6 @@ dl_notify_response(struct notify_queue_element *notify,
 {
 	struct dl_request_element *request;	
 	struct dl_response_element *response;
-	struct dl_request *req_m;
 	struct dl_response *res_m;
 	char *pbuf = notify->pbuf;
 
@@ -162,9 +162,9 @@ dl_notify_response(struct notify_queue_element *notify,
 		res_m = &response->rsp_msg;
 		if (dl_decode_response(res_m, pbuf) == 0) {
 				
-			DISTLOGTR1(PRIO_NORMAL, "Got acknowledged: %d\n",
+			DLOGTR1(PRIO_NORMAL, "Got acknowledged: %d\n",
 			    res_m->dlrs_size);
-			DISTLOGTR1(PRIO_NORMAL, "Got acknowledged: %d\n",
+			DLOGTR1(PRIO_NORMAL, "Got acknowledged: %d\n",
 			    res_m->dlrs_correlation_id);
 
 			/* Acknowledge the request message based
@@ -178,7 +178,7 @@ dl_notify_response(struct notify_queue_element *notify,
 				switch (request->dlrq_api_key) {
 				case DL_PRODUCE_REQUEST:
 					res_m->dlrs_message.dlrs_produce_response =
-					    dl_decode_produce_response(
+					    dl_produce_response_decode(
 						pbuf+2*sizeof(int32_t)); // TODO: remove hack
 					break;
 				case DL_FETCH_REQUEST:
@@ -204,32 +204,42 @@ dl_notify_response(struct notify_queue_element *notify,
 					na->dlna_on_ack(res_m->dlrs_correlation_id);
 
 				if (na->dlna_on_response != NULL)
-					na->dlna_on_response(req_m, res_m);
+					na->dlna_on_response(
+					    request->dlrq_api_key, res_m);
 			
 				// TOOD: who is responsible for freeing the 
 				// memory?	
 				dlog_free(response);
 			} else {
-				DISTLOGTR1(PRIO_HIGH,
+				DLOGTR1(PRIO_HIGH,
 				    "Couldn't find the unacknowledged request "
 				    "id: %d\n", res_m->dlrs_correlation_id);
 				dlog_free(response);
 			}
 		}
 	} else {
-		DISTLOGTR0(PRIO_HIGH, "Cant borrow a response element\n");
+		DLOGTR0(PRIO_HIGH, "Cant borrow a response element\n");
 	}
 
 	return 0;
 }
 
 struct dl_notifier *
-dl_notifier_new(struct dl_client_configuration *cc)
+dl_notifier_new(struct dl_client_configuration const *cc)
 {
 	struct dl_notifier *notifier;
+	
+	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
 
 	notifier = (struct dl_notifier *) dlog_alloc(
 	    sizeof(struct dl_notifier));
+
+	notifier->dln_arg.dlna_on_ack = cc->dlcc_on_ack;
+	notifier->dln_arg.dlna_on_response = cc->dlcc_on_response;
+	notifier->dln_arg.dlna_config = cc;
+	notifier->dln_arg.notify_queue = &notifier->notify_queue;
+	notifier->dln_arg.notify_queue_mtx = &notifier->notify_queue_mtx;
+	notifier->dln_arg.notify_queue_cond = &notifier->notify_queue_cond;
 	
 	/* Initialise the notify queue. Responses to be notified back to
 	 * the client are enqueued onto this queue.
@@ -244,24 +254,26 @@ dl_notifier_new(struct dl_client_configuration *cc)
 void
 dl_notifier_fini(struct dl_notifier *notifier)
 {
+	DL_ASSERT(notifier != NULL,
+	    "Notifier instance configuration cannot be NULL");
+
+	// TODO
+	//STAILQ_INIT(&notifier->notify_queue);
+	//pthread_mutex_init(&notifier->notify_queue_mtx, NULL);
+	//pthread_cond_init(&notifier->notify_queue_cond, NULL);
+
+	/* Free the notifier instance's memory. */	
+	dlog_free(notifier);
 }
 
 int
-dl_notifier_start(struct dl_notifier *notifier,
-    struct dl_client_configuration *cc)
+dl_notifier_start(struct dl_notifier *notifier)
 {
 	int ret;
 
 	DL_ASSERT(notifier != NULL,
 	    "Notifier instance configuration cannot be NULL");
-	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
 
-	notifier->dln_arg.dlna_index = 0;
-	notifier->dln_arg.dlna_on_ack = cc->dlcc_on_ack;
-	notifier->dln_arg.dlna_on_response = cc->dlcc_on_response;
-	notifier->dln_arg.notify_queue = &notifier->notify_queue;
-	notifier->dln_arg.notify_queue_mtx = &notifier->notify_queue_mtx;
-	notifier->dln_arg.notify_queue_cond = &notifier->notify_queue_cond;
 	return pthread_create(&notifier->dln_tid, NULL, dl_notifier_thread,
 	    &notifier->dln_arg);
 }
@@ -278,6 +290,9 @@ void
 dl_notifier_response(struct dl_notifier *notifier,
     struct notify_queue_element *el)
 {
+	DL_ASSERT(notifier != NULL,
+	    "Notifier instance configuration cannot be NULL");
+
 	pthread_mutex_lock(&notifier->notify_queue_mtx);
 	STAILQ_INSERT_TAIL(&notifier->notify_queue, el, entries);
 	pthread_cond_signal(&notifier->notify_queue_cond);

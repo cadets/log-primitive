@@ -55,13 +55,13 @@
 #include "dl_assert.h"
 
 /* Functions for decoding primitive types (bytes and strings). */
-extern int dl_decode_string(char const * const, char const *);
-extern int dl_decode_bytes(char const * const, char const *);
+extern int dl_decode_string(char const * const, char * const);
+extern int dl_decode_bytes(char const * const, char * const);
 
 /* Functions for encoding primitive types (bytes and strings). */
-extern int32_t dl_encode_string(char const *, char const * const,
+extern int32_t dl_encode_string(char * const, char const * const,
     const size_t);
-extern int32_t dl_encode_bytes(char const *, char const * const,
+extern int32_t dl_encode_bytes(char * const, char const * const,
     const int32_t);
 
 /**

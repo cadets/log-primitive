@@ -39,9 +39,12 @@
 
 #include "dl_config.h"
 
-extern int dl_resender_init(struct dl_client_configuration *);
+#include "dl_config.h"
+#include "dl_request_queue.h"
+
+extern int dl_resender_init(struct dl_client_configuration const *);
 extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration *);
+extern int dl_resender_start(struct dl_client_configuration const *);
 extern int dl_resender_stop();
 extern int dl_resender_unackd_request(struct dl_request_element *);
 extern struct dl_request_element * dl_resender_ackd_request(int);

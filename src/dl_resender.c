@@ -33,12 +33,6 @@
  * SUCH DAMAGE.
  */
 
-#include <errno.h>
-#include <pthread.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <sys/param.h>
 #include <sys/queue.h>
 #include <sys/tree.h>
@@ -47,7 +41,15 @@
 #else
 #include <stdbool.h>
 #endif
+
 #include <errno.h>
+#include <pthread.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <unistd.h>
 
 #include "dl_assert.h"
 #include "dl_memory.h"
@@ -57,9 +59,8 @@
 #include "dl_utils.h"
 
 struct dl_resender_argument {
-	struct dl_client_configuration *dlra_config;
+	struct dl_client_configuration const *dlra_config;
 	pthread_t *dlra_tid;
-	int dlra_index;
 };
 
 static struct dl_resender_argument resender_arg;
@@ -83,19 +84,18 @@ RB_GENERATE(dl_unackd_requests, dl_request_element, dlrq_linkage,
     dl_request_element_cmp);
 
 static void * dl_resender_thread(void *);
-static void dl_start_resender(struct dl_client_configuration *);
 
 static void *
 dl_resender_thread(void *vargp)
 {
-	struct dl_resender_argument *ra = (struct dl_reader_argument *) vargp;
+	struct dl_resender_argument *ra = (struct dl_resender_argument *) vargp;
 	struct dl_request_element *request, *request_temp;
 	time_t now;
 	int old_cancel_state;
 
 	DL_ASSERT(vargp != NULL, "Resender thread arguments cannot be NULL");
 
-	DISTLOGTR0(PRIO_LOW, "Resender thread started\n");
+	DLOGTR0(PRIO_LOW, "Resender thread started\n");
 
 	/* Defer cancellation of the thread until the cancellation point 
 	 * pthread_testcancel(). This ensures that thread isn't cancelled until
@@ -112,7 +112,7 @@ dl_resender_thread(void *vargp)
 		    request_temp) {
 			if (request->dlrq_should_resend) {
 				now = time(NULL);
-				DISTLOGTR4(PRIO_LOW, "Was sent %lu now is %lu. "
+				DLOGTR4(PRIO_LOW, "Was sent %lu now is %lu. "
 				    "Resend when the difference is %lu. "
 				    "Current: %lu\n",
 				    request->dlrq_last_sent, now,
@@ -127,13 +127,13 @@ dl_resender_thread(void *vargp)
 					    &unackd_requests, request);
 
 					dlog_free(request);
-					DISTLOGTR0(PRIO_LOW, "Done.\n");
+					DLOGTR0(PRIO_LOW, "Done.\n");
 				}
 			}
 		}
 		pthread_mutex_unlock(&unackd_requests_mtx);
 
-		DISTLOGTR1(PRIO_LOW,
+		DLOGTR1(PRIO_LOW,
 		    "Resender thread is going to sleep for %d seconds\n",
 		    ra->dlra_config->resender_thread_sleep_length);
 
@@ -145,7 +145,7 @@ dl_resender_thread(void *vargp)
 }
 
 int
-dl_resender_init(struct dl_client_configuration *cc)
+dl_resender_init(struct dl_client_configuration const *cc)
 {
 	/* Initialise a red/black tree used to index the unacknowledge
 	 * responses.
@@ -153,27 +153,24 @@ dl_resender_init(struct dl_client_configuration *cc)
 	RB_INIT(&unackd_requests);
 	pthread_mutex_init(&unackd_requests_mtx, NULL);
 
+	resender_arg.dlra_config = cc;
 	return 0;
 }	
 int
 dl_resender_fini()
 {
+	return 0;
 }
 
 int
-dl_resender_start(struct dl_client_configuration *cc)
+dl_resender_start(struct dl_client_configuration const *cc)
 {
 	int ret;
 
 	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
 
-	ret = pthread_create(&resender, NULL, dl_resender_thread,
+	return pthread_create(&resender, NULL, dl_resender_thread,
 	    &resender_arg);
-	if (ret == 0) {
-		resender_arg.dlra_tid = &resender;
-		resender_arg.dlra_index = 0;
-		resender_arg.dlra_config = cc;
-	} 
 }
 
 /* Cancel the resender thread */
@@ -190,6 +187,8 @@ dl_resender_unackd_request(struct dl_request_element *request)
 	pthread_mutex_lock(&unackd_requests_mtx);
 	RB_INSERT(dl_unackd_requests, &unackd_requests, request);
 	pthread_mutex_unlock(&unackd_requests_mtx);
+
+	return 0;
 }
 
 struct dl_request_element *
@@ -205,7 +204,7 @@ dl_resender_ackd_request(int correlation_id)
 	pthread_mutex_lock(&unackd_requests_mtx);
 	request = RB_FIND(dl_unackd_requests, &unackd_requests, &find);
 	if (request != NULL) {
-		DISTLOGTR1(PRIO_NORMAL,
+		DLOGTR1(PRIO_NORMAL,
 			"Found unacknowledged request id: %d\n",
 			request->dlrq_correlation_id);
 

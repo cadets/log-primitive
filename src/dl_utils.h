@@ -44,34 +44,34 @@
 
 
 #ifdef _KERNEL
-#define DISTLOGTR0(event_mask, format) \
+#define DLOGTR0(event_mask, format) \
 	CTR0(event_mask, format)
-#define DISTLOGTR1(event_mask, format, p1) \
+#define DLOGTR1(event_mask, format, p1) \
 	CTR1(event_mask, format, p1)
-#define DISTLOGTR2(event_mask, format, p1, p2) \
+#define DLOGTR2(event_mask, format, p1, p2) \
 	CTR2(event_mask, format, p1, p2)
-#define DISTLOGTR3(event_mask, format, p1, p2, p3) \
+#define DLOGTR3(event_mask, format, p1, p2, p3) \
 	CTR3(event_mask, format, p1, p2, p3)
-#define DISTLOGTR4(event_mask, format, p1, p2, p3, p4) \
+#define DLOGTR4(event_mask, format, p1, p2, p3, p4) \
 	CTR4(event_mask, format, p1, p2, p3, p4)
-#define DISTLOGTR5(event_mask, format, p1, p2, p3, p4, p5) \
+#define DLOGTR5(event_mask, format, p1, p2, p3, p4, p5) \
 	CTR5(event_mask, format, p1, p2, p3, p4, p5)
-#define DISTLOGTR6(event_mask, format, p1, p2, p3, p4, p5, p6) \
+#define DLOGTR6(event_mask, format, p1, p2, p3, p4, p5, p6) \
 	CTR6(event_mask, format, p1, p2, p3, p4, p5, p6)
 #else
-#define DISTLOGTR0(event_mask, format) \
+#define DLOGTR0(event_mask, format) \
 	debug(event_mask, format)
-#define DISTLOGTR1(event_mask, format, p1) \
+#define DLOGTR1(event_mask, format, p1) \
 	debug(event_mask, format, p1)
-#define DISTLOGTR2(event_mask, format, p1, p2) \
+#define DLOGTR2(event_mask, format, p1, p2) \
 	debug(event_mask, format, p1, p2)
-#define DISTLOGTR3(event_mask, format, p1, p2, p3) \
+#define DLOGTR3(event_mask, format, p1, p2, p3) \
 	debug(event_mask, format, p1, p2, p3)
-#define DISTLOGTR4(event_mask, format, p1, p2, p3, p4) \
+#define DLOGTR4(event_mask, format, p1, p2, p3, p4) \
 	debug(event_mask, format, p1, p2, p3, p4)
-#define DISTLOGTR5(event_mask, format, p1, p2, p3, p4, p5) \
+#define DLOGTR5(event_mask, format, p1, p2, p3, p4, p5) \
 	debug(event_mask, format, p1, p2, p3, p4, p5)
-#define DISTLOGTR6(event_mask, format, p1, p2, p3, p4, p5, p6) \
+#define DLOGTR6(event_mask, format, p1, p2, p3, p4, p5, p6) \
 	debug(event_mask, format, p1, p2, p3, p4, p5, p6)
 #endif
 

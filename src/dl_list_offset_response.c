@@ -55,7 +55,7 @@ dl_list_offset_response_decode(char *buffer)
      
 	DL_ASSERT(buffer != NULL, "Decode buffer cannot be NULL");
 
-	response = (struct dl_list_ioffset_response *) dlog_alloc(
+	response = (struct dl_list_offset_response *) dlog_alloc(
 	    sizeof(struct dl_list_offset_response));
 
         // TODO: Number of responses	
@@ -66,28 +66,23 @@ dl_list_offset_response_decode(char *buffer)
 	topic_name_len = DL_DECODE_TOPIC_NAME(buffer,
 	    response->dlors_topic_name);
 	buffer += topic_name_len;
-	printf("topic name = %s\n", response->dlors_topic_name);
 
 	// No. partition offsets	
 	npartitions = dl_decode_int32(buffer);
 	buffer += sizeof(int32_t);
-	printf("npartitions = %d\n", npartitions);
 	
 	/* Decode the Partition */
 	dl_decode_int32(buffer);
 	buffer += sizeof(int32_t);
 	
 	/* Decode the ErrorCode */
-	printf("ec = %d\n", dl_decode_int16(buffer));
 	buffer += sizeof(int16_t);
 	
 	/* Decode the Timestamp */
-	printf("ts = %d\n", dl_decode_int64(buffer));
 	buffer += sizeof(int64_t);
 	
 	/* Decode the Offset*/
 	response->dlors_offset = dl_decode_int64(buffer);
-	printf("off = %d\n", response->dlors_offset);
 	buffer += sizeof(int64_t);
 
 	return 0;

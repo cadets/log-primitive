@@ -58,7 +58,7 @@ struct dl_request {
 
 extern struct dl_request * dl_request_new(const int16_t, const int32_t, char *);
 extern struct dl_request * dl_decode_request(char *);
-extern int dl_encode_request(struct dl_request const *,
+extern int dl_request_encode(struct dl_request const *,
     struct dl_buffer const *);
 
 #endif

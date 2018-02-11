@@ -53,8 +53,10 @@
 #ifdef _KERNEL
 #include <sys/libkern.h>
 #else
-#include <stdlib.h>
+#include <string.h>
 #endif
+
+#include <stddef.h>
 
 #include "dl_assert.h"
 #include "dl_primitive_types.h"
@@ -68,7 +70,7 @@ static const int32_t DL_BYTES_NULL = -1;
  * a value of -1 indicates a NULL string.
  */
 int
-dl_decode_string(char const * const source, char const *string)
+dl_decode_string(char const * const source, char * const string)
 {
 	int string_len, decoded_len = 0;
 
@@ -97,7 +99,7 @@ dl_decode_string(char const * const source, char const *string)
  * a value of -1 indicates a NULL string.
  */
 int
-dl_decode_bytes(char const * const source, char const *target)
+dl_decode_bytes(char const * const source, char * const target)
 {
 	int bytes_len, decoded_len = 0;
 
@@ -125,7 +127,7 @@ dl_decode_bytes(char const * const source, char const *target)
  * Encoded strings are prefixed with their length (int16).
  */
 int32_t
-dl_encode_string(char const *target, char const * const source,
+dl_encode_string(char * const target, char const * const source,
     const size_t max_len)
 {
 	int32_t encoded_size = 0;
@@ -138,9 +140,11 @@ dl_encode_string(char const *target, char const * const source,
 	/* Prepended a 16bit value indicating the length (in bytes). */
 	encoded_size += dl_encode_int16(string_len, strlen(source));
 
+#ifdef _KERNEL
 	// TODO: In kernel strlcpy?
+#else
 	encoded_size += strlcpy(string_value, source, max_len);
-
+#endif
 	return encoded_size;
 }
 
@@ -148,7 +152,7 @@ dl_encode_string(char const *target, char const * const source,
  * Encoded byte arrays are prefixed with their length (int32).
  */
 int32_t
-dl_encode_bytes(char const *target, char const * const source,
+dl_encode_bytes(char * const target, char const * const source,
     const int32_t source_len)
 {
 	int32_t encoded_len_bytes = 0;

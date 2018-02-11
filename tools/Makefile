@@ -32,17 +32,26 @@
 .OBJDIR:= obj
 MK_AUTO_OBJ:= yes
 
+OBJ_libdlog:= ${SRCTOP}/obj
+
 PROGS= dlog_console_producer dlog_console_consumer
+BINDIR= bin
 
-SRCS.distlog_console_producer= dlog_console_producer.c
-MAN.distlog_console_producer=
+SRCS.dlog_console_producer= dlog_console_producer.c
+MAN.dtlog_console_producer=
 
-SRCS.distlog_console_consumer= dlog_console_consumer.c
-MAN.ditlog_console_consumer=
+SRCS.dlog_console_consumer= dlog_console_consumer.c
+MAN.dlog_console_consumer=
 
 LDADD+= -lz
 LDADD+= -lpthread
 LDADD+= -lm
-LDADD+= $(SRCDIR)/obj/libdlog.a
+#LDADD+= -ldlog.a
+
+SRC_LIBS += ${LIBDLOG}
+DPADD += ${LIBDLOG}
+
+CFLAGS+= -I${SRCTOP}
+
 
 .include <progs.mk>

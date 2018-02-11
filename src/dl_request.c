@@ -57,7 +57,7 @@
 #define DL_ENCODE_SIZE(buffer, value) dl_encode_int32(buffer, value)
 
 static int32_t dl_encode_request_header(struct dl_request const * const,
-    char const *);
+    char * const);
 static int32_t dl_encode_request_size(char const *, const int32_t);
 static int dl_decode_request_header(struct dl_request *, char *);
 
@@ -128,7 +128,7 @@ dl_request_encode(struct dl_request const *request,
 		    request_body);
 		break;
 	default:
-		DISTLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
+		DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
 		    request->dlrqm_api_key);
 		return -1;
 		break;
@@ -172,7 +172,7 @@ static int32_t
 //dl_encode_request_header(struct dl_request * const request,
 //    struct dl_buffer const *buffer)
 dl_encode_request_header(struct dl_request const * const request,
-    char const *buffer)
+    char * const buffer)
 {
 	int32_t req_header_size = 0;
 	
@@ -233,7 +233,7 @@ dl_decode_request(char *source)
 		//	request_body);
 		break;
 	default:
-		DISTLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
+		DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
 			request->dlrqm_api_key);
 		return NULL;
 		break;

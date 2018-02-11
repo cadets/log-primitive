@@ -47,7 +47,7 @@ struct dl_produce_request;
 extern struct dl_produce_request * dl_produce_request_decode(char *);
 extern int dl_produce_request_encode(struct dl_produce_request const * const,
     char *);
-extern struct dl_produce_request * dl_produce_request_new(const int32_t,
+extern struct dl_request * dl_produce_request_new(const int32_t,
     char *, char *, char*, int, char *, int);
 
 #endif

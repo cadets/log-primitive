@@ -49,7 +49,7 @@ STAILQ_HEAD(notify_queue, notify_queue_element);
 struct dl_notifier_argument {
 	dl_ack_function dlna_on_ack;
 	dl_response_function dlna_on_response;
-	int dlna_index;
+	struct dl_client_configuration const *dlna_config;
 	struct notify_queue *notify_queue;
 	pthread_mutex_t *notify_queue_mtx;
 	pthread_cond_t *notify_queue_cond;
@@ -63,7 +63,11 @@ struct dl_notifier {
 	pthread_cond_t notify_queue_cond;
 };
 
-extern struct dl_notifier * dl_notifier_new(struct dl_client_configuration *);
+extern struct dl_notifier * dl_notifier_new(struct dl_client_configuration const *);
 extern void dl_notifier_fini(struct dl_notifier *);
+extern void dl_notifier_response(struct dl_notifier *,
+    struct notify_queue_element *);
+extern int dl_notifier_start(struct dl_notifier *);
+extern int dl_notifier_stop(struct dl_notifier *);
 
 #endif

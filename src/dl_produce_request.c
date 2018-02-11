@@ -91,7 +91,7 @@ struct dl_produce_request {
 
 #include <stdio.h>
 
-struct dl_produce_request *
+struct dl_request *
 dl_produce_request_new(int32_t correlation_id, char *client_id,
     char *topic_name, char * key, int key_len, char *value, int value_len)
 {
@@ -147,8 +147,8 @@ dl_produce_request_decode(char *source)
 
 	DL_ASSERT(source != NULL, "Source Decode buffer cannot be NULL");
 	
-	request = (struct dl_request *) dlog_alloc(
-	    sizeof(struct dl_request));
+	request = (struct dl_produce_request *) dlog_alloc(
+	    sizeof(struct dl_produce_request));
 	
 	/* Decode the Request RequiredAcks. */
 	request->dlpr_required_acks = dl_decode_int16(source);

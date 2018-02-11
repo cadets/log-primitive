@@ -55,7 +55,7 @@ struct dl_fetch_response_partition {
 struct dl_fetch_response_topic {
 	struct dl_fetch_response_partitions dlfrt_partitions;
 	SLIST_ENTRY(dl_fetch_response_topic) dlfrt_entries;
-	char const *dlfrt_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	char dlfrt_topic_name[DL_MAX_TOPIC_NAME_LEN];
 	int32_t dlfrt_npartitions;
 };	
 
