@@ -85,26 +85,33 @@
 #include "dl_memory.h"
 #include "dl_utils.h"
 
-segment* ptr_seg;
+struct segment* ptr_seg;
+
+static int dl_alloc_big_file(int, long int, long int);
+static int dl_make_file(const char *, const char *);
+#ifdef HAVE_POSIX_FALLOCATE
+static int call_posix_fallocate(int, Sint64, Sint64);
+#endif
 
 // Adopted from http://www.doc.ic.ac.uk/~rn710/Installs/otp_src_17.0/erts/emulator/drivers/unix/unix_efile.c
 //
-int
-alloc_big_file(int fd, long int offset, long int length)
+static int
+dl_alloc_big_file(int fd, long int offset, long int length)
 {
 #if defined HAVE_FALLOCATE
-    /* Linux specific, more efficient than posix_fallocate. */
-    int ret;
+	/* Linux specific, more efficient than posix_fallocate. */
+	int ret;
 
-    do {
-        ret = fallocate(fd, FALLOC_FL_KEEP_SIZE, (off_t) offset, (off_t) length);
-    } while (ret != 0 && errno == EINTR);
+	do {
+		ret = fallocate(fd, FALLOC_FL_KEEP_SIZE, (off_t) offset,
+		    (off_t) length);
+	} while (ret != 0 && errno == EINTR);
 
 #if defined HAVE_POSIX_FALLOCATE
-    /* Fallback to posix_fallocate if available. */
-    if (ret != 0) {
-        ret = call_posix_fallocate(fd, offset, length);
-    }
+	/* Fallback to posix_fallocate if available. */
+	if (ret != 0) {
+        	ret = call_posix_fallocate(fd, offset, length);
+    	}
 #endif
 
     return check_error(ret, errInfo);
@@ -119,7 +126,7 @@ alloc_big_file(int fd, long int offset, long int length)
     fs.fst_offset = (off_t) offset;
     fs.fst_length = (off_t) length;
 
-    debug(PRIO_LOW, "Preallocating the file for mac ... ");
+    dl_debug(PRIO_LOW, "Preallocating the file for mac ... ");
     ret = fcntl(fd, F_PREALLOCATE, &fs);
     printf("%d\n", ret);
 
@@ -147,7 +154,6 @@ alloc_big_file(int fd, long int offset, long int length)
 #endif
 }
 
-
 #ifdef HAVE_POSIX_FALLOCATE
 static int
 call_posix_fallocate(int fd, Sint64 offset, Sint64 length)
@@ -174,7 +180,8 @@ call_posix_fallocate(int fd, Sint64 offset, Sint64 length)
 
 // Method used to create a partition folder
 int
-make_folder(const char* partition_name){
+dl_make_folder(const char *partition_name)
+{
     struct stat st;
 
     if (stat(partition_name, &st) == -1) {
@@ -185,18 +192,20 @@ make_folder(const char* partition_name){
 }
 
 int
-del_folder(const char* partition_name){
-    struct stat st;
+dl_del_folder(const char *partition_name)
+{
+	struct stat st;
 
-    if (stat(partition_name, &st) != -1) {
-        return remove_directory(partition_name);
-    }
+	if (stat(partition_name, &st) != -1) {
+		return remove_directory(partition_name);
+	}
 
-    return -1;
+	return -1;
 }
 
-int
-make_file(const char* partition_name, const char* filename){
+static int
+dl_make_file(const char* partition_name, const char* filename)
+{
     char pathFile[128];
 
     sprintf(pathFile, "%s/%s", partition_name, filename );
@@ -205,33 +214,36 @@ make_file(const char* partition_name, const char* filename){
 }
 
 //Method used to create the segment with its log and index files
-segment*
-make_segment(long int start_offset, long int length,
-	const char* partition_name)
+struct segment *
+dl_make_segment(long int start_offset, long int length,
+	const char *partition_name)
 {
-    char temp[128];
-    sprintf(temp, "%ld.log", start_offset);
-    int log_file = make_file(partition_name, temp);
-    alloc_big_file(log_file, 0, length);
+	struct segment *seg;
+	int log_file, index_file;
+	char temp[128];
 
-    sprintf(temp, "%ld.index", start_offset);
-    int index_file = make_file(partition_name, temp);
-    alloc_big_file(index_file, 0,  length);
+	sprintf(temp, "%ld.log", start_offset);
+	log_file = dl_make_file(partition_name, temp);
+	dl_alloc_big_file(log_file, 0, length);
 
-    segment* seg = (segment*) dlog_alloc(sizeof(segment));
-    seg->_log = log_file;
-    seg->_index = index_file;
+	sprintf(temp, "%ld.index", start_offset);
+	index_file = make_file(partition_name, temp);
+	dl_alloc_big_file(index_file, 0,  length);
 
-    if (pthread_mutex_init(&seg->mtx, NULL) != 0){
-        debug(PRIO_HIGH, "Segment mutex init failed\n");
-    }
+	seg = (struct segment *) dlog_alloc(sizeof(struct segment));
+	seg->_log = log_file;
+	seg->_index = index_file;
 
-    return seg;
+	if (pthread_mutex_init(&seg->mtx, NULL) != 0){
+		dl_debug(PRIO_HIGH, "Segment mutex init failed\n");
+	}
+
+	return seg;
 }
 
 //Method invoked when a new message gets recieved into a segment
 int
-insert_message(segment* as, char* message, int msg_size)
+dl_insert_message(struct segment *as, char *message, int msg_size)
 {
     debug(PRIO_HIGH, "Inserting into the log: '%s'\n", message);
 
@@ -262,13 +274,14 @@ insert_message(segment* as, char* message, int msg_size)
     }
 }
 
-segment* get_seg_by_offset(long offset)
+struct segment *
+dl_get_seg_by_offset(long offset)
 {
 	return ptr_seg;
 }
 
 int
-get_message_by_offset(segment* as, int offset, void* saveto)
+dl_get_message_by_offset(struct segment *as, int offset, void *saveto)
 {
     char buf[bytes_per_index_entry];
     char* bp = buf;
@@ -300,15 +313,16 @@ get_message_by_offset(segment* as, int offset, void* saveto)
     return 0;
 }
 
-void close_segment(segment* s)
+void
+dl_close_segment(struct segment* s)
 {
-    close(s->_log);
-    close(s->_index);
+	close(s->_log);
+	close(s->_index);
 }
 
 // adapted from https://stackoverflow.com/questions/2256945/removing-a-non-empty-directory-programmatically-in-c-or-c
 int
-remove_directory(const char *path)
+dl_remove_directory(const char *path)
 {
    DIR *d = opendir(path);
    size_t path_len = strlen(path);
@@ -370,9 +384,8 @@ remove_directory(const char *path)
    return r;
 }
 
-
 void
-debug(int priority, const char* format, ...)
+dl_debug(int priority, const char* format, ...)
 {
 	va_list args;
 
@@ -385,13 +398,13 @@ debug(int priority, const char* format, ...)
 }
 
 void
-lock_seg(struct segment* seg)
+dl_lock_seg(struct segment *seg)
 {
 	pthread_mutex_lock(&seg->mtx);
 }
 
 void
-ulock_seg(struct segment* seg)
+dl_unlock_seg(struct segment *seg)
 {
 	pthread_mutex_unlock(&seg->mtx);
 }
