@@ -42,7 +42,6 @@
 #include <pthread.h>
 #include <dirent.h>
 
-
 #ifdef _KERNEL
 #define DLOGTR0(event_mask, format) \
 	CTR0(event_mask, format)
@@ -60,19 +59,19 @@
 	CTR6(event_mask, format, p1, p2, p3, p4, p5, p6)
 #else
 #define DLOGTR0(event_mask, format) \
-	debug(event_mask, format)
+	dl_debug(event_mask, format)
 #define DLOGTR1(event_mask, format, p1) \
-	debug(event_mask, format, p1)
+	dl_debug(event_mask, format, p1)
 #define DLOGTR2(event_mask, format, p1, p2) \
-	debug(event_mask, format, p1, p2)
+	dl_debug(event_mask, format, p1, p2)
 #define DLOGTR3(event_mask, format, p1, p2, p3) \
-	debug(event_mask, format, p1, p2, p3)
+	dl_debug(event_mask, format, p1, p2, p3)
 #define DLOGTR4(event_mask, format, p1, p2, p3, p4) \
-	debug(event_mask, format, p1, p2, p3, p4)
+	dl_debug(event_mask, format, p1, p2, p3, p4)
 #define DLOGTR5(event_mask, format, p1, p2, p3, p4, p5) \
-	debug(event_mask, format, p1, p2, p3, p4, p5)
+	dl_debug(event_mask, format, p1, p2, p3, p4, p5)
 #define DLOGTR6(event_mask, format, p1, p2, p3, p4, p5, p6) \
-	debug(event_mask, format, p1, p2, p3, p4, p5, p6)
+	dl_debug(event_mask, format, p1, p2, p3, p4, p5, p6)
 #endif
 
 #define PRIO_HIGH   1 << 1
@@ -101,9 +100,8 @@ struct segment {
 	int index_position; // Current offset position in the log
 	pthread_mutex_t mtx;
 };
-typedef struct segment segment;
 
-struct partition{
+struct partition {
 	struct partition* active_segment;
 	char * id;
 };
@@ -113,25 +111,23 @@ struct utils_config{
 	char topics_folder[MAX_FILENAME_SIZE];
 };
 
-extern int	alloc_big_file(int, long int, long int);
-
-// Managing partitions
-extern int	make_folder(const char *);
-extern int	del_folder(const char *);
-
-// Managing segments
-extern segment* make_segment(long int, long int, const char *);
-extern void	close_segment(segment *);
-
-// Managing messages
-extern int	insert_message(segment *, char *, int);
-extern int	get_message_by_offset(segment *, int, void *);
-extern int	remove_directory(const char *);
-
 extern unsigned short PRIO_LOG;
 
-extern void	debug(int, const char *, ...);
-extern void	lock_seg(struct segment *);
-extern void	ulock_seg(struct segment *);
+// Managing partitions
+extern int dl_make_folder(const char *);
+extern int dl_del_folder(const char *);
+
+// Managing segments
+extern struct segment * dl_make_segment(long int, long int, const char *);
+extern void dl_close_segment(struct segment *);
+
+// Managing messages
+extern int dl_insert_message(struct segment *, char *, int);
+extern int dl_get_message_by_offset(struct segment *, int, void *);
+
+extern void dl_lock_seg(struct segment *);
+extern void dl_unlock_seg(struct segment *);
+
+extern void dl_debug(int, const char *, ...);
 
 #endif

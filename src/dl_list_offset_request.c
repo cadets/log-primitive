@@ -164,7 +164,63 @@ dl_list_offset_request_encode(struct dl_list_offset_request *self,
 struct dl_list_offset_request *
 dl_list_offset_request_decode(char *source)
 {
-	// TODO: decode a ListOffsetRequest
+	struct dl_list_offset_request *request;
+	struct dl_list_offset_request_topic *request_topic;
+	struct dl_list_offset_request_partition *request_partition;
+	int32_t topic_it, partition_it, request_size = 0;
 
-	return NULL;
+	DL_ASSERT(source != NULL, "Source buffer cannot be NULL\n");
+
+	/* Construct the ProduceRequest. */
+	request = (struct dl_list_offset_request *) dlog_alloc(
+	    sizeof(struct dl_list_offset_request));
+
+	/* Decode the ListOffsetRequest ReplicaId. */
+	request->dlor_replica_id = dl_decode_int32(&source[request_size]);
+	request_size += sizeof(int32_t);
+
+	/* Decode the [topic_data] array. */
+	request->dlor_ntopics = dl_decode_int32(&source[request_size]);
+	request_size += sizeof(int32_t);
+
+	for (topic_it = 0; topic_it < request->dlor_ntopics; topic_it++) {
+
+		request_topic = (struct dl_list_offset_request_topic *)
+		    dlog_alloc(sizeof(struct dl_list_offset_request_topic));
+
+		/* Decode the TopicName. */
+
+		/* Decode the [data] array. */
+		request_topic->dlort_npartitions = dl_decode_int32(
+		    &source[request_size]);
+		request_size += sizeof(int32_t);
+
+		for (partition_it = 0;
+		    partition_it < request_topic->dlort_npartitions;
+		    partition_it++) {
+
+			request_partition =
+			    (struct dl_list_offset_request_partition *)
+			    dlog_alloc(sizeof(
+				struct dl_list_offset_request_partition));
+
+			/* Decode the Partition. */
+			request_partition->dlorp_partition = dl_decode_int32(
+			    &source[request_size]);
+			request_size += sizeof(int32_t);
+
+			/* Decode the Time. */
+			request_partition->dlorp_time = dl_decode_int64(
+			    &source[request_size]);
+			request_size += sizeof(int64_t);
+
+			SLIST_INSERT_HEAD(&request_topic->dlort_partitions,
+			    request_partition, dlorp_entries);
+		}
+
+		SLIST_INSERT_HEAD(&request->dlor_topics, request_topic,
+		    dlort_entries);
+	}
+
+	return request;
 }

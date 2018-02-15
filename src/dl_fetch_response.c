@@ -45,20 +45,18 @@
 #include "dl_primitive_types.h"
 #include "dl_protocol.h"
 
-#define DL_DECODE_TOPIC_NAME(source, target) \
-   dl_decode_string(source, target)
+#define DL_DECODE_TOPIC_NAME(source, target) dl_decode_string(source, target)
 
 struct dl_fetch_response *
-dl_decode_fetch_response(char *buffer)
+dl_fetch_response_decode(char *buffer)
 {
+	struct dl_message_set *message_set;
 	struct dl_fetch_response *response;
 	struct dl_fetch_response_topic *topic;
 	struct dl_fetch_response_partition *partition;
 	int32_t partition_response, response_it;
-	int16_t topic_name_len;
       
-	//response = dl_response_new();
-
+	/* Consruct the FetchResponse. */
 	response = (struct dl_fetch_response *) dlog_alloc(
 		sizeof(struct dl_fetch_response));
 
@@ -67,12 +65,12 @@ dl_decode_fetch_response(char *buffer)
 	buffer += sizeof(int32_t);
 
         /* Decode the responses */	
+	SLIST_INIT(&response->dlfr_topics);
+
 	response->dlfr_ntopics = dl_decode_int32(buffer);
 	DL_ASSERT(response->dlfr_ntopics > 0,
 	    "Response array is not NULLABLE");
 	buffer += sizeof(int32_t);
-
-	SLIST_INIT(&response->dlfr_topics);
 
 	for (response_it = 0; response_it < response->dlfr_ntopics;
 	    response_it++) {
@@ -81,9 +79,8 @@ dl_decode_fetch_response(char *buffer)
 		    sizeof(struct dl_fetch_response_topic));
 
 		/* Decode the TopicName */
-		topic_name_len = DL_DECODE_TOPIC_NAME(buffer,
+		buffer += DL_DECODE_TOPIC_NAME(buffer,
 		    topic->dlfrt_topic_name);
-		buffer += topic_name_len;
 
 		/* Decode the partition responses */	
 		topic->dlfrt_npartitions = dl_decode_int32(buffer);
@@ -94,8 +91,8 @@ dl_decode_fetch_response(char *buffer)
 		    partition_response++) {
 
 			partition = (struct dl_fetch_response_partition *)
-			    dlog_alloc(
-				sizeof(struct dl_fetch_response_partition));
+			    dlog_alloc(sizeof(
+				struct dl_fetch_response_partition));
 
 			/* Decode the Partition */
 			partition->dlfrpr_partition =
@@ -116,15 +113,13 @@ dl_decode_fetch_response(char *buffer)
 		    	int32_t mss = dl_decode_int32(buffer);
 			buffer += sizeof(int32_t);
 			
-			// TODO decode the MessageSet
-			// dl_message_set_decode(buffer);
+			/* Decode the MessageSet */
+			// message_set = dl_message_set_decode(buffer);
 
 		    	dl_decode_int64(buffer);
 
 		    	dl_decode_int32(buffer);
 		}
 	}
-	return 0;
+	return response;
 }
-
-

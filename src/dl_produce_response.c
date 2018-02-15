@@ -62,6 +62,46 @@ static struct dl_produce_response_partition *
     dl_produce_response_partition_decode(char const * const);
 
 struct dl_produce_response *
+dl_produce_response_new(char * topic_name, int32_t throttle_time,
+    int64_t base_offset, int16_t error_code)
+{
+	struct dl_produce_response *response;
+	struct dl_produce_response_topic *response_topic;
+	struct dl_produce_response_partition *response_partition;
+
+	/* Construct the ProduceResponse. */
+	response = (struct dl_produce_response *) dlog_alloc(
+	    sizeof(struct dl_produce_response));
+	
+	SLIST_INIT(&response->dlpr_topics);
+	response->dlpr_throttle_time = throttle_time;
+	response->dlpr_ntopics = 1;
+
+	response_topic = (struct dl_produce_response_topic *) dlog_alloc(
+	    sizeof(struct dl_produce_response_topic));	    
+	strlcpy(response_topic->dlprt_topic_name, topic_name,
+	    DL_MAX_TOPIC_NAME_LEN);
+	response_topic->dlprt_npartitions = 1;
+	SLIST_INIT(&response_topic->dlprt_partitions);
+
+	SLIST_INSERT_HEAD(&response->dlpr_topics, response_topic,
+	    dlprt_entries);
+	
+	response_partition =
+	    (struct dl_produce_response_partition *) dlog_alloc(
+		sizeof(struct dl_produce_response_partition));	    
+	
+	response_partition->dlprp_base_offset = base_offset;
+	response_partition->dlprp_partition = 0;
+	response_partition->dlprp_error_code= error_code;
+
+	SLIST_INSERT_HEAD(&response_topic->dlprt_partitions,
+	    response_partition, dlprp_entries);
+
+	return response;
+}
+
+struct dl_produce_response *
 dl_produce_response_decode(char const * const source)
 {
 	struct dl_produce_response *response;

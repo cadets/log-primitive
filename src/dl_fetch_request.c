@@ -168,6 +168,8 @@ dl_fetch_request_encode(struct dl_fetch_request *self, char *target)
 struct dl_fetch_request *
 dl_fetch_request_decode(char *source)
 {
+	DL_ASSERT(source != NULL, "Source buffer cannot be NULL\n");
+
 	// TODO: Decode a FetchRequest
 	return NULL;
 }

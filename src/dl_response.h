@@ -37,6 +37,8 @@
 #ifndef _DL_RESPONSE_H
 #define _DL_RESPONSE_H
 
+#include <sys/types.h>
+
 #include "dl_fetch_response.h"
 #include "dl_list_offset_response.h"
 #include "dl_produce_response.h"
@@ -51,10 +53,10 @@ struct dl_response {
 	union dl_response_message dlrs_message;
 	int32_t dlrs_size;
 	int32_t dlrs_correlation_id;
-	//int16_t dlrs_api_key;
+	int16_t dlrs_api_key;
 };
 
 extern int dl_decode_response(struct dl_response *, char *);
-extern struct int32_t dl_encode_response(struct dl_response *, char *);
+extern int32_t dl_encode_response(struct dl_response *, char *);
 
 #endif

@@ -45,15 +45,26 @@
 
 // response header?
 int
-dl_decode_response(struct dl_response *response, char *buffer)
+dl_decode_response(struct dl_response *response, char *source)
 {
+	DL_ASSERT(response != NULL, "Response message cannot be NULL\n");
+	DL_ASSERT(source != NULL, "Source buffer cannot be NULL\n");
+
         /* Decode the Size */	
-	response->dlrs_size = dl_decode_int32(buffer);
+	response->dlrs_size = dl_decode_int32(source);
 
         /* Decode the CorrelationId */	
 	response->dlrs_correlation_id = dl_decode_int32(
-	    &buffer[sizeof(int32_t)]);
+	    &source[sizeof(int32_t)]);
 
 	return 0;
 }
 
+int32_t
+dl_encode_response(struct dl_response *response, char *target)
+{
+	DL_ASSERT(response != NULL, "Response message cannot be NULL\n");
+	DL_ASSERT(target != NULL, "Target buffer cannot be NULL\n");
+
+	return 0;
+}

@@ -37,29 +37,38 @@
 #ifndef _DL_LIST_OFFSET_RESPONSE_H
 #define _DL_LIST_OFFSET_RESPONSE_H
 
+#include <sys/queue.h>
+
 #include "dl_protocol.h"
-/*
-struct dl_list_offset_response {
-	char dlors_topic_name[DL_MAX_TOPIC_NAME_LEN];
-	int64_t dlors_offset;
+
+SLIST_HEAD(dl_list_offset_response_topics, dl_list_offset_response_topic);
+SLIST_HEAD(dl_list_offset_response_partitions,
+    dl_list_offset_response_partition);
+
+struct dl_list_offset_response_partition {
+	SLIST_ENTRY(dl_list_offset_response_partition) dlorp_entries;
+	int32_t dlorp_partition;
+	int16_t dlorp_error_code;
+	int64_t dlorp_timestamp;
+	int64_t dlorp_offset;
+};
+
+struct dl_list_offset_response_topic {
+	SLIST_ENTRY(dl_list_offset_response_topic) dlort_entries;
+	struct dl_list_offset_response_partitions dlort_partitions;
+	int32_t dlort_npartitions;
+	char dlort_topic_name[DL_MAX_TOPIC_NAME_LEN];
 };
 
 struct dl_list_offset_response {
-	char dlors_topic_name[DL_MAX_TOPIC_NAME_LEN];
-	int64_t dlors_offset;
-};
-
-struct dl_list_offset_response {
-	char dlors_topic_name[DL_MAX_TOPIC_NAME_LEN];
-	int64_t dlors_offset;
-};
-*/
-
-struct dl_list_offset_response {
-	char dlors_topic_name[DL_MAX_TOPIC_NAME_LEN];
-	int64_t dlors_offset;
+	struct dl_list_offset_response_topics dlor_topics;
+	int32_t dlor_ntopics;
 };
 
 extern struct dl_list_offset_response * dl_list_offset_response_decode(char *);
+extern int32_t dl_list_offset_response_encode(struct dl_list_offset_response *,
+    char *);
+extern struct dl_list_offset_response * dl_list_offset_response_new(char *,
+    int16_t, int64_t, int64_t);
 
 #endif
