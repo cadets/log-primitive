@@ -76,13 +76,13 @@ static void dlc_on_response(const int16_t,
 static void
 dlc_siginfo_handler(int sig)
 {
-	debug(PRIO_LOW, "Caught SIGIFO[%d]\n", sig);
+	dl_debug(PRIO_LOW, "Caught SIGIFO[%d]\n", sig);
 }
 
 static void
 dlc_sigint_handler(int sig)
 {
-	debug(PRIO_LOW, "Caught SIGINT[%d]\n", sig);
+	dl_debug(PRIO_LOW, "Caught SIGINT[%d]\n", sig);
 	
 	/* Deallocate the buffer used to store the user input. */
 	//free(line);
@@ -97,7 +97,7 @@ dlc_sigint_handler(int sig)
 static void
 dlc_on_ack(const int32_t correlation_id)
 {
-	debug(PRIO_NORMAL, "Broker acknowledged message "
+	dl_debug(PRIO_NORMAL, "Broker acknowledged message "
 	    "(correlation ID = %lu)\n", correlation_id);
 }
 
@@ -111,13 +111,13 @@ dlc_on_response(const int16_t api_key,
 
 	DL_ASSERT(response != NULL, "Response cannot be NULL\n");
 
-	debug(PRIO_NORMAL, "Response was recieved with correlation ID %d\n",
+	dl_debug(PRIO_NORMAL, "Response was recieved with correlation ID %d\n",
 	    response->dlrs_correlation_id);
 
 	//switch (response->dlrs_api_key) {
 	switch (api_key) {
 		case DL_PRODUCE_REQUEST:
-			debug(PRIO_NORMAL,
+			dl_debug(PRIO_NORMAL,
 			    "Produced the following messages: \n");
 			/*
 			for (int i = 0; i < rm->rm.produce_request.spr.sspr.mset.num_elems; i++) {
@@ -125,7 +125,7 @@ dlc_on_response(const int16_t api_key,
 				    rm->rm.produce_request.spr.sspr.mset.elems[i].message.value); 
 			}
 
-			debug(PRIO_NORMAL, "Request answer: \n");
+			dl_debug(PRIO_NORMAL, "Request answer: \n");
 			for (int i = 0; i < rs->rm.produce_response.num_sub;
 			    i++){
 				for (int j = 0;
@@ -144,9 +144,9 @@ dlc_on_response(const int16_t api_key,
 			break;
 		case DL_OFFSET_REQUEST:
 			printf("here\n");
-			debug(PRIO_NORMAL, "Offset: %d\n",
+			dl_debug(PRIO_NORMAL, "Offset: %d\n",
 			    response->dlrs_message.dlrs_offset_response->dlors_offset);
-			debug(PRIO_NORMAL, "Topic: %s\n",
+			dl_debug(PRIO_NORMAL, "Topic: %s\n",
 			    response->dlrs_message.dlrs_offset_response->dlors_topic_name);
 
 			dlog_fetch(handle, 

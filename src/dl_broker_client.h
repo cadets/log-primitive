@@ -1,5 +1,4 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
  * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
@@ -35,46 +34,21 @@
  *
  */
 
-#ifndef _DL_CONFIG_H
-#define _DL_CONFIG_H
+#ifndef _DL_BROKER_CLIENT_H
+#define _DL_BROKER_CLIENT_H
 
-#include "dl_protocol.h" 
-#include "dl_response.h" 
-#include "dl_request.h" 
+#include "dlog_broker.h"
+#include "dl_event_handler.h"
 
-typedef void (* dl_ack_function) (const int32_t );
-typedef void (* dl_response_function) (const int16_t, struct dl_response const * const);
+struct dl_broker_client 
+{
+	dl_event_handler_handle client_socket;
+	struct dl_event_handler eventHandler;
+	struct ServerEventNotifier eventNotifier;
+}; 
 
-enum broker_confs {
-	BROKER_SEND_ACKS = 1 << 1,
-	BROKER_FSYNC_ALWAYS = 1 << 2,
-};
-
-struct broker_configuration {
-	int fsync_thread_sleep_length;
-	int processor_thread_sleep_length;
-	int val;
-};
-
-struct dl_client_configuration {
-	dl_ack_function dlcc_on_ack;
-	dl_response_function dlcc_on_response;
-	char *client_id;
-	//char dlcc_topic_name[DL_MAX_TOPIC_NAME_LEN];;
-	int to_resend;
-	int resend_timeout;
-	int resender_thread_sleep_length;
-	int request_notifier_thread_sleep_length;
-	int reconn_timeout;
-	int poll_timeout;
-};
-
-static const int MAX_NUM_REQUESTS_PER_PROCESSOR  = 128; // Maximum outstanding requests per processor.
-static const int NUM_PROCESSORS                  = 10;   // Number of processors.
-static const int MAX_NUM_RESPONSES_PER_PROCESSOR = 128; // Maximum outstanding responses per processor.
-static const int CONNECTIONS_PER_PROCESSOR       = 10; // Number of connections per processor.
-static const int MAX_NUM_UNFSYNCED = 20; // Maximum number of unfsynced inserts
-
-extern void print_configuration(struct broker_configuration *);
+extern struct dl_broker_client * dl_broker_client_new(dl_event_handler_handle,
+    struct ServerEventNotifier *);
+extern void dl_broker_client_free(struct dl_broker_client *);
 
 #endif

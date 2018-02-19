@@ -49,7 +49,7 @@ SLIST_HEAD(dl_produce_request_topics, dl_produce_request_topic);
 
 struct dl_produce_request_partition {
 	SLIST_ENTRY(dl_produce_request_partition) dlprp_entries;
-	struct dl_message_set dlprp_message_set;
+	struct dl_message_set *dlprp_message_set;
 	int32_t dlprp_partition;
 };
 

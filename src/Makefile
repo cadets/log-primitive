@@ -35,6 +35,7 @@ MK_AUTO_OBJ:= yes
 LIB:= dlog
 SRCS= dlog_broker.c \
 	dlog_client.c \
+	dl_broker_client.c \
 	dl_config.c \
 	dl_correlation_id.c \
 	dl_resender.c \
@@ -47,6 +48,7 @@ SRCS= dlog_broker.c \
 	dl_list_offset_response.c \
 	dl_message_set.c \
 	dl_notifier.c \
+	dl_poll_reactor.c \
 	dl_primitive_types.c \
 	dl_produce_request.c \
 	dl_produce_response.c \

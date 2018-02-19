@@ -39,8 +39,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "dlog_client.h"
+#include "dlog_broker.h"
 #include "dl_memory.h"
+#include "dl_poll_reactor.h"
 #include "dl_utils.h"
 
 /* Configure the distributed log logging level. */
@@ -50,28 +51,23 @@ const dlog_malloc_func dlog_alloc = malloc;
 const dlog_free_func dlog_free = free;
 
 static char const * const USAGE =
-    "%s: [-p port number] [-t topic] [-h hostname] [-v]\n";
+    "%s: [-t topic_name] [-h hostname] [-p port number] [-v]\n";
 
-static char const * const DLC_DEFAULT_CLIENT_ID = "distlog_console_producer";
-static char const * const DLC_DEFAULT_TOPIC  = "default";
-static char const * const DLC_DEFAULT_HOSTNAME  = "localhost";
-static const int DLC_DEFAULT_PORT = 9092;
-static const int DLC_DISTLOG_RECORD_SIZE_BYTES = 4096;
+static char const * const DLB_DEFAULT_HOSTNAME  = "localhost";
+static char const * const DLB_DEFAULT_TOPIC  = "default";
+static const int DLB_DEFAULT_PORT = 9092;
 
-static void dlp_siginfo_handler(int);
-static void dlp_sigint_handler(int);
-static void dlp_on_ack(const int32_t);
-static void dlp_on_response(int16_t api_key,
-    struct dl_response const * const);
+static void dlb_siginfo_handler(int);
+static void dlb_sigint_handler(int);
 
 static void
-dlp_siginfo_handler(int sig)
+dlb_siginfo_handler(int sig)
 {
 	dl_debug(PRIO_LOW, "Caught SIGIFO[%d]\n", sig);
 }
 
 static void
-dlp_sigint_handler(int sig)
+dlb_sigint_handler(int sig)
 {
 	dl_debug(PRIO_LOW, "Caught SIGINT[%d]\n", sig);
 	
@@ -84,44 +80,23 @@ dlp_sigint_handler(int sig)
 	exit(EXIT_SUCCESS);
 }
 
-static void
-dlp_on_ack(const int32_t id)
-{
-	dl_debug(PRIO_LOW, "Broker acknowledged request: %d\n", id);
-}
-
-static void
-dlp_on_response(int16_t api_key,
-    struct dl_response const * const response)
-{
-	dl_debug(PRIO_LOW, "response size = %d\n", response->dlrs_size);
-	dl_debug(PRIO_LOW, "correlation id = %d\n", response->dlrs_correlation_id);
-}
 
 /**
- * Utility for writing to the distributed log from the console.
+ * TODO
  */
 int
 main(int argc, char **argv)
 {
-	struct dlog_handle *handle;
-	struct dl_client_configuration cc;
-	char const * client_id = DLC_DEFAULT_CLIENT_ID;
-	char const * topic = DLC_DEFAULT_TOPIC;
-	char const * hostname = DLC_DEFAULT_HOSTNAME;
-	char * line;
-	int port = DLC_DEFAULT_PORT;
-	int resend_timeout = 40;
-	int opt, rc;
-	size_t len = 0;
-	size_t read = 0;
+	struct dlog_broker_handle *handle;
+	struct broker_configuration bc;
+	char const * hostname = DLB_DEFAULT_HOSTNAME;
+	char const * topic = DLB_DEFAULT_TOPIC;
+	int port = DLB_DEFAULT_PORT;
+	int opt;
 
 	/* Parse the utilities command line arguments. */
-	while ((opt = getopt(argc, argv, "c::t::h::p::v")) != -1) {
+	while ((opt = getopt(argc, argv, "t::h::p::v")) != -1) {
 		switch (opt) {
-		case 'c':
-			client_id = optarg;
-			break;
 		case 't':
 			topic = optarg;
 			break;
@@ -142,57 +117,34 @@ main(int argc, char **argv)
 	}
 
 	/* Install signal handler to terminate broker cleanly on SIGINT. */	
-	signal(SIGINT, dlp_sigint_handler);
+	signal(SIGINT, dlb_sigint_handler);
 
 	/* Install signal handler to report broker statistics. */
-	signal(SIGINFO, dlp_siginfo_handler);
+	signal(SIGINFO, dlb_siginfo_handler);
 
-	/* Configure and initialise the distributed log client. */
-	cc.dlcc_on_ack = dlp_on_ack;
-	cc.dlcc_on_response = dlp_on_response;
-	cc.client_id = client_id;
-	cc.to_resend = true;
-	cc.resend_timeout = resend_timeout;
-	cc.resender_thread_sleep_length = 10;
-	cc.request_notifier_thread_sleep_length = 3;
-	cc.reconn_timeout = 5;
-	cc.poll_timeout = 3000;
+	/* Configure and initialise the distributed log broker. */
+	bc.fsync_thread_sleep_length = 1000;
+	bc.processor_thread_sleep_length = 1000;
+	bc.val = BROKER_FSYNC_ALWAYS;
 
-	handle = dlog_client_open(hostname, port, &cc);
-        if (handle == NULL) {
+	dlog_broker_init(topic, &bc);
+
+	handle = dlog_broker_create_server(port);
+	if (handle == NULL) {
 		fprintf(stderr,
 		    "Error initialising the distributed log client.\n");
 		exit(EXIT_FAILURE);
 	}
-  
-       	/* Allocate memory for the user input. */	
-	len = DLC_DISTLOG_RECORD_SIZE_BYTES; 
-	line = malloc(len * sizeof(char));
+ 
+	for (;;) {
 
-       	/* Echo from the command line to the distributed log. */	
-	while ((read = getline(&line, &len, stdin) > 0)) {
-
-		if (strcmp(line, "") != 0) {
-			/* If the line is not empty, strip the newline and
-			 * write to the distributed log.
-			 */
-			line[strlen(line) - 1] = '\0';
-
-			rc = dlog_produce(handle, topic,"key", strlen("key"),
-			    line, strlen(line));
-			if (rc != 0) {
-				fprintf(stderr,
-				    "Failed writing to the log %d\n", rc); 
-				break;
-			}
-		}
+		dl_poll_reactor_handle_events();
 	}
 
-	/* Deallocate the buffer used to store the user input. */
-	free(line);
-
 	/* Close the distributed log before finishing. */
-	dlog_client_close(handle);
+	//dlog_broker_close(handle);
 
-	return 0;
+	//dlog_broker_fini(handle);
+
+	return EXIT_SUCCESS;
 }

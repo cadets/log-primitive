@@ -56,6 +56,7 @@ struct dl_response {
 	int16_t dlrs_api_key;
 };
 
+//extern struct dl_response * dl_decode_response(char *);
 extern int dl_decode_response(struct dl_response *, char *);
 extern int32_t dl_encode_response(struct dl_response *, char *);
 

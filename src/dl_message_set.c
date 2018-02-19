@@ -34,9 +34,6 @@
  *
  */
 
-// TODO: temp
-// #include <time.h>
-//
 #include <sys/time.h>
 
 #include <stddef.h>
@@ -46,6 +43,7 @@
 
 #include "dl_assert.h"
 #include "dl_primitive_types.h"
+#include "dl_memory.h"
 #include "dl_message_set.h"
 
 static const int8_t DL_MESSAGE_MAGIC_BYTE = 0x01;
@@ -72,36 +70,68 @@ static int32_t dl_message_encode(struct dl_message const *, char * const);
 static int32_t dl_message_get_size(struct dl_message const * const);
 
 struct dl_message_set *
+dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
+{
+	struct dl_message_set *message_set;
+	struct dl_message *message;
+
+	message_set = (struct dl_message_set *) dlog_alloc(
+	    sizeof(struct dl_message_set));
+
+	SLIST_INIT(&message_set->dlms_messages);
+	message_set->dlms_nmessages = 1;
+
+	message = (struct dl_message *) dlog_alloc(sizeof(struct dl_message));
+
+	message->dlm_key = key;
+	message->dlm_key_len = key_len;
+	message->dlm_value = value;
+	message->dlm_value_len = value_len;
+
+	SLIST_INSERT_HEAD(&message_set->dlms_messages, message, dlm_entries);
+
+	return message_set;
+}
+
+struct dl_message_set *
 dl_message_set_decode(char const * const source)
 {
-	struct dl_message_set message_set;
-	int32_t message_it, nmessages;
+	struct dl_message_set *message_set;
+	struct dl_message *message;
+	int32_t message_it;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
 
+	message_set = (struct dl_message_set *) dlog_alloc(
+	    sizeof(struct dl_message_set));
+	SLIST_INIT(&message_set->dlms_messages);
+
 	/* Decode the MessageSet. */
-	nmessages = dl_decode_int32(source);
+	message_set->dlms_nmessages = dl_decode_int32(source);
 
-	for (message_it = 0; message_it < nmessages; message_it++) {
+	for (message_it = 0; message_it < message_set->dlms_nmessages;
+	    message_it++) {
 
-		/* Encode the MessageSet Offset into the buffer. */
-		//msg_set_size += DL_ENCODE_OFFSET(&target[msg_set_size],
+		/* Decode the MessageSet Offset into the buffer. */
+		//ms+= DL_ENCODE_OFFSET(&target[msg_set_size],
 		//    DL_DEFAULT_OFFSET);
 
 		/* Encode the MessageSize. */
 		//msg_set_size += DL_ENCODE_MESSAGE_SIZE(&target[msg_set_size],
 		//    dl_message_get_size(message));
 
-		/* Encode the Message. */
-		//msg_set_size += dl_message_encode(message,
-		//    &target[msg_set_size]);
+		/* Decode the Message. */
+		//miessage = dl_message_decode(&target[msg_set_size]);
+		
+		//SLIST_INSERT_HEAD(, message, );
 	}
 
-	return NULL;
+	return message_set;
 }
 
 /**
- * N.B. MessageSets are not preceded by an int32 like other array elements.
+ * N.B. MessageSets are not preceded by an int32 specifying the length unlike
+ * other arrays.
  */
 int32_t
 dl_message_set_encode(struct dl_message_set const *message_set,
@@ -113,7 +143,7 @@ dl_message_set_encode(struct dl_message_set const *message_set,
 	DL_ASSERT(message_set != NULL, "MessageSet cannot be NULL");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 
-	SLIST_FOREACH(message, message_set, dlm_entries) {
+	SLIST_FOREACH(message, &message_set->dlms_messages, dlm_entries) {
 	
 		/* Encode the MessageSet Offset into the buffer. */
 		msg_set_size += DL_ENCODE_OFFSET(&target[msg_set_size],
@@ -181,7 +211,7 @@ int32_t dl_message_set_get_size(struct dl_message_set const * const message_set)
 
 	msg_set_size += DL_MESSAGE_SET_SIZE_SIZE + DL_OFFSET_SIZE;
 	
-	SLIST_FOREACH(message, message_set, dlm_entries) {
+	SLIST_FOREACH(message, &message_set->dlms_messages, dlm_entries) {
 		msg_set_size += dl_message_get_size(message);
 	}
 	return msg_set_size;

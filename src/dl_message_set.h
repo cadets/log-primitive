@@ -42,7 +42,7 @@
 
 #include "dl_protocol.h"
 
-SLIST_HEAD(dl_message_set, dl_message);
+SLIST_HEAD(dl_messages, dl_message);
 
 struct dl_message {
 	SLIST_ENTRY(dl_message) dlm_entries;
@@ -50,11 +50,18 @@ struct dl_message {
 	char const *dlm_value;
 	int32_t dlm_key_len;
 	int32_t dlm_value_len;
-};	
+};
+
+struct dl_message_set {
+	struct dl_messages dlms_messages;
+	int32_t dlms_nmessages;
+};
 
 extern struct dl_message_set * dl_message_set_decode(char const * const);
 extern int32_t dl_message_set_encode(struct dl_message_set const *,
     char * const);
 extern int32_t dl_message_set_get_size(struct dl_message_set const * const);
+extern struct dl_message_set * dl_message_set_new(char *, int32_t, char *,
+    int32_t);
 
 #endif

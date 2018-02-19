@@ -354,8 +354,7 @@ dlog_client_open(char const * const hostname,
 	DL_ASSERT(hostname != NULL, "Hostname cannot be NULL");
 	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
 	
-	handle = (struct dlog_handle *) dlog_alloc(
-	    sizeof(struct dlog_handle));
+	handle = (struct dlog_handle *) dlog_alloc(sizeof(struct dlog_handle));
 	
 	/* Store the client configuration. */
 	handle->dlh_config = cc;
@@ -364,11 +363,6 @@ dlog_client_open(char const * const hostname,
 	handle->dlh_notifier = dl_notifier_new(cc);
 	DL_ASSERT(handle->dlh_notifier != NULL,
 	    "Failed instatiating new notifier\n");
-	
-	/* Instatiate the client request queue. */
-	//handle->dlh_request_queue = dl_request_queue_new(cc);
-	//DL_ASSERT(handle->dlh_request_queue != NULL,
-	//    "Failed instatiating new request queue\n");
 	
 	/* Instatiate the client resender. */
 	dl_resender_init(cc);
@@ -453,10 +447,11 @@ dlog_fetch(struct dlog_handle *handle, char *topic_name, int32_t min_bytes,
 	buffer->dlb_hdr.dlbh_len = MTU;
 	
 	DLOGTR0(PRIO_LOW, "Encoded request message\n");
-	/* Encode the request the request. */	
+
+	/* Encode the request. */	
 	buffer_len = dl_request_encode(message, buffer);
 
-	// mesasge xtor
+	// TODO: mesasge xtor
 
 	DLOGTR0(PRIO_LOW, "Encoded request message\n");
 
@@ -499,10 +494,10 @@ dlog_list_offset(struct dlog_handle *handle, char *topic, int64_t time)
 	buffer->dlb_hdr.dlbh_data = buffer->dlb_databuf;
 	buffer->dlb_hdr.dlbh_len = MTU;
 	
-	/* Encode the request the request. */	
+	/* Encode the request. */	
 	buffer_len = dl_request_encode(message, buffer);
 	
-	// mesasge xtor
+	// TODO: mesasge xtor
 
 	DLOGTR0(PRIO_LOW, "Encoded request message\n");
 
@@ -528,8 +523,12 @@ dlog_produce(struct dlog_handle *handle, char *topic, char *key, int key_len,
 {
 	struct dl_buffer *buffer;
 	struct dl_request *message;
+	struct dl_message_set *message_set;
 	int result = 0;
 	int32_t buffer_len;
+
+	/* Instantiate a new MessageSet. */
+	message_set = dl_message_set_new(key, key_len, value, value_len);
 
 	/* Instantiate a new ProduceRequest */
 	message = dl_produce_request_new(
@@ -546,11 +545,19 @@ dlog_produce(struct dlog_handle *handle, char *topic, char *key, int key_len,
 	DL_ASSERT(buffer != NULL, "Buffer to encode request cannot be NULL");
 	buffer->dlb_hdr.dlbh_data = buffer->dlb_databuf;
 	buffer->dlb_hdr.dlbh_len = MTU;
+	
+	/* Encode the message set. */	
+	buffer_len = dl_message_set_encode(message_set, buffer->dlb_databuf);
 
-	/* Encode the request the request. */	
+	for (int i = 0; i < buffer_len; i++) {
+		DLOGTR1(PRIO_LOW, "<%02X>", buffer->dlb_databuf[i]);
+	};
+	DLOGTR0(PRIO_LOW, "\n");
+
+	/* Encode the request. */	
 	buffer_len = dl_request_encode(message, buffer);
 	
-	// mesasge xtor
+	// TODO: mesasge xtor
 	
 	DLOGTR0(PRIO_LOW, "Encoded request message\n");
 

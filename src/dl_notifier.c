@@ -183,7 +183,7 @@ dl_notify_response(struct notify_queue_element *notify,
 					break;
 				case DL_FETCH_REQUEST:
 					res_m->dlrs_message.dlrs_fetch_response =
-					    dl_decode_fetch_response(
+					    dl_fetch_response_decode(
 					    pbuf+2*sizeof(int32_t)); // TODO: remove hack
 					break;
 				case DL_OFFSET_REQUEST:

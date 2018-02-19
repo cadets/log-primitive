@@ -113,17 +113,8 @@ dl_produce_request_new(int32_t correlation_id, char *client_id,
 	    dlprp_entries);
 
 	/* Construct the MessageSet. */
-	SLIST_INIT(&request_partition->dlprp_message_set);
-
-	message = (struct dl_message *) dlog_alloc(sizeof(struct dl_message));
-	
-	message->dlm_key = key;
-	message->dlm_key_len = key_len;
-	message->dlm_value = value;
-	message->dlm_value_len = value_len;
-	
-	SLIST_INSERT_HEAD(&request_partition->dlprp_message_set, message,
-	    dlm_entries);
+	request_partition->dlprp_message_set = dl_message_set_new(key, key_len,
+	    value, value_len);
 
 	return request;
 }
@@ -187,9 +178,9 @@ dl_produce_request_decode(char *source)
 			request_size += sizeof(int32_t);
 		
 			/* Decode the MessageSet. */
-			//message_set = dl_decode_message_set(
-			//    &source[request_size]);
-			//request_size += dl_message_set_get_size(message_set);
+			message_set = dl_message_set_decode(
+			    &source[request_size]);
+			request_size += dl_message_set_get_size(message_set);
 
 			SLIST_INSERT_HEAD(&request_topic->dlprt_partitions,
 			    request_partition, dlprp_entries);
@@ -244,11 +235,11 @@ dl_produce_request_encode(
 			/* Encode the MessageSet Size into the buffer. */
 			request_size += dl_encode_int32(&buffer[request_size],
 			    dl_message_set_get_size(
-			    &request_partition->dlprp_message_set));
+			    request_partition->dlprp_message_set));
 
 			/* Encode the MessageSet */
 			request_size += dl_message_set_encode(
-			    &request_partition->dlprp_message_set,
+			    request_partition->dlprp_message_set,
 			    &buffer[request_size]);
 		
 		}
