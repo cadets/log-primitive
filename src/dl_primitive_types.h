@@ -145,7 +145,7 @@ inline int32_t
 dl_encode_int32(char const *source, const int32_t value)
 {
 
-	DL_ASSERT(source != NULL, "source cannot be NULL");
+	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
 
 	(*(int32_t *) source) = htobe32(value);
 	return sizeof(int32_t);

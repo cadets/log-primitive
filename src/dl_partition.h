@@ -34,21 +34,21 @@
  *
  */
 
-#ifndef _DL_BROKER_CLIENT_H
-#define _DL_BROKER_CLIENT_H
+#ifndef _DL_BROKER_PARTITION_H
+#define _DL_BROKER_PARTITION_H
 
-#include "dlog_broker.h"
-#include "dl_event_handler.h"
+#include <sys/queue.h>
+#include <sys/types.h>
 
-struct dl_broker_client 
-{
-	dl_event_handler_handle client_socket;
-	struct dl_event_handler event_handler;
-	struct dl_broker_event_notifier event_notifier;
-}; 
+#include "dl_segment.h"
 
-extern struct dl_broker_client * dl_broker_client_new(dl_event_handler_handle,
-    struct dl_broker_event_notifier *);
-extern void dl_broker_client_free(struct dl_broker_client *);
+struct dl_partition {
+	SLIST_ENTRY(dl_partition) dlp_entries;
+	u_int32_t dlp_offset; /* Current offset into the log. */
+	struct dl_segments dlp_segments;
+	struct segment *dlp_active_segment;
+};
+
+extern struct dl_partition * dl_partition_new(char *);
 
 #endif

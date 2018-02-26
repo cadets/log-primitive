@@ -34,21 +34,31 @@
  *
  */
 
-#ifndef _DL_BROKER_CLIENT_H
-#define _DL_BROKER_CLIENT_H
+#ifndef _DL_SEGMENT_H
+#define _DL_SEGMENT_H
 
-#include "dlog_broker.h"
-#include "dl_event_handler.h"
+#include <sys/types.h>
+#include <sys/queue.h>
 
-struct dl_broker_client 
-{
-	dl_event_handler_handle client_socket;
-	struct dl_event_handler event_handler;
-	struct dl_broker_event_notifier event_notifier;
-}; 
+SLIST_HEAD(dl_segments, segment);
 
-extern struct dl_broker_client * dl_broker_client_new(dl_event_handler_handle,
-    struct dl_broker_event_notifier *);
-extern void dl_broker_client_free(struct dl_broker_client *);
+struct segment {
+	SLIST_ENTRY(segment) dls_entries;
+	pthread_mutex_t mtx; /* Lock for segemnt whilst updating its log/index. */
+	int _log; /* Segement's log file descriptor. */
+	int _index; /* Segment's index file descriptor. */
+	u_int64_t base_offset; /* Start offset of the log. */
+	u_int32_t segment_size;
+	u_int64_t offset; /* Current position in the log. TODO remove */
+};
+
+extern struct segment * dl_make_default_sized_segment(long int, const char *);
+extern struct segment * dl_make_initial_default_sized_segment(const char *);
+extern struct segment * dl_make_segment(long int, long int, const char *);
+extern void dl_close_segment(struct segment *);
+extern int dl_insert_message(struct segment *, char *, int);
+extern int dl_get_message_by_offset(struct segment *, int, void *);
+extern void dl_lock_seg(struct segment *);
+extern void dl_unlock_seg(struct segment *);
 
 #endif

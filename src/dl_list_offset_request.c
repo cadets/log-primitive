@@ -74,7 +74,7 @@ dl_list_offset_request_new(int32_t correlation_id, char *client_id,
 
 	topic = (struct dl_list_offset_request_topic *) dlog_alloc(
 	    sizeof(struct dl_list_offset_request_topic));	    
-	topic->dlort_topic_name = topic_name;
+	strlcpy(topic->dlort_topic_name, topic_name, DL_MAX_TOPIC_NAME_LEN);
 	topic->dlort_npartitions = 1;
 	SLIST_INIT(&topic->dlort_partitions);
 
@@ -182,6 +182,8 @@ dl_list_offset_request_decode(char *source)
 	/* Decode the [topic_data] array. */
 	request->dlor_ntopics = dl_decode_int32(&source[request_size]);
 	request_size += sizeof(int32_t);
+		
+	SLIST_INIT(&request->dlor_topics);
 
 	for (topic_it = 0; topic_it < request->dlor_ntopics; topic_it++) {
 
@@ -189,11 +191,15 @@ dl_list_offset_request_decode(char *source)
 		    dlog_alloc(sizeof(struct dl_list_offset_request_topic));
 
 		/* Decode the TopicName. */
+		request_size += dl_decode_string(
+		    &source[request_size], request_topic->dlort_topic_name);
 
 		/* Decode the [data] array. */
 		request_topic->dlort_npartitions = dl_decode_int32(
 		    &source[request_size]);
 		request_size += sizeof(int32_t);
+			
+		SLIST_INIT(&request_topic->dlort_partitions);
 
 		for (partition_it = 0;
 		    partition_it < request_topic->dlort_npartitions;

@@ -60,8 +60,7 @@ static char const * const DEFAULT_HOSTNAME  = "localhost";
 static const int DEFAULT_PORT = 9092;
 
 static struct dlog_handle *handle;
-static char * client_id = DEFAULT_CLIENT_ID;
-static char * topic = DEFAULT_TOPIC;
+static char const * client_id = DEFAULT_CLIENT_ID;
 
 static void dlc_on_ack(const int32_t);
 static void dlc_on_response(const int16_t,
@@ -105,6 +104,12 @@ static void
 dlc_on_response(const int16_t api_key,
     struct dl_response const * const response)
 {
+	struct dl_fetch_response *fetch_response;
+	struct dl_fetch_response_partition *fetch_partition;
+	struct dl_fetch_response_topic *fetch_topic;
+	struct dl_list_offset_response *offset_response;
+	struct dl_list_offset_response_partition *offset_partition;
+	struct dl_list_offset_response_topic *offset_topic;
 	int max_wait_time = 1000;
 	int maxbytes = 1000;
 	int minbytes = 0;
@@ -114,48 +119,72 @@ dlc_on_response(const int16_t api_key,
 	dl_debug(PRIO_NORMAL, "Response was recieved with correlation ID %d\n",
 	    response->dlrs_correlation_id);
 
+	dl_debug(PRIO_NORMAL, "Response was recieved with API key%d\n",
+	    response->dlrs_api_key);
+
+	dl_debug(PRIO_NORMAL, "Response was recieved with API key%d\n",
+	    api_key);
+
 	//switch (response->dlrs_api_key) {
 	switch (api_key) {
-		case DL_PRODUCE_REQUEST:
-			dl_debug(PRIO_NORMAL,
-			    "Produced the following messages: \n");
-			/*
-			for (int i = 0; i < rm->rm.produce_request.spr.sspr.mset.num_elems; i++) {
-				printf("\tMessage: %s\n",
-				    rm->rm.produce_request.spr.sspr.mset.elems[i].message.value); 
-			}
-
-			dl_debug(PRIO_NORMAL, "Request answer: \n");
-			for (int i = 0; i < rs->rm.produce_response.num_sub;
-			    i++){
-				for (int j = 0;
-				    j < rs->rm.produce_response.spr[i].num_subsub; j++){
-					struct sub_sub_produce_response *csspr = &rs->rm.produce_response.spr[i].sspr[j];
-					printf("Timestamp:\t%ld\n", csspr->timestamp);
-					printf("Offset:\t%ld\n", csspr->offset); 
-					printf("ErrorCode:\t%d\n", csspr->error_code); 
-					printf("Partition:\t%d\n", csspr->partition); 
-				}
-			}
-			*/
-			break;
 		case DL_FETCH_REQUEST:
-			// TODO: parse the response
+			fetch_response = response->dlrs_message.dlrs_fetch_response;
+
+			printf("here\n");
+
+			SLIST_FOREACH(fetch_topic,
+			    &fetch_response->dlfr_topics, dlfrt_entries) {
+
+				dl_debug(PRIO_NORMAL, "Topic: %s\n",
+				    fetch_topic->dlfrt_topic_name);
+
+				SLIST_FOREACH(fetch_partition,
+				    &fetch_topic->dlfrt_partitions,
+				    dlfrp_entries) {
+
+					dl_debug(PRIO_NORMAL, "Partition: %d\n",
+					    fetch_partition->dlfrpr_partition);
+
+					//dlog_fetch(handle,
+					//    offset_topic->dlort_topic_name,
+					//    minbytes, max_wait_time,
+					//    offset_partition->dlorp_offset,
+					//    maxbytes);
+
+				};
+			};
 			break;
 		case DL_OFFSET_REQUEST:
-			printf("here\n");
-			dl_debug(PRIO_NORMAL, "Offset: %d\n",
-			    response->dlrs_message.dlrs_offset_response->dlors_offset);
-			dl_debug(PRIO_NORMAL, "Topic: %s\n",
-			    response->dlrs_message.dlrs_offset_response->dlors_topic_name);
+			offset_response = response->dlrs_message.dlrs_offset_response;
 
-			dlog_fetch(handle, 
-			    response->dlrs_message.dlrs_offset_response->dlors_topic_name,
-			    minbytes, max_wait_time,
-			    response->dlrs_message.dlrs_offset_response->dlors_offset,
-			    maxbytes);
+			SLIST_FOREACH(offset_topic,
+			    &offset_response->dlor_topics, dlort_entries) {
+
+				dl_debug(PRIO_NORMAL, "Topic: %s\n",
+				    offset_topic->dlort_topic_name);
+
+				SLIST_FOREACH(offset_partition,
+				    &offset_topic->dlort_partitions,
+				    dlorp_entries) {
+
+					dl_debug(PRIO_NORMAL, "Partition: %d\n",
+					    offset_partition->dlorp_partition);
+
+					dl_debug(PRIO_NORMAL, "Offset: %d\n",
+					    offset_partition->dlorp_offset);
+					
+					dlog_fetch(handle,
+					    offset_topic->dlort_topic_name,
+					    minbytes, max_wait_time,
+					    offset_partition->dlorp_offset,
+					    maxbytes);
+
+				};
+			};
 			break;
 		default:
+			dl_debug(PRIO_HIGH, "Unexcepted Response %d\n",
+			    api_key);
 			break;
 	}
 }
@@ -167,7 +196,8 @@ int
 main(int argc, char **argv)
 {
 	struct dl_client_configuration cc;
-	char * hostname = DEFAULT_HOSTNAME;
+	char const * hostname = DEFAULT_HOSTNAME;
+	char const * topic = DEFAULT_TOPIC;
 	int port = DEFAULT_PORT;
 	int resend_timeout = 40;
 	int maxbytes = 1000;
@@ -225,11 +255,8 @@ main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	//dlog_list_offset(handle, cc.to_resend,
-	//    topic, -2);
+	dlog_list_offset(handle, topic, -2);
 	
-	dlog_fetch(handle, topic, 100, 1000, 38601, 10000);
-
        	/* Echo to the command line from the distributed log. */	
 	for (;;) {
 		sleep(1);

@@ -93,6 +93,8 @@ main(int argc, char **argv)
 	char const * topic = DLB_DEFAULT_TOPIC;
 	int port = DLB_DEFAULT_PORT;
 	int opt;
+	
+	dl_debug(PRIO_LOW, "Starting DLog broker...\n");
 
 	/* Parse the utilities command line arguments. */
 	while ((opt = getopt(argc, argv, "t::h::p::v")) != -1) {
@@ -129,7 +131,7 @@ main(int argc, char **argv)
 
 	dlog_broker_init(topic, &bc);
 
-	handle = dlog_broker_create_server(port);
+	handle = dlog_broker_create_server(port, &bc);
 	if (handle == NULL) {
 		fprintf(stderr,
 		    "Error initialising the distributed log client.\n");

@@ -137,16 +137,19 @@ dl_produce_request_decode(char *source)
 	/* Decode the ProduceRequest RequiredAcks. */
 	request->dlpr_required_acks = dl_decode_int16(source);
 	request_size += sizeof(int16_t);
+	printf("required_acks = %d\n", request->dlpr_required_acks);
 
 	/* Decode the ProduceRequest Timeout. */
 	request->dlpr_timeout = dl_decode_int32(&source[request_size]);
 	request_size += sizeof(int32_t);
+	printf("timeout = %d\n", request->dlpr_timeout);
 
 	SLIST_INIT(&request->dlpr_topics);
 
 	/* Decode the [topic_data] array. */
 	request->dlpr_ntopics = dl_decode_int32(&source[request_size]);
 	request_size += sizeof(int32_t);
+	printf("ntopics = %d\n", request->dlpr_ntopics);
 	
 	for (topic_it = 0; topic_it < request->dlpr_ntopics; topic_it++) {
 
@@ -156,6 +159,7 @@ dl_produce_request_decode(char *source)
 		/* Decode the ProduceRequest TopicName. */
 		request_size += dl_decode_string(&source[request_size],
 		    request_topic->dlprt_topic_name);
+		printf("topic name = %s\n", request_topic->dlprt_topic_name);
 	
 		SLIST_INIT(&request_topic->dlprt_partitions);
 
@@ -163,6 +167,7 @@ dl_produce_request_decode(char *source)
 		request_topic->dlprt_npartitions = dl_decode_int32(
 		    &source[request_size]);
 		request_size += sizeof(int32_t);
+		printf("npartitions = %d\n", request_topic->dlprt_npartitions);
 
 		for (partition_it = 0;
 		    partition_it < request_topic->dlprt_npartitions;
@@ -176,11 +181,13 @@ dl_produce_request_decode(char *source)
 			request_partition->dlprp_partition =
 			    dl_decode_int32(&source[request_size]);
 			request_size += sizeof(int32_t);
+			printf("partition = %d\n", request_partition->dlprp_partition);
 		
 			/* Decode the MessageSet. */
 			message_set = dl_message_set_decode(
 			    &source[request_size]);
 			request_size += dl_message_set_get_size(message_set);
+			printf("here\n");
 
 			SLIST_INSERT_HEAD(&request_topic->dlprt_partitions,
 			    request_partition, dlprp_entries);
@@ -189,6 +196,7 @@ dl_produce_request_decode(char *source)
 		SLIST_INSERT_HEAD(&request->dlpr_topics, request_topic,
 		    dlprt_entries);
 	}
+	printf("here\n");
 
 	return request;
 }

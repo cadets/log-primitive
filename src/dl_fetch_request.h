@@ -55,13 +55,13 @@ struct dl_fetch_request_partition {
 
 struct dl_fetch_request_topic {
 	SLIST_ENTRY(dl_fetch_request_topic) dlfrt_entries;
-	struct dl_fetch_request_partition_q dlfrt_partition_requests;
+	struct dl_fetch_request_partition_q dlfrt_partitions;
 	char *dlfrt_topic_name;
 	int32_t dlfrt_nrequests;
 };
 
 struct dl_fetch_request {
-	struct dl_fetch_request_q dlfr_requests;
+	struct dl_fetch_request_q dlfr_topics;
 	int32_t dlfr_nrequests;
 	int32_t dlfr_replica_id;
 	int32_t dlfr_max_wait_time;

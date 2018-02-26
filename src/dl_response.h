@@ -58,6 +58,6 @@ struct dl_response {
 
 //extern struct dl_response * dl_decode_response(char *);
 extern int dl_decode_response(struct dl_response *, char *);
-extern int32_t dl_encode_response(struct dl_response *, char *);
+extern int32_t dl_response_encode(struct dl_response *, char *);
 
 #endif

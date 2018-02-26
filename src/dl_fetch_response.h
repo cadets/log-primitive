@@ -40,6 +40,7 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 
+#include "dl_message_set.h"
 #include "dl_protocol.h"
 
 SLIST_HEAD(dl_fetch_response_topics, dl_fetch_response_topic);
@@ -47,6 +48,7 @@ SLIST_HEAD(dl_fetch_response_partitions, dl_fetch_response_partition);
 
 struct dl_fetch_response_partition {
 	SLIST_ENTRY(dl_fetch_response_partition) dlfrp_entries;
+	struct dl_message_set *dlfrp_message_set;
 	int64_t dlfrpr_high_watermark;
 	int32_t dlfrpr_partition;
 	int16_t dlfrpr_error_code;

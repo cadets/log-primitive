@@ -72,6 +72,8 @@ dl_fetch_response_decode(char *buffer)
 	    "Response array is not NULLABLE");
 	buffer += sizeof(int32_t);
 
+	SLIST_INIT(&response->dlfr_topics);
+
 	for (response_it = 0; response_it < response->dlfr_ntopics;
 	    response_it++) {
 
@@ -85,6 +87,8 @@ dl_fetch_response_decode(char *buffer)
 		/* Decode the partition responses */	
 		topic->dlfrt_npartitions = dl_decode_int32(buffer);
 		buffer += sizeof(int32_t);
+	
+		SLIST_INIT(&topic->dlfrt_partitions);
 
 		for (partition_response = 0;
 		    partition_response < topic->dlfrt_npartitions;
@@ -114,12 +118,15 @@ dl_fetch_response_decode(char *buffer)
 			buffer += sizeof(int32_t);
 			
 			/* Decode the MessageSet */
-			// message_set = dl_message_set_decode(buffer);
-
-		    	dl_decode_int64(buffer);
-
-		    	dl_decode_int32(buffer);
+			partition->dlfrp_message_set =
+			    dl_message_set_decode(buffer);
+		
+			SLIST_INSERT_HEAD(&topic->dlfrt_partitions, partition,
+			    dlfrp_entries);
 		}
+
+		SLIST_INSERT_HEAD(&response->dlfr_topics, topic,
+		    dlfrt_entries);
 	}
 	return response;
 }

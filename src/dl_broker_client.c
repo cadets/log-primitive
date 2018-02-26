@@ -43,71 +43,70 @@
 
 #include "dl_assert.h"
 #include "dl_broker_client.h"
+#include "dl_broker_topic.h"
 #include "dl_event_handler.h"
 #include "dl_memory.h"
+#include "dl_partition.h"
 #include "dl_poll_reactor.h"
+#include "dl_produce_request.h"
+#include "dl_request.h"
 #include "dl_request_or_response.h"
 #include "dl_utils.h"
 
-#define MAX_MESSAGE_SIZE 1024
-
-static dl_event_handler_handle dl_accept_client_connection(int);
+static dl_event_handler_handle dl_accept_client_connection(const int);
 static dl_event_handler_handle dl_get_client_socket(void *instance);
 static void dl_handle_read_event(void *instance);
 
-static struct dl_response * dlog_broker_handle(struct dl_request * const);
+static struct dl_response * dlog_broker_handle(struct dl_request * const,
+    struct broker_configuration const * const conf);
 static struct dl_response * dl_handle_fetch_request(struct dl_request *);
-static struct dl_response * dl_handle_produce_request(struct dl_request *);
+static struct dl_response * dl_handle_produce_request(struct dl_request *,
+    struct broker_configuration const * const conf);
 static struct dl_response * dl_handle_list_offset_request(struct dl_request *);
-
-struct request_pool_element {
-	struct dl_request *req_msg;
-	STAILQ_ENTRY(request_pool_element) entries;
-	int fd;
-};
-STAILQ_HEAD(request, request_pool_element);
-static struct request unprocessed_requests;
-
-/* Create the queue onto which unprocessed requests are enqueued
-	* prior to processing.
-	*/
-//STAILQ_INIT(&unprocessed_requests);
 
 static
 dl_event_handler_handle dl_get_client_socket(void *instance)
 {
 	const struct dl_broker_client *client = instance;
+
+	DL_ASSERT(instance != NULL, ("Broker client instance cannot be NULL"));
+
 	return client->client_socket;
 }
 
 static void
 dl_handle_read_event(void *instance)
 {
+	struct dl_request *request;
+	struct dl_request *response;
 	const struct dl_broker_client *client = instance;
 	struct dl_request_or_response *req_or_res;
 	int rc;
 	size_t bytes_read = 0, total = 0;
 	char *buffer = (char *) dlog_alloc(1024);
+	int32_t buffer_len = 0;
+
+	DL_ASSERT(instance != NULL, ("Broker client instance cannot be NULL"));
 
 	/* Read the size of the request to process. */
 	rc = recv(client->client_socket, buffer,
 	    sizeof(req_or_res->dlrx_size), 0);
-	
-	DLOGTR2(PRIO_LOW, "Read %d bytes (%p)...\n", rc, buffer);
 	if (rc == 0) {
 		/* Peer has closed connection */
 	} else if (rc > 0) {
+
+		DLOGTR2(PRIO_LOW, "Read %d bytes (%p)...\n", rc, buffer);
 		req_or_res = dl_decode_request_or_response(buffer);
 		if (NULL != req_or_res) {
 			DLOGTR1(PRIO_LOW, "\tNumber of bytes: %d\n",
 			    req_or_res->dlrx_size);
 
-			buffer += sizeof(int32_t);
+			total += sizeof(int32_t);
 
-			while (total < req_or_res->dlrx_size) {
+			while (bytes_read < req_or_res->dlrx_size) {
 				bytes_read = recv(client->client_socket,
 				    &buffer[total],
-				    req_or_res->dlrx_size-total, 0);
+				    req_or_res->dlrx_size-bytes_read, 0);
 				DLOGTR2(PRIO_LOW,
 				    "\tRead %d characters; expected %d\n",
 				    bytes_read, req_or_res->dlrx_size);
@@ -118,461 +117,266 @@ dl_handle_read_event(void *instance)
 				DLOGTR1(PRIO_LOW, "<0x%02X>", buffer[b]);
 			}
 			DLOGTR0(PRIO_LOW, "\n");
+	
+			/* Decode the request from the received buffer. */	
+			request = dl_request_decode(buffer);
+			if (request != NULL) {
+				/* If the request TODO */
+				response = dlog_broker_handle(request,
+				    client->event_notifier.dlben_conf);
+				if (response != NULL) {
+
+					/* Encode and send the response. */
+					buffer_len = dl_response_encode(
+					    response, buffer);
+					if (buffer_len > 0) {
+
+						printf("Sending %d\n", buffer_len);
+						send(client->client_socket,
+						    buffer, buffer_len, 0);
+					}
+				} else {
+					DLOGTR0(PRIO_HIGH,
+					    "Error handling request\n");
+				}
+			} else {
+				DLOGTR0(PRIO_HIGH, "Error decoding request\n");
+			}
 		}
 	} else {
-		client->eventNotifier.on_client_closed(
-		    client->eventNotifier.server, client);
+		client->event_notifier.on_client_closed(
+		    client->event_notifier.server, client);
 	}
 
 	dlog_free(buffer);
 }
 
 static dl_event_handler_handle
-dl_accept_client_connection(int server_handle)
+dl_accept_client_connection(const int server_handle)
 {
-	struct sockaddr_in clientAddress = {0};
-	socklen_t addressSize = sizeof clientAddress;
-
-	const dl_event_handler_handle client_handle =
-		accept(server_handle, (struct sockaddr*) &clientAddress,
-				&addressSize);
-	if(0 > client_handle) {
+	struct sockaddr_in client_address = {0};
+	socklen_t address_size = sizeof client_address;
+	dl_event_handler_handle client_handle;
+       
+	client_handle = accept(server_handle,
+	    (struct sockaddr *) &client_address, &address_size);
+	if (0 > client_handle) {
 		/* NOTE: In the real world, this function should be more forgiving.
 		*       For example, the client should be allowed to abort the connection request. */
-		printf("Failed to accept client connection");
+		DLOGTR0(PRIO_HIGH, "Failed to accept client connection");
 	}
 		       
-	(void) printf("Client: New connection created on IP-address %X\n",
-			ntohl(clientAddress.sin_addr.s_addr));
+	DLOGTR1(PRIO_NORMAL, "Client: New connection created on IP-address %X\n",
+	    ntohl(client_address.sin_addr.s_addr));
 		          
 	return client_handle;
 }
 
-struct dl_response *
-dlog_broker_handle(struct dl_request * const request)
+static struct dl_response *
+dlog_broker_handle(struct dl_request * const request,
+    struct broker_configuration const * const conf)
 {
 	DL_ASSERT(request != NULL, "Request message cannot be NULL");
+	DL_ASSERT(conf != NULL, "Broker configuration cannot be NULL");
 
 	switch (request->dlrqm_api_key) {
 	case DL_FETCH_REQUEST:
-		dl_debug(PRIO_LOW, "Processing FetchRequest "
-		    "(client: %s, id: %d)\n", request->dlrqm_client_id,
-		    request->dlrqm_correlation_id);
 		return dl_handle_fetch_request(request);
 		break;
 	case DL_OFFSET_REQUEST:
-		dl_debug(PRIO_LOW, "Processing OffsetRequest "
+		DLOGTR2(PRIO_LOW, "Processing OffsetRequest "
 		    "(client: %s, id: %d)\n", request->dlrqm_client_id,
 		    request->dlrqm_correlation_id);
 		return dl_handle_list_offset_request(request);
 		break;
 	case DL_PRODUCE_REQUEST:;
-		dl_debug(PRIO_LOW, "Processing ProduceRequest "
+		DLOGTR2(PRIO_LOW, "Processing ProduceRequest "
 		    "(client: %s, id: %d)\n", request->dlrqm_client_id,
 		    request->dlrqm_correlation_id);
-		return dl_handle_produce_request(request);
+		return dl_handle_produce_request(request, conf);
 		break;
 	default:
-		dl_debug(PRIO_HIGH, "Unsupported Request %d\n",
+		DLOGTR1(PRIO_HIGH, "Unsupported Request %d\n",
 		    request->dlrqm_api_key);
 		return NULL;
 	}
 }
 
 struct dl_response *
-dl_handle_fetch_request(struct dl_request *req_msg)
+dl_handle_fetch_request(struct dl_request *request)
 {
-	struct dl_fetch_request *curfreq;
-	struct dl_fetch_response *curfres;
-	int csfr = 0, cssfr = 0, curm = 0, first_time = 1;
-	int topic_name_len;
-	int bytes_so_far = 0;
-	char *current_topic_name;
+	struct dl_fetch_request *fetch_request;
+	struct dl_fetch_request_partition *fetch_partition;
+	struct dl_fetch_request_topic *fetch_topic;
+	struct dl_response *fetch_response = NULL;
 	
-/*
-	DL_ASSERT(req_msg != NULL, "FetchRequest cannot be NULL");
-	dl_debug(PRIO_NORMAL, "Request: %p Response: %p\n", req_msg, rsp_msg);
+	DL_ASSERT(request!= NULL, "FetchRequest cannot be NULL");
+	
+	fetch_request = request->dlrqm_message.dlrqmt_offset_request;
+	DL_ASSERT(fetch_request != NULL, "FetchRequest cannot be NULL");
+	
+	DLOGTR2(PRIO_LOW, "Processing FetchRequest (client: %s, id: %d)\n",
+	    request->dlrqm_client_id, request->dlrqm_correlation_id);
+	
+	SLIST_FOREACH(fetch_topic, &fetch_request->dlfr_topics,
+	    dlfrt_entries) {
+		DLOGTR1(PRIO_NORMAL,
+		    "Fetch request for the topicname '%s'\n",
+		    fetch_topic->dlfrt_topic_name);
 
-	curfreq = &req_msg->dlrqm_message.dlrqmt_fetch_request;
-	current_topic_name = curfreq->dlfr_topic_name;
-	topic_name_len = strlen(current_topic_name);
+		SLIST_FOREACH(fetch_partition, &fetch_topic->dlfrt_partitions,
+		    dlfrp_entries) {
 
-	dl_debug(PRIO_NORMAL, "The associated topic name is: %s\n",
-	    current_topic_name);
+			struct dl_partition *partition =
+			    SLIST_FIRST(&topic->dlt_partitions);
+			//partition->dlp_active_segment, "Hello", 5);
 
-	dl_debug(PRIO_NORMAL,
-	    "Fetching messages from %s starting at offset %ld\n",
-	    curfreq->dlfr_topic_name, curfreq->dlfr_fetch_offset);
+		};
+	};
 
-	long handle_start = time(NULL);
-
-	long current_offset = curfreq->dlfr_fetch_offset;
-
-       	// TODO: Currently the only supported mode, this is nonsense
-	// that again needs fixing
-	curfres->dlfrs_num_responses = 0;
-	while ((time(NULL) - handle_start) < curfreq->dlfr_max_wait_time) {
-		if (first_time) {
-			dl_debug(PRIO_NORMAL,
-			    "The first time for the given configuration:\n\t"
-			    "csfr: %d\n\tcssfr: %d\n\tcurm: %d\n", csfr, cssfr,
-			    curm);
-			memcpy(curfres->sfr[csfr].topic_name.topic_name,
-				current_topic_name, topic_name_len);
-			curfres->dlfrs_throttle_time = 0; //TODO: IMPLEMENT IF NEEDED
-			//TODO: implement getting the last possible offset
-			curfres->sfr[csfr].ssfr[cssfr].highway_mark_offset = 0;
-			curfres->sfr[csfr].ssfr[cssfr].partition = 0;
-			first_time = 0;
-		}
-
-		if (curm == MAX_SET_SIZE) {
-			dl_debug(PRIO_NORMAL,
-				"The current message has reached the "
-				"upper boundary of %d\n", MAX_SET_SIZE);
-			cssfr += 1;
-			curm = 0;
-			first_time = 1;
-			continue;
-		}
-
-		if (cssfr == MAX_SUB_SUB_FETCH_SIZE){
-			cssfr = 0;
-			curm  = 0;
-			csfr  += 1;
-			first_time = 1;
-			continue;
-		}
-
-		if (csfr == MAX_SUB_FETCH_SIZE) {
-			dl_debug(PRIO_HIGH,
-			    "Fetch response has reached its maximum size\n");
-			break;
-		}
-		struct message_set_element *mse =
-		    &curfres->sfr[csfr].ssfr[cssfr].message_set.elems[curm];
-		mse->message.attributes = 0;
-
-		int msglen = dl_get_message_by_offset(ptr_seg,
-			current_offset, mse->message.value);
-
-		if (msglen < 0){
-			mse->message.attributes = msglen;
-		}
-
-		if (msglen == 0){
-			dl_debug(PRIO_NORMAL,
-				"No message for a given offset(%lu) "
-				"found. Stopping here meaning it is the "
-				"end\n", current_offset); 
-			break;
-		}
-
-		dl_debug(PRIO_NORMAL, "Found a message %s "
-			"for offset %d\n", mse->message.value,
-			current_offset);
-		curfres->num_sfr = csfr+1;
-		curfres->sfr[csfr].num_ssfr = cssfr+1;
-		curfres->sfr[csfr].ssfr[cssfr].message_set.num_elems =
-			curm+1;
-
-		mse->offset = current_offset;
-		mse->message.timestamp = time(NULL);
-		mse->message.crc = get_crc(mse->message.value, msglen);
-
-		bytes_so_far += msglen >= 0 ? msglen : 0;
-		curm += 1;
-		current_offset += 1;
-
-		if (bytes_so_far >=curfreq->dlfr_max_bytes) {
-			break;
-		}
-	}
-
-	if (bytes_so_far < curfreq->dlfr_min_bytes) {
-		// Do not send anything
-		return 0;
-	}
-*/
-
-	return 1;
+	return fetch_response;
 }
 
+// TODO: construct response
 static struct dl_response *
-dl_handle_produce_request(struct dl_request *request)
+dl_handle_produce_request(struct dl_request *request,
+    struct broker_configuration const * const conf)
 {
-	char *current_topic_name;
+	struct dl_response *produce_response = NULL;
+	struct dl_produce_request *produce_request;
+	struct dl_produce_request_topic *produce_request_topic;
+	struct dl_produce_request_partition *produce_request_partition;
 
 	DL_ASSERT(request != NULL, "ProduceRequest cannot be NULL");
+	
+	produce_request = request->dlrqm_message.dlrqmt_produce_request;
+	DL_ASSERT(produce_request != NULL, "ProduceRequest cannot be NULL");
 
-	DLOGTR1(PRIO_NORMAL, "Inserting messages into the topicname '%s'\n",
-	    current_topic_name);
-		
-	/*
-	// TODO: this doesn't appear to handle batching correctly	
-	current_topic_name =
-	    dl_produce_request_get_topic_name(req_msg->dlrqm_message.dlrqmt_produce_request);
-	    //req_msg->dlrqm_message.dlrqmt_produce_request.spr.topic_name.topic_name;
+	DLOGTR1(PRIO_LOW, "ProduceRequest id = %d\n",
+	    request->dlrqm_correlation_id);
 
-	if (rsp_msg) {
-		int topic_name_len = strlen(current_topic_name);
-		dl_debug(PRIO_NORMAL, "There is a response needed [%d]\n",
-		    req_msg->dlrqm_correlation_id);
-		// Get the current subproduce
-		int current_subreply =
-		    rsp_msg->rm.produce_response.num_sub;
+	SLIST_FOREACH(produce_request_topic, &produce_request->dlpr_topics,
+	    dlprt_entries) {
 
-		struct sub_produce_response *current_spr =
-		    &(rsp_msg->rm.produce_response.spr[current_subreply]);
-		// Say that you have occupied a cell in the subproduce
-		rsp_msg->rm.produce_response.num_sub++; 
-		char* ttn = current_spr->topic_name.topic_name;
-		dl_debug(PRIO_LOW, "starting copying...\n");
-		memcpy(ttn, current_topic_name, topic_name_len);
-		dl_debug(PRIO_LOW, "Done...\n"
-		current_spr->num_subsub =
-			req_msg->rm.produce_request.spr.sspr.mset.num_elems;
+		DLOGTR1(PRIO_NORMAL,
+		    "Inserting messages into the topicname '%s'\n",
+		    produce_request_topic->dlprt_topic_name);
 
-		for (int i = 0;
-		    i < req_msg->rm.produce_request.spr.sspr.mset.num_elems;
-		    i++) {
-			struct dl_message *tmsg =
-			    &req_msg->rm.produce_request.spr.sspr.mset.elems[i].message;
-			dl_debug(PRIO_LOW, "\tMessage: '%s'\n", tmsg->value);
-			int slen = strlen(tmsg->value);
+		SLIST_FOREACH(produce_request_partition,
+		    &produce_request_topic->dlprt_partitions,
+		    dlprp_entries) {
 
-			struct sub_sub_produce_response *curr_sspr =
-			    &current_spr->sspr[i];
-			curr_sspr->timestamp = time(NULL);
-			int curr_repl = 0;
-			unsigned long mycrc = get_crc(tmsg->value, slen);
+			// Insert the message
+			struct dl_partition *partition =
+			    SLIST_FIRST(&topic->dlt_partitions);
+			dl_insert_message(partition->dlp_active_segment, "Hello", 5);
 
-			// Checking to see if the crcs match
-			if (tmsg->crc == mycrc) { 
-				dl_lock_seg(ptr_seg);
-				int ret = dl_insert_message(ptr_seg, tmsg->value, slen);
-				dl_unlock_seg(ptr_seg);
-				curr_repl |= CRC_MATCH;
-				if (ret > 0) {
-					curr_repl |= INSERT_SUCCESS;
-					curr_sspr->offset = ret;
-				} else {
-					curr_repl |= INSERT_ERROR;
-				}
-			} else {
-				curr_repl |= CRC_NOT_MATCH;
-				dl_debug(PRIO_LOW,
-				    "The CRCs do not match for msg: '%s'\n",
-				    tmsg->value);
-			}
-
-			curr_sspr->error_code = curr_repl;
-			// TODO: implement the proper partitions
-			curr_sspr->partition = 1;
-		}
-	} else {
-		// TODO: This doesn't appear sensible
-		// The CRC checking needs to be done in the decoding
-
-		dl_debug(PRIO_LOW, "There is no response needed\n");
-		/*
-		for (int i = 0;
-			i < req_msg->rm.produce_request.spr.sspr.mset.num_elems;
-			i++) {
-			struct dl_message *tmsg =
-			    &req_msg->rm.produce_request.spr.sspr.mset.elems[i].message;
-			int slen = strlen(tmsg->value);
-
-			unsigned long mycrc = get_crc(tmsg->value, slen);
-
-		       	// Checking to see if the crcs match
-			if (tmsg->crc == mycrc) {
-				dl_lock_seg(ptr_seg);
-				dl_insert_message(ptr_seg, tmsg->value, slen);
-				dl_unlock_seg(ptr_seg)/make
-			} else {
-				// TODO: What to do if the CRCs don't match?
+			if (conf->val & BROKER_FSYNC_ALWAYS) {
+				/* Fsync the segment. */
+				dl_lock_seg(partition->dlp_active_segment);
+				fsync(partition->dlp_active_segment->_log);
+				fsync(partition->dlp_active_segment->_index);
+				dl_unlock_seg(partition->dlp_active_segment);
 			}
 		}
 	}
-	*/
-	return 0;
+	return produce_response;
 }
 
-// TODO: ListOffset
 static struct dl_response *
-dl_handle_list_offset_request(struct dl_request * request)
+dl_handle_list_offset_request(struct dl_request *request)
 {
-	// Get the index from the segments being managed by the broker
-	return NULL;
-}
+	struct dl_list_offset_request *offset_request;
+	struct dl_list_offset_request_partition *request_partition;
+	struct dl_list_offset_request_topic *request_topic;
+	struct dl_response *response;
+	struct dl_list_offset_response *offset_response;
+	struct dl_list_offset_response_partition *response_partition;
+	struct dl_list_offset_response_topic *response_topic;
 
-/*
-static void
-dl_processor(struct dl_processor_argument *pa)
-{
-	struct dl_buffer *buffer;
-	struct thread_to_proc_pool_element *element;
-	struct request_pool_element *temp;
-	int msg_size;
-	int rv;
-	char  *pbuf = buffer;
-	char send_out_buf[MTU];
-	struct pollfd ufds[CONNECTIONS_PER_PROCESSOR];
-	int connection, max_connection;
-	int32_t buffer_len;
+	DL_ASSERT(request!= NULL, "ListOffsetRequest cannot be NULL");
 
-	for (;;) {
-		pthread_testcancel();
+	offset_request = request->dlrqm_message.dlrqmt_offset_request;
+	DL_ASSERT(offset_request != NULL, "ListOffsetRequest cannot be NULL");
 
-		max_connection = 0;		
-		//pthread_mutex_lock(&thread_to_proc_pool_mtx[pa->index]);
-		//LIST_FOREACH(element,
-		//    &thread_to_proc_pools[pa->index], entries) {
-		//	ufds[connection].fd = element->fd;
-		//	ufds[connection].events = POLLIN;
-		//	max_connection++;
-		//}
-		//pthread_mutex_unlock(&thread_to_proc_pool_mtx[pa->index]);
-			
-		/* Poll the connections assigned to this processor 
-		//dl_transport_poll
-		//rv = poll(ufds, connection, POLL_TIMEOUT_MS);
-		dl_debug(PRIO_NORMAL, "Processor thread [%d] polling... %d\n",
-			pa->index, rv);
-		if (rv == 0) {
-			dl_debug(PRIO_LOW, "POLL Timeout\n");
-		} else if (rv == -1) {
-			dl_debug(PRIO_HIGH, "POLL ERROR\n");
-			// TODO: What to do here
-			exit(EXIT_FAILURE);
+	DLOGTR1(PRIO_LOW, "ListOffsetRequest id = %d\n",
+	    request->dlrqm_correlation_id);
+	
+	response = (struct dl_response *) dlog_alloc(
+		sizeof(struct dl_response));
+      	response->dlrs_api_key = DL_OFFSET_REQUEST;
 
-		} else {
-			for (connection = 0; connection < max_connection;
-			    connection++) {
-				if (ufds[connection].revents & POLLIN) {
-			
-					//dl_transport_read_msg	
-					//msg_size = read_msg(
-					//    ufds[connection].fd, pbuf);
+	offset_response	= response->dlrs_message.dlrs_offset_response =
+	    (struct dl_list_offset_response *) dlog_alloc(
+		sizeof(struct dl_list_offset_response));
+	if (offset_response != NULL) {	
 
-					if (msg_size > 0) {
-						struct request_pool_element *request = (struct request_pool_element *)
-						    dlog_alloc(sizeof(struct request_pool_element));;
-						if (request != NULL) {
-							dl_debug(PRIO_LOW, "Enqueuing: '%s'\n", pbuf);
+		printf("ntopics = %d\n", offset_request->dlor_ntopics);
 
-							// TODO: Some error
-							// handling 
-							request->req_msg = dl_decode_request(pbuf);
-							request->fd = ufds[connection].fd;
-						
-							// TODO: Not MT safe	
-							STAILQ_INSERT_TAIL(
-							    &unprocessed_requests,
-							    request, entries);
+		offset_response->dlor_ntopics = offset_request->dlor_ntopics;
+		SLIST_INIT(&offset_response->dlor_topics);
+
+		SLIST_FOREACH(request_topic, &offset_request->dlor_topics,
+		    dlort_entries) {
+
+			DLOGTR1(PRIO_NORMAL,
+			    "Listing offset for the topicname '%s'\n",
+			    request_topic->dlort_topic_name);
+
+			response_topic = (struct dl_list_offset_response_topic *)
+			    dlog_alloc(sizeof(struct dl_list_offset_response_topic));
+			if (response_topic != NULL) {	
+
+				response_topic->dlort_npartitions = 
+				    request_topic->dlort_npartitions;
+				SLIST_INIT(&response_topic->dlort_partitions);
+				strlcpy(response_topic->dlort_topic_name,
+				    request_topic->dlort_topic_name,
+				    DL_MAX_TOPIC_NAME_LEN);
+
+				SLIST_FOREACH(request_partition,
+				    &request_topic->dlort_partitions,
+				    dlorp_entries) {
+
+					response_partition = (struct dl_list_offset_response_partition *)
+					    dlog_alloc(sizeof(struct dl_list_offset_response_partition));
+					if (response_partition != NULL) {	
+
+						response_partition->dlorp_partition =
+						    request_partition->dlorp_partition;
+
+						if (request_partition->dlorp_time == -1) {
+							/* TODO: Earliest */
+
+							response_partition->dlorp_error_code = -1;
+						} else if (request_partition->dlorp_time == -2) {
+							/* Latest */
+
+							response_partition->dlorp_error_code = 0;
+							response_partition->dlorp_offset = topic->dlt_offset;
+							/* TODO: Time index */
+							response_partition->dlorp_timestamp = 0;
 						} else {
-							//TODO it is actually a very good q what to do here. Either
-							//ignore, or send back a message saying there is a problem
-							//For now it just ignores it as the client policy just resends it.
-							//Meaning that potentially one may starve
-							dl_debug(PRIO_NORMAL, "Cant borrow any more requests.\n");
-							continue;
+							/* TODO: Time index */
+							response_partition->dlorp_error_code = -1;
 						}
-					} else {
-						//This is the disconnect. Maybe need to clean the
-						//responses to this guy. Not sure how to do that
-						//yet. TODO: decide
-						//pthread_mutex_lock(
-						//    &thread_to_proc_pool_mtx[pa->index]);
-						//LIST_REMOVE(element, entries);
-						//dlog_free(element);
-						//pthread_mutex_unlock(
-						//    &thread_to_proc_pool_mtx[pa->index]);
+
+						SLIST_INSERT_HEAD(&response_topic->dlort_partitions,
+						    response_partition,
+						    dlorp_entries);
 					}
-				}
+				};
 			}
-		}
-
-		// This is a completely orthoganl concern
-		// The thread model here is completly silly
-
-		if (STAILQ_EMPTY(&unprocessed_requests) == 0) {
-			struct request_pool_element *rq_temp;
-
-			rq_temp = STAILQ_FIRST(&unprocessed_requests);
-			STAILQ_REMOVE_HEAD(&unprocessed_requests, entries);
-
-			// TODO: I don't think that the unfsyncd response
-			// handling makes any sense
-			struct response_pool_element *response =
-			    (struct response_pool_element *) dlog_alloc(sizeof(struct response_pool_element));;
-
-			struct dl_request *rmsg = &rq_temp->req_msg;
-			struct dl_request *req_msg = &rq_temp->req_msg;
-			response->fd = rq_temp->fd;
-			
-			response->rsp_msg = dlog_broker_handle(req_msg);
-			if (response != NULL) {
-				if (rmsg->dlrqm_api_key == DL_PRODUCE_REQUEST ) { //&&
-				    //(!dl_produce_request_get_required_acks(rmsg->dlrqm_message.dlrqmt_produce_request))) {
-
-					/* Allocate and initialise a buffer to encode the request. 
-					buffer = (struct dl_buffer *) dlog_alloc(
-						sizeof(struct dl_buffer_hdr) + (sizeof(char) * MTU));
-					DL_ASSERT(buffer != NULL, "Buffer to encode request cannot be NULL");
-					buffer->dlb_hdr.dlbh_data = buffer->dlb_databuf;
-					buffer->dlb_hdr.dlbh_len = MTU;
-
-					/* Encode the request the request. *
-					//buffer_len = dl_response_encode(rmsg, buffer);
-					//dl_transport_send(transport, buffer, buffer_len);
-					
-					dl_debug(PRIO_NORMAL, "Returned the request object into the pool %p\n", temp);
-				}
-
-				if(pa->config->val & BROKER_FSYNC_ALWAYS) {
-					/* TODO *
-					dl_debug(PRIO_LOW, "Adding responsse to the unfsynced list\n");
-
-					/* Fsync the segment. *
-					dl_lock_seg(ptr_seg);
-					fsync(ptr_seg->_log);
-					fsync(ptr_seg->_index);
-					dl_unlock_seg(ptr_seg);
-				} else {
-					/* TODO *
-					dl_debug(PRIO_LOW, "Adding responsse to the unfsynced list\n");
-
-					// TODO: this is makes no sense;
-					// remove it
-					//pthread_mutex_lock(&unfsynced_responses_mtx);
-					//STAILQ_INSERT_TAIL(&unfsynced_responses, response, entries);
-					//pthread_cond_signal(&unfsynced_responses_cond);
-					//pthread_mutex_unlock(&unfsynced_responses_mtx);
-
-					/* Finished processing the request. *
-					//dlog_free(rq_temp);
-				}
-
-				/* Finished processing the request. *
-				dlog_free(response);
-			} else {
-				/* Failed processing the request. *
-				dlog_free(rq_temp);
-			}
-		}
-		
-		// TODO: totally not convinced about this	
-		// isn't the poll doing?
-		sleep(pa->config->processor_thread_sleep_length);
+			SLIST_INSERT_HEAD(&offset_response->dlor_topics,
+			    response_topic, dlort_entries);
+		};
 	}
+	return response;
 }
-*/
 
 struct dl_broker_client *
 dl_broker_client_new(dl_event_handler_handle server_handle,
-    struct ServerEventNotifier *event_notifier)
+    struct dl_broker_event_notifier *event_notifier)
 {
 	struct dl_broker_client *client;
 
@@ -581,30 +385,30 @@ dl_broker_client_new(dl_event_handler_handle server_handle,
 
  	client = (struct dl_broker_client *) dlog_alloc(
 	    sizeof(struct dl_broker_client));
-	if(NULL != client) {
+	if (client != NULL) {
 		client->client_socket = dl_accept_client_connection(
 		    server_handle);
 		       
 		/* Successfully created -> register the client with Reactor. */
-		client->eventHandler.dleh_instance = client;
-		client->eventHandler.dleh_get_handle = dl_get_client_socket;
-		client->eventHandler.dleh_handle_event = dl_handle_read_event;
+		client->event_handler.dleh_instance = client;
+		client->event_handler.dleh_get_handle = dl_get_client_socket;
+		client->event_handler.dleh_handle_event = dl_handle_read_event;
 
-		dl_poll_reactor_register(&client->eventHandler);
+		dl_poll_reactor_register(&client->event_handler);
 					       
-		client->eventNotifier = *event_notifier;
+		client->event_notifier = *event_notifier;
 	}
-   
 	return client;
 }
 
 void
 dl_broker_client_free(struct dl_broker_client *client)
 {
-	DL_ASSERT(client != NULL, "Client instance cannot be NULL\n");
+
+	DL_ASSERT(client != NULL, ("Broker client instance cannot be NULL\n"));
 
 	/* Before deleting the client we have to unregister at the Reactor. */
-	dl_poll_reactor_unregister(&client->eventHandler);
+	dl_poll_reactor_unregister(&client->event_handler);
 	      
 	(void) close(client->client_socket);
 	dlog_free(client);

@@ -42,6 +42,14 @@
 #include "dl_primitive_types.h"
 #include "dl_protocol.h"
 #include "dl_response.h"
+#include "dl_utils.h"
+
+static int32_t dl_encode_response_header(struct dl_response const * const,
+    char * const);
+static int32_t dl_encode_response_size(char const *, const int32_t);
+
+#define DL_ENCODE_CORRELATION_ID(source, value) dl_encode_int32(source, value)
+#define DL_ENCODE_SIZE(buffer, value) dl_encode_int32(buffer, value)
 
 // response header?
 int
@@ -61,10 +69,82 @@ dl_decode_response(struct dl_response *response, char *source)
 }
 
 int32_t
-dl_encode_response(struct dl_response *response, char *target)
+dl_response_encode(struct dl_response *response, char *target)
 {
+	int32_t response_size = 0;
+	char *response_body, *response_header;
+
 	DL_ASSERT(response != NULL, "Response message cannot be NULL\n");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL\n");
 
-	return 0;
+	/* Encode the Response Header. */
+	response_header = target + sizeof(int32_t);
+
+	response_size += dl_encode_response_header(response, response_header);
+	response_body = response_header + response_size;
+	
+	printf("Response size = %d\n", response_size);
+
+	switch (response->dlrs_api_key) {
+		case DL_OFFSET_REQUEST:
+			DLOGTR0(PRIO_LOW, "Encoding ListOffsetResponse...\n");
+
+			response_size += dl_list_offset_response_encode(
+			    response->dlrs_message.dlrs_offset_response,
+			    response_body);
+			break;
+		case DL_PRODUCE_REQUEST:
+			DLOGTR0(PRIO_LOW, "Encoding ProduceResponse...\n");
+
+			response_size += dl_produce_response_encode(
+			    response->dlrs_message.dlrs_offset_response,
+			    response_body);
+			break;
+	}
+
+	printf("Response size = %d\n", response_size);
+
+	/* Now that the size is known, encode this in the Request Size. */ 
+	response_size += dl_encode_response_size(target, response_size);
+
+	return response_size;
+}
+
+/**
+ * Encode the Response Size.
+ *
+ * Size (int32): The number of bytes in the Response (that is the number
+ * of bytes after the Size field)
+ */
+static int32_t 
+//dl_encode_request_size(struct dl_buffer const *buffer, const int32_t size)
+dl_encode_response_size(char const *buffer, const int32_t size)
+{
+
+	DL_ASSERT(buffer != NULL, "Buffer for encoding cannot be NULL");
+	DL_ASSERT(size > 0, "Request size must be greater than zero");
+
+	/* Encode the Response Size. */
+	return DL_ENCODE_SIZE(buffer, size);
+}
+
+/**
+ * Encode the ResponseHeader.
+ *
+ * ResponseHeader = CorrelationId
+ *  
+ * CorrelationId
+ */
+static int32_t 
+//dl_encode_request_header(struct dl_request * const request,
+//    struct dl_buffer const *buffer)
+dl_encode_response_header(struct dl_response const * const response,
+    char * const target)
+{
+
+	DL_ASSERT(response != NULL, "Response cannot be NULL");
+	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
+
+	/* Encode the Response CorrelationId into the buffer. */
+	return DL_ENCODE_CORRELATION_ID(target, response->dlrs_correlation_id);
 }

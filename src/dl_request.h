@@ -50,14 +50,14 @@ union dl_request_message {
 };
 
 struct dl_request {
-	char * dlrqm_client_id;
+	char dlrqm_client_id[DL_MAX_CLIENT_ID_LEN];
 	union dl_request_message dlrqm_message;
 	int32_t dlrqm_correlation_id;
 	int16_t dlrqm_api_key;
 };
 
 extern struct dl_request * dl_request_new(const int16_t, const int32_t, char *);
-extern struct dl_request * dl_decode_request(char *);
+extern struct dl_request * dl_request_decode(char *);
 extern int dl_request_encode(struct dl_request const *,
     struct dl_buffer const *);
 

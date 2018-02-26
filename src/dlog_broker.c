@@ -49,14 +49,17 @@
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+#include <search.h>
 
 #include "dlog_broker.h"
 
 #include "dl_assert.h"
 #include "dl_broker_client.h"
+#include "dl_broker_topic.h"
 #include "dl_config.h"
 #include "dl_event_handler.h"
 #include "dl_memory.h"
+#include "dl_partition.h"
 #include "dl_poll_reactor.h"
 #include "dl_protocol.h"
 #include "dl_request.h"
@@ -67,21 +70,18 @@
 #define MAX_NO_OF_CLIENTS 10
 
 struct dlog_broker_handle {
+	struct dl_broker_client *clients[MAX_NO_OF_CLIENTS];
+	struct broker_configuration *conf;
 	struct dl_event_handler event_handler;
 	dl_event_handler_handle socket;
-	struct dl_broker_client *clients[MAX_NO_OF_CLIENTS];
-};
-
-/* Record statistics for the broker */
-struct dl_broker_statistics {
-	// TODO
 };
 
 static void * dl_fsync_thread(void *);
 static void dl_siginfo_handler(int);
 static void dl_sigint_handler(int);
 static int dl_init_listening_socket(int);
-static int dl_start_fsync_thread(struct broker_configuration *);
+static int dl_start_fsync_thread(struct broker_configuration *,
+    struct dl_broker_topic *);
 
 struct response_pool_element {
 	struct dl_response *rsp_msg;
@@ -98,12 +98,13 @@ struct dl_fsync_argument {
 	int index;
 	pthread_t const *tid;
 	struct broker_configuration const *config;
+	struct dl_topic *topic;
 };
 
 static pthread_t fsy_thread;
 static struct dl_fsync_argument fsy_args;
 
-static struct segment *ptr_seg;
+struct dlog_broker_statistics dlog_broker_stats;
 
 static int
 dl_init_listening_socket(int portnumber)
@@ -140,6 +141,7 @@ dl_fsync_thread(void *vargp)
         char *send_out_buf;
 	struct dl_fsync_argument *pa =
 	    (struct dl_fsync_argument *) vargp;
+	struct dl_broker_topic *topic = pa->topic;
 	struct response_pool_element *response, *response_temp;
 	ssize_t rc;
 	int old_cancel_state;
@@ -203,11 +205,11 @@ dl_fsync_thread(void *vargp)
 		}
 
 
-		/* Syncboth the log and the index to the disk. */
-		dl_lock_seg(ptr_seg);
-		fsync(ptr_seg->_log);
-		fsync(ptr_seg->_index);
-		dl_unlock_seg(ptr_seg);
+		/* Sync both the log and the index to the disk. */
+		//dl_lock_seg(partition->dlp_active_segment);
+		//fsync(partition->dlp_active_segment->_log);
+		//fsync(partition->dlp_active_segment->_index);
+		//dl_unlock_seg(partition->dlp_active_segment);
 	
 		/* Fsync'd all outstanding responses. Check whether the
 		 * thread has been canceled.
@@ -227,25 +229,30 @@ dl_fsync_thread(void *vargp)
 }
 
 static int 
-dl_start_fsync_thread(struct broker_configuration *conf)
+dl_start_fsync_thread(struct broker_configuration *conf,
+    struct dl_broker_topic *topic)
 {
+
 	fsy_args.config = conf;
+	fsy_args.topic = topic;
 	return pthread_create(&fsy_thread, NULL, dl_fsync_thread, &fsy_args);
 }
 
 static void
 dl_siginfo_handler(int dummy)
 {
-	dl_debug(PRIO_LOW, "Caught SIGIFO[%d]\n", dummy);
 
 	/* Report the broker statistics. */
-	// dl_debug(PRIO_NORMAL, );
+	DLOGTR0(PRIO_HIGH, "Broker statistics:\n");
+	DLOGTR1(PRIO_HIGH, "bytes read = %ld\n",
+	    dlog_broker_stats.dlbs_bytes_read);
 }
 
 static void
 dl_sigint_handler(int dummy)
 {
-	dl_debug(PRIO_LOW, "Caught SIGINT[%d]\n", dummy);
+
+	DLOGTR0(PRIO_LOW, "DLog broker shutting down...\n");
 	dlog_broker_fini();
 
 	exit(EXIT_SUCCESS);
@@ -277,6 +284,7 @@ dl_match_controlled_client_by_pointer(const struct dlog_broker_handle *server,
 static int
 dl_find_free_client_slot(const struct dlog_broker_handle *server)
 {
+
 	return dl_match_controlled_client_by_pointer(server, NULL);
 }
 
@@ -284,6 +292,7 @@ static int
 dl_find_matching_client_slot(const struct dlog_broker_handle *server,
     const struct dl_broker_client *client)
 {  
+
 	return dl_match_controlled_client_by_pointer(server, client);
 }
 
@@ -301,7 +310,8 @@ dl_on_client_closed(void *server, void *closedClient)
 	struct dl_broker_client *clientInstance = closedClient;
 	int clientSlot;
 	
-	clientSlot = dl_find_matching_client_slot(serverInstance, clientInstance);
+	clientSlot = dl_find_matching_client_slot(serverInstance,
+	    clientInstance);
 	if (0 > clientSlot) {
 		printf("Phantom client detected");
 	}
@@ -315,6 +325,7 @@ static void
 dl_handle_read_event(void *instance)
 {
 	struct dlog_broker_handle *server = instance;
+	struct dl_broker_event_notifier event_notifier = {0};
     	int free_slot;
        
 	DLOGTR0(PRIO_LOW, "Client request\n");
@@ -323,9 +334,9 @@ dl_handle_read_event(void *instance)
        	if (0 <= free_slot) {
 		/* Define a callback for events requiring the actions of the
 		 * server (for example a closed connection). */
-	        struct ServerEventNotifier event_notifier = {0};
 		event_notifier.server = server;
 		event_notifier.on_client_closed = dl_on_client_closed;
+		event_notifier.dlben_conf = server->conf;
 				       
 		server->clients[free_slot] = dl_broker_client_new(
 		    server->socket, &event_notifier);
@@ -338,10 +349,11 @@ dl_handle_read_event(void *instance)
 }
 
 void
-dlog_broker_init(const char *partition_name, struct broker_configuration *conf)
+dlog_broker_init(char const * const topic_name,
+    struct broker_configuration const * const conf)
 {
 
-	DL_ASSERT(partition_name != NULL, "Partition name cannot be NULL");
+	DL_ASSERT(topic_name != NULL, "Partition name cannot be NULL");
 	DL_ASSERT(conf != NULL, "Broker configuration cannot be NULL");
 
 	/* Install signal handler to terminate broker cleanly. */	
@@ -350,12 +362,21 @@ dlog_broker_init(const char *partition_name, struct broker_configuration *conf)
 	/* Install signal handler to report broker statistics. */
 	signal(SIGINFO, dl_siginfo_handler);
 
-	/* Create the specified partition; deleting if already present. */
-	dl_del_folder(partition_name);
-	dl_make_folder(partition_name);
+	/* Create the hashmap to store the names of the topics managed by the
+	 * broker and their segments.
+	 */
+	//TODO
 
-	/* Preallocate 1024*1024 segement file. */
-	ptr_seg = dl_make_segment(0, 1024*1024, partition_name);
+	/* Create the specified partition; deleting if already present. */
+	dl_del_folder(topic_name);
+	dl_make_folder(topic_name);
+
+	/* Preallocate an initial segement file for the topic. */
+	//partition = dl_partition_new(topic_name);
+	topic = dl_topic_new(topic_name);
+
+	/* Store the topic and it's segment in the hashmap. */
+	// TODO
 
 	/* If the broker isn't configured to immediately fsync log entries,
 	 * create the a queue used to asynchronously fsync requests.
@@ -366,32 +387,44 @@ dlog_broker_init(const char *partition_name, struct broker_configuration *conf)
 		pthread_mutex_init(&unfsynced_responses_mtx, NULL);
 		pthread_cond_init(&unfsynced_responses_cond, NULL);
 		
-		dl_start_fsync_thread(conf);
+		dl_start_fsync_thread(conf, topic);
 	}
 }
 
 /* TODO allow specifying which network interface to bind to */
 struct dlog_broker_handle *
-dlog_broker_create_server(int portnumber)
+dlog_broker_create_server(const int portnumber,
+    struct broker_configuration const * const conf)
 {
 	struct dlog_broker_handle *handle;
+	dl_event_handler_handle socket;
 
 	handle = (struct dlog_broker_handle *) dlog_alloc(
 	    sizeof(struct dlog_broker_handle));
 	if (handle != NULL ) {
 
-		handle->socket = dl_init_listening_socket(portnumber);
+		/* Construct the DLog broker handle and register the
+		 * event handler with the poll reactor.
+		 */
+		socket = dl_init_listening_socket(portnumber);
+		//if (socket ) {
+		// TODO: error handling
+		handle->socket = socket;
+		handle->conf = conf;
         	handle->event_handler.dleh_instance = handle;
 	        handle->event_handler.dleh_get_handle = dl_get_server_socket;
 		handle->event_handler.dleh_handle_event = dl_handle_read_event;
 
 		dl_poll_reactor_register(&handle->event_handler);
+		// } else {
+		//     dlog_free(handle);
+		// }
 	}
-
 	return handle;
 }
 
 void
 dlog_broker_fini()
 {
+	// Cancel the fsync thread for the topic
 }

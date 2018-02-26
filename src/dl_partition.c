@@ -34,21 +34,29 @@
  *
  */
 
-#ifndef _DL_BROKER_CLIENT_H
-#define _DL_BROKER_CLIENT_H
+#include <sys/queue.h>
 
-#include "dlog_broker.h"
-#include "dl_event_handler.h"
+#include <stddef.h>
 
-struct dl_broker_client 
+#include "dl_memory.h"
+#include "dl_partition.h"
+
+struct dl_partition *
+dl_partition_new(char *topic_name)
 {
-	dl_event_handler_handle client_socket;
-	struct dl_event_handler event_handler;
-	struct dl_broker_event_notifier event_notifier;
-}; 
+	struct dl_partition *partition;
+	struct segement *segment;
 
-extern struct dl_broker_client * dl_broker_client_new(dl_event_handler_handle,
-    struct dl_broker_event_notifier *);
-extern void dl_broker_client_free(struct dl_broker_client *);
+	partition = (struct partition *) dlog_alloc(
+	    sizeof(struct dl_partition));
 
-#endif
+	SLIST_INIT(&partition->dlp_segments);
+
+	partition->dlp_active_segment = dl_make_initial_default_sized_segment(
+	    topic_name);
+
+	SLIST_INSERT_HEAD(&partition->dlp_segments,
+	    partition->dlp_active_segment, dls_entries);
+
+	return partition;
+}

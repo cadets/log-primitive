@@ -173,15 +173,20 @@ dl_list_offset_response_encode(struct dl_list_offset_response *response,
 
 	DL_ASSERT(response != NULL, "Response cannot be NULL");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
+	printf("Here\n");
         
 	/* Encode the [topic_data] array. */
 	response_size += dl_encode_int32(target, response->dlor_ntopics);
+
+	printf("Here\n");
 
 	SLIST_FOREACH(response_topic, &response->dlor_topics, dlort_entries) {
 
 		/* Encode the TopicName. */
 		response_size += dl_encode_string(&target[response_size],
 		    response_topic->dlort_topic_name, DL_MAX_TOPIC_NAME_LEN);
+
+		printf("dlort_topic_name = %s\n", response_topic->dlort_topic_name);
 
 		/* Encode the [data] array. */
 		response_size += dl_encode_int32(&target[response_size],
@@ -190,22 +195,23 @@ dl_list_offset_response_encode(struct dl_list_offset_response *response,
 		SLIST_FOREACH(response_partition,
 		    &response_topic->dlort_partitions, dlorp_entries) {
 	
-			/* Encode the TopicName. */
+		printf("dlort_topic_name = %s\n", response_topic->dlort_topic_name);
+			/* Encode the Partition. */
 			response_size += dl_encode_int32(
 			    &target[response_size],
 			    response_partition->dlorp_partition);
 	
-			/* Encode the TopicName. */
+			/* Encode the ErrorCode. */
 			response_size += dl_encode_int16(
 			    &target[response_size],
 			    response_partition->dlorp_error_code);
 	
-			/* Encode the TopicName. */
+			/* Encode the Timestamp. */
 			response_size += dl_encode_int64(
 			    &target[response_size],
 			    response_partition->dlorp_timestamp);
 	
-			/* Encode the TopicName. */
+			/* Encode the Offset. */
 			response_size += dl_encode_int64(
 			    &target[response_size],
 			    response_partition->dlorp_offset);

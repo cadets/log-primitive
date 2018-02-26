@@ -41,28 +41,36 @@
 #include "dl_config.h"
 
 /**
- * This function is invoked as a callback in case a disconnect on 
+ * This function is invoked as a callback in case a disconnect on
  * TCP level is detected.
  */
 typedef void (*dl_on_client_closed_func)(void *, void *);
 
-struct ServerEventNotifier {
+struct dl_broker_event_notifier {
 	/** An instance of the server owning the client.
 	 *  This instance shall be passed as an argument to the callbacks.
 	 */
 	void *server;
 
-	/** Specifies a callback to be used by the client to 
+	/** Specifies a callback to be used by the client to
 	 *  inform its server about a closed connection.
-	 */   
+	 */
 	dl_on_client_closed_func on_client_closed;
 
+	struct broker_configuration *dlben_conf;
+};
+
+/* Record statistics for the broker */
+struct dlog_broker_statistics {
+	u_int64_t dlbs_bytes_read;
 };
 
 struct dlog_broker_handle;
 
-extern struct dlog_broker_handle * dlog_broker_create_server(int);
-extern void dlog_broker_init(const char *, struct broker_configuration *);
+extern struct dlog_broker_handle * dlog_broker_create_server(const int,
+    struct broker_configuration const * const);
+extern void dlog_broker_init(char const * const,
+    struct broker_configuration const * const);
 extern void dlog_broker_fini();
 
 #endif

@@ -80,7 +80,7 @@ dl_fetch_request_new(const int32_t correlation_id, char *client_id,
 	fetch_request->dlfr_min_bytes = min_bytes;
 	
 	fetch_request->dlfr_nrequests = 1;
-	SLIST_INIT(&fetch_request->dlfr_requests);
+	SLIST_INIT(&fetch_request->dlfr_topics);
 
 	topic = (struct dl_fetch_request_topic *) dlog_alloc(
 		sizeof(struct dl_fetch_request_topic));
@@ -88,7 +88,7 @@ dl_fetch_request_new(const int32_t correlation_id, char *client_id,
 	topic->dlfrt_topic_name = topic_name;
 
 	topic->dlfrt_nrequests = 1;
-	SLIST_INIT(&topic->dlfrt_partition_requests);
+	SLIST_INIT(&topic->dlfrt_partitions);
 
 	partition = (struct dl_fetch_request_partition *) dlog_alloc(
 		sizeof(struct dl_fetch_request_partition));
@@ -97,9 +97,8 @@ dl_fetch_request_new(const int32_t correlation_id, char *client_id,
 	partition->dlfrp_fetch_offset = fetch_offset;
 	partition->dlfrp_max_bytes = max_bytes;
 	
-	SLIST_INSERT_HEAD(&topic->dlfrt_partition_requests, partition,
-	    dlfrp_entries);
-	SLIST_INSERT_HEAD(&fetch_request->dlfr_requests, topic, dlfrt_entries);
+	SLIST_INSERT_HEAD(&topic->dlfrt_partitions, partition, dlfrp_entries);
+	SLIST_INSERT_HEAD(&fetch_request->dlfr_topics, topic, dlfrt_entries);
 
 	return request;
 }
@@ -131,7 +130,7 @@ dl_fetch_request_encode(struct dl_fetch_request *self, char *target)
 	    self->dlfr_nrequests);
 
 	/* Encode the FetchRequest ReplicaId into the buffer. */
-	SLIST_FOREACH(topic_request, &self->dlfr_requests, dlfrt_entries) {
+	SLIST_FOREACH(topic_request, &self->dlfr_topics, dlfrt_entries) {
 
 		/* Encode the FetchRequest TopicName into the buffer. */
 		request_size += DL_ENCODE_TOPIC_NAME(&target[request_size],
@@ -142,7 +141,7 @@ dl_fetch_request_encode(struct dl_fetch_request *self, char *target)
 		    topic_request->dlfrt_nrequests);
 
 		SLIST_FOREACH(partition_request,
-		    &topic_request->dlfrt_partition_requests, dlfrp_entries) {
+		    &topic_request->dlfrt_partitions, dlfrp_entries) {
 
 			/* Encode the FetchRequest Partition into the
 			 * buffer.

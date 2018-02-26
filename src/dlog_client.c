@@ -225,6 +225,7 @@ dl_process_request(const struct dl_transport *transport,
 
 	nbytes = dl_transport_send_request(transport,
 	    request->dlrq_buffer, request->dlrq_buffer_len);
+	printf("nbytes send %d\n", nbytes);
 	if (nbytes != -1) {
 		DLOGTR1(PRIO_LOW, "Successfully sent request (id = %d)\n",
 		    request->dlrq_correlation_id);
@@ -556,7 +557,15 @@ dlog_produce(struct dlog_handle *handle, char *topic, char *key, int key_len,
 
 	/* Encode the request. */	
 	buffer_len = dl_request_encode(message, buffer);
-	
+
+
+	DLOGTR1(PRIO_LOW, "%x\n", buffer_len);
+	for (int i = 0; i < buffer_len; i++) {
+		DLOGTR1(PRIO_LOW, "<%02X>", buffer->dlb_databuf[i]);
+	};
+
+	DLOGTR0(PRIO_LOW, "\n"	);
+
 	// TODO: mesasge xtor
 	
 	DLOGTR0(PRIO_LOW, "Encoded request message\n");

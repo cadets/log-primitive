@@ -47,6 +47,7 @@
 // so that when persisted to the filesystem they
 // don't exceed the maximum allowable path length
 #define DL_MAX_TOPIC_NAME_LEN 249
+#define DL_MAX_CLIENT_ID_LEN 249
 
 #define CLIENT_ID_SIZE 12
 #define KEY_SIZE 12

@@ -55,7 +55,7 @@ struct dl_list_offset_request_partition {
 struct dl_list_offset_request_topic {
 	SLIST_ENTRY(dl_list_offset_request_topic) dlort_entries;
 	struct dl_list_offset_request_partitions dlort_partitions;
-	char *dlort_topic_name;
+	char dlort_topic_name[DL_MAX_TOPIC_NAME_LEN];
 	int32_t dlort_npartitions;
 };
 

@@ -1,5 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,13 +35,8 @@
  *
  */
 
-// The header file with the used utilities
-
 #ifndef _DL_UTILS_H
 #define _DL_UTILS_H
-
-#include <pthread.h>
-#include <dirent.h>
 
 #ifdef _KERNEL
 #define DLOGTR0(event_mask, format) \
@@ -78,55 +74,8 @@
 #define PRIO_NORMAL 1 << 2
 #define PRIO_LOW    1 << 3
 
-#define MAX_FILENAME_SIZE 30
-
-static int index_size_entry = 8;
-static int log_size_entry = 8;
-static int bytes_per_index_entry = 17;//index_size_entry + log_size_entry + 1;
-static int segments_per_partition = 64;
-
-enum topic_status {
-	UNKNOWN_TOPIC = 1 << 1,
-	LEADER_NOT_AVAILABLE = 1 << 2,
-	INVALID_TOPIC = 1 << 3,
-	TOPIC_AUTHORIZATION_FAILED = 1 << 4
-};
-
-struct segment {
-	// Maybe split into single seeker and single inserter? That way one should be able to insert and get silmultaniously
-	int _log;
-	int _index;
-	int log_position; // Current position in the log
-	int index_position; // Current offset position in the log
-	pthread_mutex_t mtx;
-};
-
-struct partition {
-	struct partition* active_segment;
-	char * id;
-};
-typedef struct partition partition;
-
-struct utils_config{
-	char topics_folder[MAX_FILENAME_SIZE];
-};
-
-extern unsigned short PRIO_LOG;
-
-// Managing partitions
 extern int dl_make_folder(const char *);
 extern int dl_del_folder(const char *);
-
-// Managing segments
-extern struct segment * dl_make_segment(long int, long int, const char *);
-extern void dl_close_segment(struct segment *);
-
-// Managing messages
-extern int dl_insert_message(struct segment *, char *, int);
-extern int dl_get_message_by_offset(struct segment *, int, void *);
-
-extern void dl_lock_seg(struct segment *);
-extern void dl_unlock_seg(struct segment *);
 
 extern void dl_debug(int, const char *, ...);
 
