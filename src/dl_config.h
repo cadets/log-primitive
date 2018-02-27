@@ -57,10 +57,8 @@ struct broker_configuration {
 };
 
 struct dl_client_configuration {
-	dl_ack_function dlcc_on_ack;
 	dl_response_function dlcc_on_response;
-	char *client_id;
-	//char dlcc_topic_name[DL_MAX_TOPIC_NAME_LEN];;
+	char const *client_id;
 	int to_resend;
 	int resend_timeout;
 	int resender_thread_sleep_length;
@@ -68,12 +66,6 @@ struct dl_client_configuration {
 	int reconn_timeout;
 	int poll_timeout;
 };
-
-static const int MAX_NUM_REQUESTS_PER_PROCESSOR  = 128; // Maximum outstanding requests per processor.
-static const int NUM_PROCESSORS                  = 10;   // Number of processors.
-static const int MAX_NUM_RESPONSES_PER_PROCESSOR = 128; // Maximum outstanding responses per processor.
-static const int CONNECTIONS_PER_PROCESSOR       = 10; // Number of connections per processor.
-static const int MAX_NUM_UNFSYNCED = 20; // Maximum number of unfsynced inserts
 
 extern void print_configuration(struct broker_configuration *);
 
