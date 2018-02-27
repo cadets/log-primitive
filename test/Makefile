@@ -1,5 +1,5 @@
 #-
-# Copyright (c) 2017 (Graeme Jenkinson)
+# Copyright (c) 2018 (Graeme Jenkinson)
 # All rights reserved.
 #
 # This software was developed by BAE Systems, the University of Cambridge
@@ -29,6 +29,9 @@
 # SUCH DAMAGE.
 #
 
-TEST_SUBDIRS+= protocol
+ATF_TESTS_C= atf_dl_fetch_request
+KYUAFILE= yes
+
+CFLAGS+= -I${SRCTOP}
 
 .include <bsd.test.mk>
