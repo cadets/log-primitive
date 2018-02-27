@@ -89,18 +89,6 @@ dl_decode_int16(char const * const source)
 }
 
 /**
- * Decode a int64_t (big endian) from the source buffer.
- */
-inline int64_t
-dl_decode_int64(char const * const source)
-{
-
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
-
-	return be64toh(*((int64_t *) source));
-}
-
-/**
  * Decode a int32_t (big endian) from the source buffer.
  */
 inline int32_t
@@ -110,6 +98,18 @@ dl_decode_int32(char const * const source)
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
 
 	return be32toh(*((int32_t *) source));
+}
+
+/**
+ * Decode a int64_t (big endian) from the source buffer.
+ */
+inline int64_t
+dl_decode_int64(char const * const source)
+{
+
+	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
+
+	return be64toh(*((int64_t *) source));
 }
 
 /**

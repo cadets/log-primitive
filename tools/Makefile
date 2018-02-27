@@ -29,8 +29,13 @@
 # SUCH DAMAGE.
 #
 
-.OBJDIR:= obj
-MK_AUTO_OBJ:= yes
+.OBJDIR= obj
+#MK_AUTO_OBJ= yes
+
+.include <auto.obj.mk>
+
+MK_DIRDEPS_BUILD= yes
+MK_STAGING= no
 
 #OBJ_libdlog:= ${SRCTOP}/obj
 
@@ -55,6 +60,5 @@ LDADD+= ${SRCTOP}/obj/libdlog.a
 #DPADD += ${LIBDLOG}
 
 CFLAGS+= -I${SRCTOP}
-
 
 .include <progs.mk>

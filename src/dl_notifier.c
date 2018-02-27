@@ -162,9 +162,9 @@ dl_notify_response(struct notify_queue_element *notify,
 		res_m = &response->rsp_msg;
 		if (dl_decode_response(res_m, pbuf) == 0) {
 				
-			DLOGTR1(PRIO_NORMAL, "Got acknowledged: %d\n",
+			DLOGTR1(PRIO_LOW, "Got acknowledged: %d\n",
 			    res_m->dlrs_size);
-			DLOGTR1(PRIO_NORMAL, "Got acknowledged: %d\n",
+			DLOGTR1(PRIO_LOW, "Got acknowledged: %d\n",
 			    res_m->dlrs_correlation_id);
 
 			/* Acknowledge the request message based

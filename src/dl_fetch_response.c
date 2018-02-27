@@ -55,7 +55,7 @@ dl_fetch_response_decode(char *buffer)
 	struct dl_fetch_response_topic *topic;
 	struct dl_fetch_response_partition *partition;
 	int32_t partition_response, response_it;
-      
+     
 	/* Consruct the FetchResponse. */
 	response = (struct dl_fetch_response *) dlog_alloc(
 		sizeof(struct dl_fetch_response));
@@ -119,7 +119,7 @@ dl_fetch_response_decode(char *buffer)
 			
 			/* Decode the MessageSet */
 			partition->dlfrp_message_set =
-			    dl_message_set_decode(buffer);
+			    dl_message_set_decode(buffer, mss);
 		
 			SLIST_INSERT_HEAD(&topic->dlfrt_partitions, partition,
 			    dlfrp_entries);

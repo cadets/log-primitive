@@ -58,6 +58,13 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 #define DL_MESSAGE_SET_SIZE_SIZE sizeof(int32_t)
 #define DL_OFFSET_SIZE sizeof(int64_t)
 
+#define DL_DECODE_OFFSET(source) dl_decode_int64(source)
+#define DL_DECODE_MESSAGE_SIZE(source) dl_decode_int32(source)
+#define DL_DECODE_CRC(source) dl_decode_int32(source)
+#define DL_DECODE_MAGIC_BYTE(source) dl_decode_int8(source)
+#define DL_DECODE_ATTRIBUTES(source) dl_decode_int8(source)
+#define DL_DECODE_TIMESTAMP(source) dl_decode_int64(source)
+
 #define DL_ENCODE_ATTRIBUTES(target) dl_encode_int8(target, 0)
 #define DL_ENCODE_CRC(target, value) dl_encode_int32(target, value)
 #define DL_ENCODE_MAGIC_BYTE(target) \
@@ -68,6 +75,8 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 
 static int32_t dl_message_encode(struct dl_message const *, char * const);
 static int32_t dl_message_get_size(struct dl_message const * const);
+static struct dl_message * dl_message_decode(char const * const,
+    int32_t *);
 
 struct dl_message_set *
 dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
@@ -94,11 +103,12 @@ dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
 }
 
 struct dl_message_set *
-dl_message_set_decode(char const * const source)
+dl_message_set_decode(char const * const source,
+    int32_t message_set_size)
 {
-	struct dl_message_set *message_set;
 	struct dl_message *message;
-	int32_t message_it;
+	struct dl_message_set *message_set;
+	int32_t msg_set_size = 0, msg_size;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
 
@@ -107,26 +117,89 @@ dl_message_set_decode(char const * const source)
 	SLIST_INIT(&message_set->dlms_messages);
 
 	/* Decode the MessageSet. */
-	message_set->dlms_nmessages = dl_decode_int32(source);
-
-	for (message_it = 0; message_it < message_set->dlms_nmessages;
-	    message_it++) {
-
-		/* Decode the MessageSet Offset into the buffer. */
-		//ms+= DL_ENCODE_OFFSET(&target[msg_set_size],
-		//    DL_DEFAULT_OFFSET);
-
-		/* Encode the MessageSize. */
-		//msg_set_size += DL_ENCODE_MESSAGE_SIZE(&target[msg_set_size],
-		//    dl_message_get_size(message));
+	while (message_set_size > 0) {
 
 		/* Decode the Message. */
-		//miessage = dl_message_decode(&target[msg_set_size]);
+		message = dl_message_decode(&source[msg_set_size], &msg_size);
+		msg_set_size += msg_size;
+		message_set_size -= msg_size;
+		++message_set->dlms_nmessages;
+
+		SLIST_INSERT_HEAD(&message_set->dlms_messages, message,
+		    dlm_entries);
+	}
+	return message_set;
+}
 		
-		//SLIST_INSERT_HEAD(, message, );
+static struct dl_message *
+dl_message_decode(char const * const source, int32_t *msg_size)
+{
+	struct dl_message *message;
+	int32_t crc_val, msg_crc_val, size;
+	int8_t attributes, magic_byte;
+
+	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
+
+	message = (struct dl_message *) dlog_alloc(sizeof(struct dl_message));
+#ifdef _KERNEL
+	DL_ASSERT(message != NULL, ("Allocation of dl_message failed\n"));
+	{
+#else
+	if (message != NULL) {
+#endif
+		*msg_size = 0;
+
+		/* Decode the MessageSet Offset. */
+		message->dlm_offset = DL_DECODE_OFFSET(&source[*msg_size]);
+		*msg_size += sizeof(int64_t);
+
+		/* Decode the MessageSize. */
+		size = DL_DECODE_MESSAGE_SIZE(&source[*msg_size]);
+		*msg_size += sizeof(int32_t); 
+
+		/* Decode the CRC (placeholder value). */
+		msg_crc_val = DL_DECODE_CRC(&source[*msg_size]);
+		*msg_size += sizeof(int32_t);
+
+		/* Compute the CRC value. */
+		crc_val = crc32(0L, Z_NULL, 0);
+		crc_val = crc32(crc_val, &source[*msg_size], size-DL_CRC_SIZE);
+		
+		/* Decode the MagicByte */
+		magic_byte = DL_DECODE_MAGIC_BYTE(&source[*msg_size]);
+		*msg_size += sizeof(int8_t);
+
+		/* Decode the Attributes */
+		attributes = DL_DECODE_ATTRIBUTES(&source[*msg_size]);
+		*msg_size += sizeof(int8_t);
+
+		/* The MagicByte determines the MessageSet format v0 or v1. */
+		if (magic_byte == 0x01) {	
+			/* Decode the Timestamp */
+			message->dlm_timestamp = DL_DECODE_TIMESTAMP(&source[*msg_size]);
+			*msg_size += sizeof(uint64_t); 
+		}
+
+		/* Decode the Key */
+		message->dlm_key_len = dl_decode_int32(&source[*msg_size]);
+		*msg_size += sizeof(uint32_t); 
+
+		if (message->dlm_key_len != -1) {
+			message->dlm_key = &source[*msg_size];
+			*msg_size += message->dlm_key_len;
+		} else {
+			message->dlm_key = NULL;
+		}
+
+		/* Decode the Value */
+		message->dlm_value_len = dl_decode_int32(&source[*msg_size]);
+		*msg_size += sizeof(uint32_t); 
+		
+		message->dlm_value = &source[*msg_size];
+		*msg_size += message->dlm_value_len;
 	}
 
-	return message_set;
+	return message;
 }
 
 /**

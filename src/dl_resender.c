@@ -204,7 +204,7 @@ dl_resender_ackd_request(int correlation_id)
 	pthread_mutex_lock(&unackd_requests_mtx);
 	request = RB_FIND(dl_unackd_requests, &unackd_requests, &find);
 	if (request != NULL) {
-		DLOGTR1(PRIO_NORMAL,
+		DLOGTR1(PRIO_LOW,
 			"Found unacknowledged request id: %d\n",
 			request->dlrq_correlation_id);
 

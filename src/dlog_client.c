@@ -225,7 +225,6 @@ dl_process_request(const struct dl_transport *transport,
 
 	nbytes = dl_transport_send_request(transport,
 	    request->dlrq_buffer, request->dlrq_buffer_len);
-	printf("nbytes send %d\n", nbytes);
 	if (nbytes != -1) {
 		DLOGTR1(PRIO_LOW, "Successfully sent request (id = %d)\n",
 		    request->dlrq_correlation_id);
@@ -258,7 +257,7 @@ dl_process_request(const struct dl_transport *transport,
 			request->dlrq_last_sent = time(NULL);
 #endif
 
-			DLOGTR1(PRIO_NORMAL,
+			DLOGTR1(PRIO_LOW,
 			    "Inserting into the tree with key %d\n",
 			    request->dlrq_correlation_id);
 

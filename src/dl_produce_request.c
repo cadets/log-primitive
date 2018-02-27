@@ -184,8 +184,9 @@ dl_produce_request_decode(char *source)
 			printf("partition = %d\n", request_partition->dlprp_partition);
 		
 			/* Decode the MessageSet. */
+			// TODO where does the messageset size come from here?
 			message_set = dl_message_set_decode(
-			    &source[request_size]);
+			    &source[request_size], 10);
 			request_size += dl_message_set_get_size(message_set);
 			printf("here\n");
 
