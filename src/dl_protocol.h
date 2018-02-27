@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -43,6 +43,9 @@
 #define DLOG_API_V1 1
 #define DLOG_API_VERSION DLOG_API_V1
 
+#define DLOG_MESSAGE_V0 0
+#define DLOG_MESSAGE_V1 1
+
 // Topic names should have a maximum length
 // so that when persisted to the filesystem they
 // don't exceed the maximum allowable path length
@@ -66,9 +69,9 @@ struct dl_buffer {
  * Note: Only the Produce, Fetch and Offset APIs are currently implemented.
  */
 enum dl_api_key {
-	DL_PRODUCE_REQUEST = 0,
-	DL_FETCH_REQUEST = 1,
-	DL_OFFSET_REQUEST = 2,
+	DL_PRODUCE_API_KEY = 0,
+	DL_FETCH_API_KEY = 1,
+	DL_OFFSET_API_KEY = 2,
 };
 typedef enum dl_api_key dl_api_key;
 

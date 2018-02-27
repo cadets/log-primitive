@@ -119,7 +119,7 @@ dl_produce_response_decode(char const * const source)
 	response = (struct dl_response *) dlog_alloc(
 		sizeof(struct dl_response));
 
-	response->dlrs_api_key = DL_PRODUCE_REQUEST;
+	response->dlrs_api_key = DL_PRODUCE_API_KEY;
 
 	/* Allocate and initialise the produce_response instance. */
 	response->dlrs_message.dlrs_produce_message = produce_response =

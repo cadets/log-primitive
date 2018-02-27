@@ -106,7 +106,7 @@ dlc_on_response(struct dl_response const * const response)
 	    response->dlrs_correlation_id);
 
 	switch (response->dlrs_api_key) {
-	case DL_FETCH_REQUEST:
+	case DL_FETCH_API_KEY:
 		fetch_response = response->dlrs_message.dlrs_fetch_message;
 
 		SLIST_FOREACH(fetch_topic,
@@ -148,7 +148,7 @@ dlc_on_response(struct dl_response const * const response)
 			};
 		};
 		break;
-	case DL_OFFSET_REQUEST:
+	case DL_OFFSET_API_KEY:
 		offset_response = response->dlrs_message.dlrs_offset_message;
 
 		SLIST_FOREACH(offset_topic,

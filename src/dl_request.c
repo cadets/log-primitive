@@ -53,7 +53,7 @@
 #define DL_ENCODE_API_VERSION(buffer) \
     dl_encode_int16(buffer, DLOG_API_VERSION)
 #define DL_ENCODE_CLIENT_ID(buffer, value) \
-    dl_encode_string(buffer, value, DL_MAX_CLIENT_ID)
+    dl_encode_string(buffer, value, DL_MAX_CLIENT_ID_LEN)
 #define DL_ENCODE_SIZE(buffer, value) dl_encode_int32(buffer, value)
 
 static int32_t dl_request_header_encode(struct dl_request const * const,
@@ -112,17 +112,17 @@ dl_request_encode(struct dl_request const *request,
 
 	/* Encode the Request Body. */
 	switch (request->dlrqm_api_key) {
-	case DL_PRODUCE_REQUEST:
+	case DL_PRODUCE_API_KEY:
 		request_size += dl_produce_request_encode(
 		    request->dlrqm_message.dlrqmt_produce_request,
 		    request_body);
 		break;
-	case DL_FETCH_REQUEST:
+	case DL_FETCH_API_KEY:
 		request_size += dl_fetch_request_encode(
 		    request->dlrqm_message.dlrqmt_fetch_request,
 		    request_body);
 		break;
-	case DL_OFFSET_REQUEST:
+	case DL_OFFSET_API_KEY:
 		request_size += dl_list_offset_request_encode(
 		    request->dlrqm_message.dlrqmt_offset_request,
 		    request_body);
@@ -217,16 +217,16 @@ dl_request_decode(char *source)
 
 	/* Decode the Request Body into the buffer. */
 	switch (request->dlrqm_api_key) {
-	case DL_PRODUCE_REQUEST:
+	case DL_PRODUCE_API_KEY:
 		request->dlrqm_message.dlrqmt_produce_request =
 		    dl_produce_request_decode(request_body);
 		break;
-	case DL_FETCH_REQUEST:
+	case DL_FETCH_API_KEY:
 		//request_size += dl_decode_fetch_request(
 		//	&request->dlrqm_message.dlrqmt_fetch_request,
 		//	request_body);
 		break;
-	case DL_OFFSET_REQUEST:
+	case DL_OFFSET_API_KEY:
 		request->dlrqm_message.dlrqmt_offset_request =
 		    dl_list_offset_request_decode(request_body);
 		break;

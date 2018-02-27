@@ -103,7 +103,7 @@ dl_list_offset_response_decode(char *source)
 	response = (struct dl_response *) dlog_alloc(
 		sizeof(struct dl_response));
 
-	response->dlrs_api_key = DL_OFFSET_REQUEST;
+	response->dlrs_api_key = DL_OFFSET_API_KEY;
 
 	/* Construct the ListOffsetResponse. */
 	response->dlrs_message.dlrs_offset_message = offset_response =

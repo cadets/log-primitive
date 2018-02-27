@@ -69,7 +69,7 @@ dl_produce_request_new(int32_t correlation_id, char *client_id,
 	struct dl_request *request;
 
 	/* Construct the ProduceRequest. */
-	request = dl_request_new(DL_PRODUCE_REQUEST, correlation_id,
+	request = dl_request_new(DL_PRODUCE_API_KEY, correlation_id,
 	    client_id);
 
 	produce_request = request->dlrqm_message.dlrqmt_produce_request =

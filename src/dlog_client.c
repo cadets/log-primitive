@@ -229,7 +229,7 @@ dl_process_request(const struct dl_transport *transport,
 		DLOGTR1(PRIO_LOW, "Successfully sent request (id = %d)\n",
 		    request->dlrq_correlation_id);
 
-		if (request->dlrq_api_key == DL_PRODUCE_REQUEST &&
+		if (request->dlrq_api_key == DL_PRODUCE_API_KEY &&
 		    request->dlrq_required_acks == 0) {
 			/* The request does not require an acknowledgment;
 			 * as we have finished processing the request free it.

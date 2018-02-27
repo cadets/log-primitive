@@ -190,20 +190,20 @@ dl_notify_get_response(struct notify_queue_element *notify)
 		    header->dlrsh_correlation_id);
 		if (request != NULL) {
 			switch (request->dlrq_api_key) {
-			case DL_PRODUCE_REQUEST:
+			case DL_PRODUCE_API_KEY:
 				response = dl_produce_response_decode(mpbuf);
 				break;
-			case DL_FETCH_REQUEST:
+			case DL_FETCH_API_KEY:
 				response = dl_fetch_response_decode(mpbuf);
 				break;
-			case DL_OFFSET_REQUEST:
+			case DL_OFFSET_API_KEY:
 				response = dl_list_offset_response_decode(
 				    mpbuf);
 				break;
 			default:
 				DLOGTR1(PRIO_HIGH,
-					"Request ApiKey is invalid (%d)\n",
-					request->dlrq_api_key);
+				    "Request ApiKey is invalid (%d)\n",
+				    request->dlrq_api_key);
 				break;
 			}
 			
@@ -246,8 +246,8 @@ dl_notifier_new(struct dl_client_configuration const *cc)
 		    if (pthread_cond_init(&notifier->dln_q_cond, NULL) == 0) {
 
 			} else {
-				DLOGTR0(PRIO_HIGH,
-				    "Failed initializing notifier cond var.\n");
+				DLOGTR0(PRIO_HIGH, "Failed initializing "
+				    "notifier cond var.\n");
 
 				/* Cleanup */
 				pthread_mutex_destroy(
@@ -304,7 +304,7 @@ int
 dl_notifier_start(struct dl_notifier *notifier)
 {
 	struct dl_notifier_argument *args;
-	int ret;
+	int rc = -1;
 
 	DL_ASSERT(notifier != NULL, ("Notifier instance cannot be NULL"));
 
@@ -317,10 +317,13 @@ dl_notifier_start(struct dl_notifier *notifier)
 	if (args != NULL) {
 #endif
 		args->dlna_notifier = notifier;
+	
+		rc = pthread_create(&notifier->dln_tid, NULL,
+		    dl_notifier_thread, args);
+		if (rc != 0)
+			dlog_free(args);
 	}
-
-	return pthread_create(&notifier->dln_tid, NULL, dl_notifier_thread,
-	    args);
+	return rc;
 }
 
 /* Cancel the notifier thread */
@@ -335,8 +338,8 @@ void
 dl_notifier_response(struct dl_notifier *notifier,
     struct notify_queue_element *el)
 {
-	DL_ASSERT(notifier != NULL,
-	    "Notifier instance configuration cannot be NULL");
+	DL_ASSERT(notifier != NULL, "Notifier instance cannot be NULL");
+	DL_ASSERT(el != NULL, "Notify element cannot be NULL");
 
 	pthread_mutex_lock(&notifier->dln_q_mtx);
 	STAILQ_INSERT_TAIL(&notifier->dln_q, el, entries);

@@ -180,16 +180,16 @@ dlog_broker_handle(struct dl_request * const request,
 	DL_ASSERT(conf != NULL, "Broker configuration cannot be NULL");
 
 	switch (request->dlrqm_api_key) {
-	case DL_FETCH_REQUEST:
+	case DL_FETCH_API_KEY:
 		return dl_handle_fetch_request(request);
 		break;
-	case DL_OFFSET_REQUEST:
+	case DL_OFFSET_API_KEY:
 		DLOGTR2(PRIO_LOW, "Processing OffsetRequest "
 		    "(client: %s, id: %d)\n", request->dlrqm_client_id,
 		    request->dlrqm_correlation_id);
 		return dl_handle_list_offset_request(request);
 		break;
-	case DL_PRODUCE_REQUEST:;
+	case DL_PRODUCE_API_KEY:;
 		DLOGTR2(PRIO_LOW, "Processing ProduceRequest "
 		    "(client: %s, id: %d)\n", request->dlrqm_client_id,
 		    request->dlrqm_correlation_id);
@@ -304,7 +304,7 @@ dl_handle_list_offset_request(struct dl_request *request)
 	
 	response = (struct dl_response *) dlog_alloc(
 		sizeof(struct dl_response));
-      	response->dlrs_api_key = DL_OFFSET_REQUEST;
+      	response->dlrs_api_key = DL_OFFSET_API_KEY;
 
 	offset_response	= response->dlrs_message.dlrs_offset_message=
 	    (struct dl_list_offset_response *) dlog_alloc(

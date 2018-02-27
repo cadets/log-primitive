@@ -61,7 +61,7 @@ dl_list_offset_request_new(int32_t correlation_id, char *client_id,
 	struct dl_list_offset_request_partition *partition;
 
 	/* Construct the ListOffsetRequest. */
-	request = dl_request_new(DL_OFFSET_REQUEST, correlation_id,
+	request = dl_request_new(DL_OFFSET_API_KEY, correlation_id,
 	    client_id);
 	
 	list_offset_request = request->dlrqm_message.dlrqmt_offset_request =

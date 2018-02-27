@@ -66,7 +66,7 @@ dl_fetch_request_new(const int32_t correlation_id, char *client_id,
 	struct dl_fetch_request_partition *partition;
 
 	/* Construct the super class Request. */
-	request = dl_request_new(DL_FETCH_REQUEST, correlation_id,
+	request = dl_request_new(DL_FETCH_API_KEY, correlation_id,
 	    client_id);
 	DL_ASSERT(request != NULL, "Failed constructing super class");
 

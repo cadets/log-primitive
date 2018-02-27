@@ -90,26 +90,22 @@ dl_response_encode(struct dl_response *response, char *target)
 	response_size += dl_encode_response_header(response, response_header);
 	response_body = response_header + response_size;
 	
-	printf("Response size = %d\n", response_size);
-
 	switch (response->dlrs_api_key) {
-		case DL_OFFSET_REQUEST:
-			DLOGTR0(PRIO_LOW, "Encoding ListOffsetResponse...\n");
+	case DL_OFFSET_API_KEY:
+		DLOGTR0(PRIO_LOW, "Encoding ListOffsetResponse...\n");
 
-			response_size += dl_list_offset_response_encode(
-			    response->dlrs_message.dlrs_offset_message,
-			    response_body);
-			break;
-		case DL_PRODUCE_REQUEST:
-			DLOGTR0(PRIO_LOW, "Encoding ProduceResponse...\n");
+		response_size += dl_list_offset_response_encode(
+			response->dlrs_message.dlrs_offset_message,
+			response_body);
+		break;
+	case DL_PRODUCE_API_KEY:
+		DLOGTR0(PRIO_LOW, "Encoding ProduceResponse...\n");
 
-			response_size += dl_produce_response_encode(
-			    response->dlrs_message.dlrs_produce_message,
-			    response_body);
-			break;
+		response_size += dl_produce_response_encode(
+			response->dlrs_message.dlrs_produce_message,
+			response_body);
+		break;
 	}
-
-	printf("Response size = %d\n", response_size);
 
 	/* Now that the size is known, encode this in the Request Size. */ 
 	response_size += dl_encode_response_size(target, response_size);

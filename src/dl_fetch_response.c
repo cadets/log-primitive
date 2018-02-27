@@ -62,7 +62,7 @@ dl_fetch_response_decode(char *buffer)
 	response = (struct dl_response *) dlog_alloc(
 		sizeof(struct dl_response));
 
-	response->dlrs_api_key = DL_FETCH_REQUEST;
+	response->dlrs_api_key = DL_FETCH_API_KEY;
 
 	/* Construct the FetchResponse. */
 	response->dlrs_message.dlrs_fetch_message = fetch_response =
