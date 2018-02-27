@@ -48,43 +48,7 @@
 // don't exceed the maximum allowable path length
 #define DL_MAX_TOPIC_NAME_LEN 249
 #define DL_MAX_CLIENT_ID_LEN 249
-
-#define CLIENT_ID_SIZE 12
-#define KEY_SIZE 12
-#define VALUE_SIZE 12
-#define MAX_SET_SIZE 8
-#define METADATA_REQUEST_MAX_TOPICS 64
-#define CONSUMER_GROUP_ID_SIZE 16
-#define CONSUMER_ID_SIZE 16
-#define METADATA_SIZE 16
-#define HOST_SIZE 16
-#define MAX_REPLICAS 16
-#define MAX_ISR 16
-#define METADATAS_SIZE 16
-#define MAX_SUB_SUB_SIZE 16
-#define MAX_SUB_SIZE 16
-#define MAX_SUB_FETCH_SIZE 16
-#define MAX_OFFSETS 16
-#define MAX_SUB_SUB_FETCH_SIZE 16
-#define MAX_PART_OFFSETS 16
-#define MAX_SOR 16
-#define GROUP_ID_SIZE 16
-#define CONSUMER_ID_SIZE 16
-#define MAX_SUB_OCR 16
-#define MAX_SUB_SUB_OCR 16
-#define MAX_SUB_OFR 16
-#define MAX_SUB_SUB_OFR 16
-#define MAX_BROKERS 16
-
 #define MTU 2048
-
-
-// TODO: It's a string in the protocol
-#define DL_MAX_CLIENT_ID 12
-// TODO: improve key/value handling
-#define DL_MESSAGE_KEY_SIZE 256
-#define DL_MESSAGE_VALUE_SIZE 256
-
 
 // TODO: simplified mbuf like structure for encoding and decoding
 // messages
@@ -105,10 +69,6 @@ enum dl_api_key {
 	DL_PRODUCE_REQUEST = 0,
 	DL_FETCH_REQUEST = 1,
 	DL_OFFSET_REQUEST = 2,
-	DL_METADATA_REQUEST = 3,
-	DL_OFFSET_COMMIT_REQUEST = 8,
-	DL_OFFSET_FETCH_REQUEST = 9,
-	DL_COORDINATOR_REQUEST = 10
 };
 typedef enum dl_api_key dl_api_key;
 
