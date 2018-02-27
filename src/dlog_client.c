@@ -469,7 +469,8 @@ dlog_fetch(struct dlog_handle *handle, char *topic_name, int32_t min_bytes,
 }
 
 int
-dlog_list_offset(struct dlog_handle *handle, char *topic, int64_t time)
+dlog_list_offset(struct dlog_handle *handle, char const * const topic,
+    int64_t time)
 {
 	struct dl_buffer *buffer;
 	struct dl_request *message;

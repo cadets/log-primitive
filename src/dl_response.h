@@ -44,9 +44,14 @@
 #include "dl_produce_response.h"
 
 union dl_response_message {
-	struct dl_produce_response *dlrs_produce_response;
-	struct dl_fetch_response *dlrs_fetch_response;
-	struct dl_list_offset_response *dlrs_offset_response;
+	struct dl_produce_response *dlrs_produce_message;
+	struct dl_fetch_response *dlrs_fetch_message;
+	struct dl_list_offset_response *dlrs_offset_message;
+};
+
+struct dl_response_header {
+	int32_t dlrsh_size;
+	int32_t dlrsh_correlation_id;
 };
 
 struct dl_response {
@@ -57,7 +62,7 @@ struct dl_response {
 };
 
 //extern struct dl_response * dl_decode_response(char *);
-extern int dl_decode_response(struct dl_response *, char *);
+extern struct dl_response_header * dl_response_header_decode(char *, char**);
 extern int32_t dl_response_encode(struct dl_response *, char *);
 
 #endif

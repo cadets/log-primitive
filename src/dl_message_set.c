@@ -87,7 +87,7 @@ dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
 	message_set = (struct dl_message_set *) dlog_alloc(
 	    sizeof(struct dl_message_set));
 
-	SLIST_INIT(&message_set->dlms_messages);
+	STAILQ_INIT(&message_set->dlms_messages);
 	message_set->dlms_nmessages = 1;
 
 	message = (struct dl_message *) dlog_alloc(sizeof(struct dl_message));
@@ -97,7 +97,7 @@ dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
 	message->dlm_value = value;
 	message->dlm_value_len = value_len;
 
-	SLIST_INSERT_HEAD(&message_set->dlms_messages, message, dlm_entries);
+	STAILQ_INSERT_HEAD(&message_set->dlms_messages, message, dlm_entries);
 
 	return message_set;
 }
@@ -114,7 +114,7 @@ dl_message_set_decode(char const * const source,
 
 	message_set = (struct dl_message_set *) dlog_alloc(
 	    sizeof(struct dl_message_set));
-	SLIST_INIT(&message_set->dlms_messages);
+	STAILQ_INIT(&message_set->dlms_messages);
 
 	/* Decode the MessageSet. */
 	while (message_set_size > 0) {
@@ -125,7 +125,7 @@ dl_message_set_decode(char const * const source,
 		message_set_size -= msg_size;
 		++message_set->dlms_nmessages;
 
-		SLIST_INSERT_HEAD(&message_set->dlms_messages, message,
+		STAILQ_INSERT_TAIL(&message_set->dlms_messages, message,
 		    dlm_entries);
 	}
 	return message_set;
@@ -216,7 +216,7 @@ dl_message_set_encode(struct dl_message_set const *message_set,
 	DL_ASSERT(message_set != NULL, "MessageSet cannot be NULL");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 
-	SLIST_FOREACH(message, &message_set->dlms_messages, dlm_entries) {
+	STAILQ_FOREACH(message, &message_set->dlms_messages, dlm_entries) {
 	
 		/* Encode the MessageSet Offset into the buffer. */
 		msg_set_size += DL_ENCODE_OFFSET(&target[msg_set_size],
@@ -284,7 +284,7 @@ int32_t dl_message_set_get_size(struct dl_message_set const * const message_set)
 
 	msg_set_size += DL_MESSAGE_SET_SIZE_SIZE + DL_OFFSET_SIZE;
 	
-	SLIST_FOREACH(message, &message_set->dlms_messages, dlm_entries) {
+	STAILQ_FOREACH(message, &message_set->dlms_messages, dlm_entries) {
 		msg_set_size += dl_message_get_size(message);
 	}
 	return msg_set_size;

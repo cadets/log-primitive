@@ -44,37 +44,46 @@
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
 #include "dl_protocol.h"
+#include "dl_response.h"
 
 #define DL_DECODE_TOPIC_NAME(source, target) dl_decode_string(source, target)
 
-struct dl_fetch_response *
+struct dl_response *
 dl_fetch_response_decode(char *buffer)
 {
 	struct dl_message_set *message_set;
-	struct dl_fetch_response *response;
+	struct dl_fetch_response *fetch_response;
 	struct dl_fetch_response_topic *topic;
 	struct dl_fetch_response_partition *partition;
+	struct dl_response *response;
 	int32_t partition_response, response_it;
-     
-	/* Consruct the FetchResponse. */
-	response = (struct dl_fetch_response *) dlog_alloc(
+	
+	/* Construct the FetchResponse. */
+	response = (struct dl_response *) dlog_alloc(
+		sizeof(struct dl_response));
+
+	response->dlrs_api_key = DL_FETCH_REQUEST;
+
+	/* Construct the FetchResponse. */
+	response->dlrs_message.dlrs_fetch_message = fetch_response =
+	    (struct dl_fetch_response *) dlog_alloc(
 		sizeof(struct dl_fetch_response));
 
 	/* Decode the ThrottleTime */	
-	response->dlfr_throttle_time = dl_decode_int32(buffer);
+	fetch_response->dlfr_throttle_time = dl_decode_int32(buffer);
 	buffer += sizeof(int32_t);
 
         /* Decode the responses */	
-	SLIST_INIT(&response->dlfr_topics);
+	SLIST_INIT(&fetch_response->dlfr_topics);
 
-	response->dlfr_ntopics = dl_decode_int32(buffer);
-	DL_ASSERT(response->dlfr_ntopics > 0,
+	fetch_response->dlfr_ntopics = dl_decode_int32(buffer);
+	DL_ASSERT(fetch_response->dlfr_ntopics > 0,
 	    "Response array is not NULLABLE");
 	buffer += sizeof(int32_t);
 
-	SLIST_INIT(&response->dlfr_topics);
+	SLIST_INIT(&fetch_response->dlfr_topics);
 
-	for (response_it = 0; response_it < response->dlfr_ntopics;
+	for (response_it = 0; response_it < fetch_response->dlfr_ntopics;
 	    response_it++) {
 
 		topic = (struct dl_fetch_response_topic *) dlog_alloc(
@@ -125,7 +134,7 @@ dl_fetch_response_decode(char *buffer)
 			    dlfrp_entries);
 		}
 
-		SLIST_INSERT_HEAD(&response->dlfr_topics, topic,
+		SLIST_INSERT_HEAD(&fetch_response->dlfr_topics, topic,
 		    dlfrt_entries);
 	}
 	return response;

@@ -43,7 +43,7 @@
 #include "dl_request.h" 
 
 typedef void (* dl_ack_function) (const int32_t );
-typedef void (* dl_response_function) (const int16_t, struct dl_response const * const);
+typedef void (* dl_response_function) (struct dl_response const * const);
 
 enum broker_confs {
 	BROKER_SEND_ACKS = 1 << 1,

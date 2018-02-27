@@ -306,7 +306,7 @@ dl_handle_list_offset_request(struct dl_request *request)
 		sizeof(struct dl_response));
       	response->dlrs_api_key = DL_OFFSET_REQUEST;
 
-	offset_response	= response->dlrs_message.dlrs_offset_response =
+	offset_response	= response->dlrs_message.dlrs_offset_message=
 	    (struct dl_list_offset_response *) dlog_alloc(
 		sizeof(struct dl_list_offset_response));
 	if (offset_response != NULL) {	

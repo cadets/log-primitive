@@ -51,21 +51,28 @@ static int32_t dl_encode_response_size(char const *, const int32_t);
 #define DL_ENCODE_CORRELATION_ID(source, value) dl_encode_int32(source, value)
 #define DL_ENCODE_SIZE(buffer, value) dl_encode_int32(buffer, value)
 
-// response header?
-int
-dl_decode_response(struct dl_response *response, char *source)
+struct dl_response_header *
+dl_response_header_decode(char *source, char **next)
 {
-	DL_ASSERT(response != NULL, "Response message cannot be NULL\n");
+	struct dl_response_header *header;
+	int32_t response_size;
+
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL\n");
 
+	*next = source;
+
+	header = (struct dl_response_header *) dlog_alloc(
+	    sizeof(struct dl_response_header));
+
         /* Decode the Size */	
-	response->dlrs_size = dl_decode_int32(source);
+	header->dlrsh_size = dl_decode_int32(*next);
+	*next += sizeof(int32_t);
 
         /* Decode the CorrelationId */	
-	response->dlrs_correlation_id = dl_decode_int32(
-	    &source[sizeof(int32_t)]);
+	header->dlrsh_correlation_id = dl_decode_int32(*next);
+	*next += sizeof(int32_t);
 
-	return 0;
+	return header;
 }
 
 int32_t
@@ -90,14 +97,14 @@ dl_response_encode(struct dl_response *response, char *target)
 			DLOGTR0(PRIO_LOW, "Encoding ListOffsetResponse...\n");
 
 			response_size += dl_list_offset_response_encode(
-			    response->dlrs_message.dlrs_offset_response,
+			    response->dlrs_message.dlrs_offset_message,
 			    response_body);
 			break;
 		case DL_PRODUCE_REQUEST:
 			DLOGTR0(PRIO_LOW, "Encoding ProduceResponse...\n");
 
 			response_size += dl_produce_response_encode(
-			    response->dlrs_message.dlrs_offset_response,
+			    response->dlrs_message.dlrs_produce_message,
 			    response_body);
 			break;
 	}

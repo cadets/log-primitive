@@ -42,10 +42,10 @@
 
 #include "dl_protocol.h"
 
-SLIST_HEAD(dl_messages, dl_message);
+STAILQ_HEAD(dl_messages, dl_message);
 
 struct dl_message {
-	SLIST_ENTRY(dl_message) dlm_entries;
+	STAILQ_ENTRY(dl_message) dlm_entries;
 	char const *dlm_key;
 	char const *dlm_value;
 	int64_t dlm_offset;

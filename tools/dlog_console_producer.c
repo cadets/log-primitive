@@ -43,6 +43,10 @@
 #include "dl_memory.h"
 #include "dl_utils.h"
 
+static void dlp_siginfo_handler(int);
+static void dlp_sigint_handler(int);
+static void dlp_on_response(struct dl_response const * const);
+
 /* Configure the distributed log logging level. */
 unsigned short PRIO_LOG = PRIO_LOW;
 
@@ -52,27 +56,23 @@ const dlog_free_func dlog_free = free;
 static char const * const USAGE =
     "%s: [-p port number] [-t topic] [-h hostname] [-v]\n";
 
-static char const * const DLC_DEFAULT_CLIENT_ID = "distlog_console_producer";
+static char const * const DLC_DEFAULT_CLIENT_ID = "dlog_console_producer";
 static char const * const DLC_DEFAULT_TOPIC  = "default";
 static char const * const DLC_DEFAULT_HOSTNAME  = "localhost";
 static const int DLC_DEFAULT_PORT = 9092;
 static const int DLC_DISTLOG_RECORD_SIZE_BYTES = 4096;
 
-static void dlp_siginfo_handler(int);
-static void dlp_sigint_handler(int);
-static void dlp_on_ack(const int32_t);
-static void dlp_on_response(int16_t api_key,
-    struct dl_response const * const);
-
 static void
 dlp_siginfo_handler(int sig)
 {
+
 	dl_debug(PRIO_LOW, "Caught SIGIFO[%d]\n", sig);
 }
 
 static void
 dlp_sigint_handler(int sig)
 {
+
 	dl_debug(PRIO_LOW, "Caught SIGINT[%d]\n", sig);
 	
 	/* Deallocate the buffer used to store the user input. */
@@ -85,15 +85,9 @@ dlp_sigint_handler(int sig)
 }
 
 static void
-dlp_on_ack(const int32_t id)
+dlp_on_response(struct dl_response const * const response)
 {
-	dl_debug(PRIO_LOW, "Broker acknowledged request: %d\n", id);
-}
 
-static void
-dlp_on_response(int16_t api_key,
-    struct dl_response const * const response)
-{
 	dl_debug(PRIO_LOW, "response size = %d\n", response->dlrs_size);
 	dl_debug(PRIO_LOW, "correlation id = %d\n", response->dlrs_correlation_id);
 }
@@ -148,7 +142,6 @@ main(int argc, char **argv)
 	signal(SIGINFO, dlp_siginfo_handler);
 
 	/* Configure and initialise the distributed log client. */
-	cc.dlcc_on_ack = dlp_on_ack;
 	cc.dlcc_on_response = dlp_on_response;
 	cc.client_id = client_id;
 	cc.to_resend = true;

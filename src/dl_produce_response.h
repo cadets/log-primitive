@@ -65,7 +65,7 @@ struct dl_produce_response {
 	int32_t dlpr_throttle_time;
 };
 
-extern struct dl_produce_response * dl_produce_response_decode(char const * const);
+extern struct dl_response * dl_produce_response_decode(char const * const);
 extern int32_t dl_produce_response_encode(struct dl_produce_response *,
     char *);
 struct dl_produce_response * dl_produce_response_new(char *, int32_t, int64_t,

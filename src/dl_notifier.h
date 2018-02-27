@@ -37,6 +37,9 @@
 #ifndef _DL_NOTIFIER_H
 #define _DL_NOTIFIER_H
 
+// TODO: is this needed?
+#include <sys/queue.h>
+
 #include "dl_config.h"
 
 struct notify_queue_element {
@@ -46,24 +49,11 @@ struct notify_queue_element {
 
 STAILQ_HEAD(notify_queue, notify_queue_element);
 
-struct dl_notifier_argument {
-	dl_ack_function dlna_on_ack;
-	dl_response_function dlna_on_response;
-	struct dl_client_configuration const *dlna_config;
-	struct notify_queue *notify_queue;
-	pthread_mutex_t *notify_queue_mtx;
-	pthread_cond_t *notify_queue_cond;
-};
+/* Forward definition of the DLog notifier handle. */
+struct dl_notifier;
 
-struct dl_notifier {
-	pthread_t dln_tid;
-	struct dl_notifier_argument dln_arg;
-	struct notify_queue notify_queue;
-	pthread_mutex_t notify_queue_mtx;
-	pthread_cond_t notify_queue_cond;
-};
-
-extern struct dl_notifier * dl_notifier_new(struct dl_client_configuration const *);
+extern struct dl_notifier * dl_notifier_new(
+    struct dl_client_configuration const *);
 extern void dl_notifier_fini(struct dl_notifier *);
 extern void dl_notifier_response(struct dl_notifier *,
     struct notify_queue_element *);

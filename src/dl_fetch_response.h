@@ -67,6 +67,6 @@ struct dl_fetch_response {
 	int32_t dlfr_throttle_time;
 };
 
-extern struct dl_fetch_response * dl_fetch_response_decode(char *);
+extern struct dl_response * dl_fetch_response_decode(char *);
 
 #endif

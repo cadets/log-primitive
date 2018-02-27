@@ -58,19 +58,14 @@ static char const * const DEFAULT_CLIENT_ID = "console_consumer";
 static char const * const DEFAULT_TOPIC  = "test";
 static char const * const DEFAULT_HOSTNAME  = "localhost";
 static const int DEFAULT_PORT = 9092;
+static const int64_t DEFAULT_TIME = -1;
 
 static struct dlog_handle *handle;
 static char const * client_id = DEFAULT_CLIENT_ID;
 
-static void dlc_on_ack(const int32_t);
-static void dlc_on_response(const int16_t,
-    struct dl_response const * const);
-
 static void dlc_siginfo_handler(int);
 static void dlc_sigint_handler(int);
-static void dlc_on_ack(const dl_correlation_id);
-static void dlc_on_response(const int16_t,
-    struct dl_response const * const);
+static void dlc_on_response(struct dl_response const * const);
 
 static void
 dlc_siginfo_handler(int sig)
@@ -86,23 +81,13 @@ dlc_sigint_handler(int sig)
 	dl_debug(PRIO_LOW, "Caught SIGINT[%d]\n", sig);
 	
 	/* Finalise the distributed log client before finishing. */
-	//dlog_client_close();
+	dlog_client_close(handle);
 
 	exit(EXIT_SUCCESS);
 }
 
-
 static void
-dlc_on_ack(const int32_t correlation_id)
-{
-
-	dl_debug(PRIO_NORMAL, "Broker acknowledged message "
-	    "(correlation ID = %lu)\n", correlation_id);
-}
-
-static void
-dlc_on_response(const int16_t api_key,
-    struct dl_response const * const response)
+dlc_on_response(struct dl_response const * const response)
 {
 	struct dl_fetch_response *fetch_response;
 	struct dl_fetch_response_partition *fetch_partition;
@@ -120,16 +105,9 @@ dlc_on_response(const int16_t api_key,
 	dl_debug(PRIO_LOW, "Response was recieved with correlation ID %d\n",
 	    response->dlrs_correlation_id);
 
-	dl_debug(PRIO_LOW, "Response was recieved with API key%d\n",
-	    response->dlrs_api_key);
-
-	dl_debug(PRIO_LOW, "Response was recieved with API key%d\n",
-	    api_key);
-
-	//switch (response->dlrs_api_key) {
-	switch (api_key) {
+	switch (response->dlrs_api_key) {
 	case DL_FETCH_REQUEST:
-		fetch_response = response->dlrs_message.dlrs_fetch_response;
+		fetch_response = response->dlrs_message.dlrs_fetch_message;
 
 		SLIST_FOREACH(fetch_topic,
 			&fetch_response->dlfr_topics, dlfrt_entries) {
@@ -144,20 +122,23 @@ dlc_on_response(const int16_t api_key,
 				dl_debug(PRIO_LOW, "Partition: %d\n",
 					fetch_partition->dlfrpr_partition);
 
-				dl_debug(PRIO_LOW, "HighWatermark: %d\n",
-					fetch_partition->dlfrpr_high_watermark);
-
 				dl_debug(PRIO_LOW, "ErrorCode: %d\n",
 					fetch_partition->dlfrpr_error_code);
 
-				SLIST_FOREACH(message,
+				STAILQ_FOREACH(message,
 					&fetch_partition->dlfrp_message_set->dlms_messages,
 					dlm_entries) {
 
+				dl_debug(PRIO_LOW, "Offset: %d\n",
+					message->dlm_offset);
 					write(1, message->dlm_value,
 						message->dlm_value_len);
 					write(1, "\n", 1);
 				};
+			
+
+				dl_debug(PRIO_LOW, "HighWatermark: %d\n",
+					fetch_partition->dlfrpr_high_watermark);
 
 				dlog_fetch(handle,
 					fetch_topic->dlfrt_topic_name,
@@ -168,7 +149,7 @@ dlc_on_response(const int16_t api_key,
 		};
 		break;
 	case DL_OFFSET_REQUEST:
-		offset_response = response->dlrs_message.dlrs_offset_response;
+		offset_response = response->dlrs_message.dlrs_offset_message;
 
 		SLIST_FOREACH(offset_topic,
 			&offset_response->dlor_topics, dlort_entries) {
@@ -197,7 +178,7 @@ dlc_on_response(const int16_t api_key,
 		break;
 	default:
 		dl_debug(PRIO_HIGH, "Unexcepted Response %d\n",
-			api_key);
+		    response->dlrs_api_key);
 		break;
 	}
 }
@@ -211,11 +192,9 @@ main(int argc, char **argv)
 	struct dl_client_configuration cc;
 	char const * hostname = DEFAULT_HOSTNAME;
 	char const * topic = DEFAULT_TOPIC;
+	int64_t time = DEFAULT_TIME;
 	int port = DEFAULT_PORT;
-	int resend_timeout = 40;
 	int opt;
-	size_t len = 0;
-	size_t read = 0;
 
 	/* Parse the utilities command line arguments. */
 	while ((opt = getopt(argc, argv, "c::t::h::p::v")) != -1) {
@@ -248,11 +227,10 @@ main(int argc, char **argv)
 	signal(SIGINFO, dlc_siginfo_handler);
 
 	/* Configure and initialise the distributed log client. */
-	cc.dlcc_on_ack = dlc_on_ack;
 	cc.dlcc_on_response = dlc_on_response;
 	cc.client_id = client_id;
 	cc.to_resend = true;
-	cc.resend_timeout = resend_timeout;
+	cc.resend_timeout = 40;
 	cc.resender_thread_sleep_length = 10;
 	cc.request_notifier_thread_sleep_length = 3;
 	cc.reconn_timeout = 5;
@@ -265,13 +243,10 @@ main(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	dlog_list_offset(handle, topic, -2);
+	dlog_list_offset(handle, topic, time);
 	
-       	/* Echo to the command line from the distributed log. */	
 	for (;;) {
 		sleep(1);
-//		dlog_fetch(handle, topic, 100, 1000,
-//		    38601, 10000);
 	}
 
 	dlog_client_close(handle);

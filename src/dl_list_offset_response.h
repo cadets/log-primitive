@@ -65,7 +65,7 @@ struct dl_list_offset_response {
 	int32_t dlor_ntopics;
 };
 
-extern struct dl_list_offset_response * dl_list_offset_response_decode(char *);
+extern struct dl_response * dl_list_offset_response_decode(char *);
 extern int32_t dl_list_offset_response_encode(struct dl_list_offset_response *,
     char *);
 extern struct dl_list_offset_response * dl_list_offset_response_new(char *,

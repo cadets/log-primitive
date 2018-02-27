@@ -88,27 +88,36 @@ dl_list_offset_response_new(char *topic_name, int16_t error_code, int64_t time,
 	return response;
 }
 
-struct dl_list_offset_response *
+struct dl_response *
 dl_list_offset_response_decode(char *source)
 {
-	struct dl_list_offset_response *response;
+	struct dl_list_offset_response *offset_response;
 	struct dl_list_offset_response_partition *response_partition;
 	struct dl_list_offset_response_topic *response_topic;
+	struct dl_response *response;
 	int32_t topic_it, partition_it;
      
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
 
-	/* Construct the ListOffsetResponse. */
-	response = (struct dl_list_offset_response *) dlog_alloc(
-	    sizeof(struct dl_list_offset_response));
+	/* Construct the Response. */
+	response = (struct dl_response *) dlog_alloc(
+		sizeof(struct dl_response));
 
-	SLIST_INIT(&response->dlor_topics);
+	response->dlrs_api_key = DL_OFFSET_REQUEST;
+
+	/* Construct the ListOffsetResponse. */
+	response->dlrs_message.dlrs_offset_message = offset_response =
+	    (struct dl_list_offset_response *) dlog_alloc(
+		sizeof(struct dl_list_offset_response));
+
+	SLIST_INIT(&offset_response->dlor_topics);
 
         /* Decode the [topic_data] array. */
-	response->dlor_ntopics = dl_decode_int32(source);
+	offset_response->dlor_ntopics = dl_decode_int32(source);
 	source += sizeof(int32_t);
 
-	for (topic_it = 0; topic_it < response->dlor_ntopics; topic_it++) {
+	for (topic_it = 0; topic_it < offset_response->dlor_ntopics;
+	    topic_it++) {
 
 		response_topic = (struct dl_list_offset_response_topic *)
 		    dlog_alloc(sizeof(struct dl_list_offset_response_topic));
@@ -156,8 +165,8 @@ dl_list_offset_response_decode(char *source)
 			    response_partition, dlorp_entries);
 		}
 
-		SLIST_INSERT_HEAD(&response->dlor_topics, response_topic,
-		    dlort_entries);
+		SLIST_INSERT_HEAD(&offset_response->dlor_topics,
+		    response_topic, dlort_entries);
 	}
 
 	return response;
@@ -173,12 +182,9 @@ dl_list_offset_response_encode(struct dl_list_offset_response *response,
 
 	DL_ASSERT(response != NULL, "Response cannot be NULL");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
-	printf("Here\n");
         
 	/* Encode the [topic_data] array. */
 	response_size += dl_encode_int32(target, response->dlor_ntopics);
-
-	printf("Here\n");
 
 	SLIST_FOREACH(response_topic, &response->dlor_topics, dlort_entries) {
 
