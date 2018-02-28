@@ -103,6 +103,75 @@ dl_fetch_request_new(const int32_t correlation_id, char *client_id,
 	return request;
 }
 
+struct dl_fetch_request *
+dl_fetch_request_decode(char *source)
+{
+	struct dl_message_set *message_set;
+	struct dl_fetch_request *request;
+	struct dl_fetch_request_topic *topic_request;
+	struct dl_fetch_request_partition *partition_request;
+	int32_t request_size = 0;
+	
+	DL_ASSERT(source != NULL, "Source buffer cannot be NULL\n");
+	
+	/* Construct the FetchRequest. */
+	request = (struct dl_fetch_request *) dlog_alloc(
+		sizeof(struct dl_fetch_request));
+
+	/* Decode the FetchRequest ReplicaId from the buffer. */
+	request->dlfr_replica_id = DL_DECODE_REPLICA_ID(&source[request_size]);
+	request_size += sizeof(int32_t);
+
+	/* Decode the FetchRequest MaxWaitTime from the buffer. */
+	request->dlfr_max_wait_time = DL_DECODE_MAX_WAIT_TIME(&source[request_size]);
+	source += sizeof(int32_t);
+
+	/* Decode the FetchRequest MinBytes from the buffer. */
+	request->dlfr_min_bytes = DL_DECODE_MIN_BYTES(&source[request_size]);
+	request_size += sizeof(int32_t);
+
+	/* Decode the [topics] from the buffer. */
+	request->dlfr_nrequests = dl_decode_int32(&source[request_size]);
+	request_size += sizeof(int32_t);
+
+	/* Denode the FetchRequest ReplicaId into the buffer. */
+	SLIST_FOREACH(topic_request, &request->dlfr_topics, dlfrt_entries) {
+
+		/* Encode the FetchRequest TopicName into the buffer. */
+		request_size += DL_DECODE_TOPIC_NAME(&source[request_size],
+		    topic_request->dlfrt_topic_name);
+
+		/* Encode the [partitions] into the buffer. */	
+	   	topic_request->dlfrt_nrequests = dl_decode_int32(
+		    &source[request_size]);
+		request_size += sizeof(int32_t);
+
+		SLIST_FOREACH(partition_request,
+		    &topic_request->dlfrt_partitions, dlfrp_entries) {
+
+			/* Decode the FetchRequest Partition from the
+			 * buffer.
+			 */
+			partition_request->dlfrp_partition = dl_decode_int32(
+			    &source[request_size]);
+			request_size += sizeof(int32_t);
+
+			/* Decode the FetchRequest FetchOffset from the
+			 * buffer.
+			 */
+			partition_request->dlfrp_fetch_offset =
+			    dl_decode_int64(&source[request_size]);
+			request_size += sizeof(int64_t);
+
+			/* Decode the FetchRequest MaxBytes from the buffer. */
+			partition_request->dlfrp_max_bytes = dl_decode_int32(
+			    &source[request_size]);
+			request_size += sizeof(int32_t);
+		}
+	}
+	return request;
+}
+
 int
 dl_fetch_request_encode(struct dl_fetch_request *self, char *target)
 {
@@ -160,15 +229,5 @@ dl_fetch_request_encode(struct dl_fetch_request *self, char *target)
 			    partition_request->dlfrp_max_bytes);
 		}
 	}
-
 	return request_size;
-}
-
-struct dl_fetch_request *
-dl_fetch_request_decode(char *source)
-{
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL\n");
-
-	// TODO: Decode a FetchRequest
-	return NULL;
 }

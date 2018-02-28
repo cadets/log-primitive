@@ -68,5 +68,6 @@ struct dl_fetch_response {
 };
 
 extern struct dl_response * dl_fetch_response_decode(char *);
+extern int dl_fetch_response_encode(struct dl_fetch_response *, char *);
 
 #endif
