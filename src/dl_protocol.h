@@ -53,6 +53,31 @@
 #define DL_MAX_CLIENT_ID_LEN 249
 #define MTU 2048
 
+#define DL_DECODE_ERROR_CODE(source) dl_decode_int16(source);
+#define DL_DECODE_MAX_WAIT_TIME(source) dl_decode_int32(source)
+#define DL_DECODE_MIN_BYTES(source) dl_decode_int32(source)
+#define DL_DECODE_OFFSET(source) dl_decode_int64(source);
+#define DL_DECODE_PARTITION(source) dl_decode_int32(source)
+#define DL_DECODE_REPLICA_ID(source) dl_decode_int32(source)
+#define DL_DECODE_REQUIRED_ACKS(source) dl_decode_int16(source);
+#define DL_DECODE_TIMEOUT(source) dl_decode_int32(source);
+#define DL_DECODE_TIMESTAMP(source) dl_decode_int64(source);
+#define DL_DECODE_THROTTLE_TIME(source) dl_decode_int32(source)
+#define DL_DECODE_TOPIC_NAME(source, target) dl_decode_string(source, target)
+
+#define DL_ENCODE_ERROR_CODE(target, source) dl_encode_int16(target, source)
+#define DL_ENCODE_MAX_WAIT_TIME(target, value) dl_encode_int32(target, value)
+#define DL_ENCODE_MIN_BYTES(target, value) dl_encode_int32(target, value)
+#define DL_ENCODE_OFFSET(target, source) dl_encode_int64(target, source)
+#define DL_ENCODE_PARTITION(target, source) dl_encode_int32(target, source)
+#define DL_ENCODE_REPLICA_ID(target, value) dl_encode_int32(target, value)
+#define DL_ENCODE_REQUIRED_ACKS(buffer, value) dl_encode_int16(buffer, value);
+#define DL_ENCODE_TIMEOUT(buffer, value) dl_encode_int32(buffer, value);
+#define DL_ENCODE_TIMESTAMP(buffer, value) dl_encode_int64(buffer, value);
+#define DL_ENCODE_THROTTLE_TIME(target, source) dl_encode_int32(target, source)
+#define DL_ENCODE_TOPIC_NAME(target, source) \
+    dl_encode_string(target, source, DL_MAX_TOPIC_NAME_LEN)
+
 // TODO: simplified mbuf like structure for encoding and decoding
 // messages
 struct dl_buffer_hdr {
