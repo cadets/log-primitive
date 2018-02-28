@@ -87,9 +87,47 @@ dlp_sigint_handler(int sig)
 static void
 dlp_on_response(struct dl_response const * const response)
 {
+	struct dl_produce_response *produce_response;
+	struct dl_produce_response_partition *produce_partition;
+	struct dl_produce_response_topic *produce_topic;
 
 	dl_debug(PRIO_LOW, "response size = %d\n", response->dlrs_size);
 	dl_debug(PRIO_LOW, "correlation id = %d\n", response->dlrs_correlation_id);
+	dl_debug(PRIO_LOW, "api key= %d\n", response->dlrs_api_key);
+
+	switch (response->dlrs_api_key) {
+	case DL_PRODUCE_API_KEY:
+		produce_response = response->dlrs_message.dlrs_produce_message;
+
+		dl_debug(PRIO_LOW, "ntopics= %d\n", produce_response->dlpr_ntopics);
+
+		SLIST_FOREACH(produce_topic,
+			&produce_response->dlpr_topics, dlprt_entries) {
+
+			dl_debug(PRIO_LOW, "Topic: %s\n",
+				produce_topic->dlprt_topic_name);
+
+			SLIST_FOREACH(produce_partition,
+				&produce_topic->dlprt_partitions,
+				dlprp_entries) {
+
+				dl_debug(PRIO_LOW, "Partition: %d\n",
+					produce_partition->dlprp_partition);
+
+				dl_debug(PRIO_LOW, "ErrorCode: %d\n",
+					produce_partition->dlprp_error_code);
+
+				dl_debug(PRIO_LOW, "Base offset: %d\n",
+					produce_partition->dlprp_offset);
+			};
+		};
+		break;
+	default:
+		dl_debug(PRIO_HIGH, "Unexcepted Response %d\n",
+		    response->dlrs_api_key);
+		break;
+	}
+
 }
 
 /**

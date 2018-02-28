@@ -47,7 +47,7 @@ SLIST_HEAD(dl_produce_response_partitions, dl_produce_response_partition);
 
 struct dl_produce_response_partition {
 	SLIST_ENTRY(dl_produce_response_partition) dlprp_entries;
-	int64_t dlprp_base_offset;
+	int64_t dlprp_offset;
 	int32_t dlprp_partition;
 	int16_t dlprp_error_code;
 };

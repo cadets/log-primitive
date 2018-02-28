@@ -46,25 +46,26 @@
 #include "dl_protocol.h"
 #include "dl_response.h"
 
-#define DL_ENCODE_BASE_OFFSET(target, source) dl_encode_int64(target, source)
+#define DL_ENCODE_OFFSET(target, source) dl_encode_int64(target, source)
 #define DL_ENCODE_ERROR_CODE(target, source) dl_encode_int16(target, source)
 #define DL_ENCODE_PARTITION(target, source) dl_encode_int32(target, source)
 #define DL_ENCODE_THROTTLE_TIME(target, source) dl_encode_int32(target, source)
 #define DL_ENCODE_TOPIC_NAME(target, source) \
     dl_encode_string(target, source, DL_MAX_TOPIC_NAME_LEN)
 
-#define DL_DECODE_BASE_OFFSET(source) dl_decode_int64(source);
+#define DL_DECODE_OFFSET(source) dl_decode_int64(source);
 #define DL_DECODE_ERROR_CODE(source) dl_decode_int16(source);
 #define DL_DECODE_PARTITION(source) dl_decode_int32(source);
 #define DL_DECODE_THROTTLE_TIME(source) dl_decode_int32(source)
 #define DL_DECODE_TOPIC_NAME(source, target) dl_decode_string(source, target)
 
 static struct dl_produce_response_partition *
-    dl_produce_response_partition_decode(char const * const);
+    dl_produce_response_partition_decode(char const * const,
+	char const ** next);
 
 struct dl_produce_response *
 dl_produce_response_new(char * topic_name, int32_t throttle_time,
-    int64_t base_offset, int16_t error_code)
+    int64_t offset, int16_t error_code)
 {
 	struct dl_produce_response *response;
 	struct dl_produce_response_topic *response_topic;
@@ -92,7 +93,7 @@ dl_produce_response_new(char * topic_name, int32_t throttle_time,
 	    (struct dl_produce_response_partition *) dlog_alloc(
 		sizeof(struct dl_produce_response_partition));	    
 	
-	response_partition->dlprp_base_offset = base_offset;
+	response_partition->dlprp_offset = offset;
 	response_partition->dlprp_partition = 0;
 	response_partition->dlprp_error_code= error_code;
 
@@ -109,11 +110,14 @@ dl_produce_response_decode(char const * const source)
 	struct dl_produce_response_partition *partition_response;
 	struct dl_produce_response_topic *topic_response;
 	struct dl_response *response;
+	char *next;
 	int32_t partition_response_it, response_it, n_responses,
 		n_partition_responses;
 	int16_t topic_name_len;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
+
+	next = source;
 
 	/* Construct the Response. */
 	response = (struct dl_response *) dlog_alloc(
@@ -132,22 +136,24 @@ dl_produce_response_decode(char const * const source)
 	produce_response->dlpr_ntopics = dl_decode_int32(source);
 	DL_ASSERT(produce_response->dlpr_ntopics > 0,
 	    "Non-primitive array types are not NULLABLE");
+	next += sizeof(int32_t);
 
 	/* Decode the responses. */
 	for (response_it = 0; response_it < produce_response->dlpr_ntopics;
 	    response_it++) {
 
-		/* Allocate, decode and enque each response. */
+		/* Allocate, decode and enqueue each response. */
 		topic_response = (struct dl_produce_response_topic *)
 		    dlog_alloc(sizeof(struct dl_produce_response_topic));
 
 		SLIST_INIT(&topic_response->dlprt_partitions);
 
 		/* Decode the TopicName. */
-		DL_DECODE_TOPIC_NAME(source, topic_response->dlprt_topic_name); 
+		next += DL_DECODE_TOPIC_NAME(next, topic_response->dlprt_topic_name); 
 
 		/* Decode the partitions. */
-		topic_response->dlprt_npartitions = dl_decode_int32(source);
+		topic_response->dlprt_npartitions = dl_decode_int32(next);
+		next += sizeof(int32_t);
 
 		for (partition_response_it = 0;
 		    partition_response_it < topic_response->dlprt_npartitions;
@@ -155,7 +161,7 @@ dl_produce_response_decode(char const * const source)
 
 			/* Decode the partition responses. */
 			partition_response =
-			    dl_produce_response_partition_decode(source);
+			    dl_produce_response_partition_decode(next, &next);
 
 			SLIST_INSERT_HEAD(&topic_response->dlprt_partitions,
 			    partition_response, dlprp_entries);
@@ -172,23 +178,30 @@ dl_produce_response_decode(char const * const source)
 }
 
 static struct dl_produce_response_partition * 
-dl_produce_response_partition_decode(char const * const source)
+dl_produce_response_partition_decode(char const * const source,
+    char const **next)
 {
 	struct dl_produce_response_partition *partition_response;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
-	
+
+	*next = source;
+
 	partition_response = (struct dl_produce_response_partition *)
 	    dlog_alloc(sizeof(struct dl_produce_response_partition));
 
 	/* Decode the Partition */
-	partition_response->dlprp_partition = DL_DECODE_PARTITION(source);
+	partition_response->dlprp_partition = DL_DECODE_PARTITION(*next);
+	*next += sizeof(int32_t);
 
 	/* Decode the ErrorCode */
-	partition_response->dlprp_error_code = DL_DECODE_ERROR_CODE(source);
+	partition_response->dlprp_error_code = DL_DECODE_ERROR_CODE(*next);
+	*next += sizeof(int16_t);
 
-	/* Decode the BaseOffset */
-	partition_response->dlprp_base_offset = DL_DECODE_BASE_OFFSET(source);
+	/* Decode the Offset */
+	// TODO this should be the offset of the produce log entry
+	partition_response->dlprp_offset = DL_DECODE_OFFSET(*next);
+	*next += sizeof(int64_t);
 
 	return partition_response;
 }
@@ -218,9 +231,9 @@ dl_produce_response_encode(struct dl_produce_response *response, char *target)
 		    &topic_response->dlprt_partitions, dlprp_entries) {
 
 			/* Encode the BaseOffset. */
-			response_size =+ DL_ENCODE_BASE_OFFSET(
+			response_size =+ DL_ENCODE_OFFSET(
 			    &target[response_size],
-			    partition_response->dlprp_base_offset);
+			    partition_response->dlprp_offset);
 			
 			/* Encode the ErrorCode. */
 			response_size += DL_ENCODE_ERROR_CODE(

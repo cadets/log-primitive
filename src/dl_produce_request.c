@@ -241,6 +241,10 @@ dl_produce_request_encode(
 		SLIST_FOREACH(request_partition,
 		    &request_topic->dlprt_partitions, dlprp_entries) {
 
+			/* Encode the Partition into the buffer. */
+			request_size += dl_encode_int32(&buffer[request_size],
+			    request_partition->dlprp_partition);
+
 			/* Encode the MessageSet Size into the buffer. */
 			request_size += dl_encode_int32(&buffer[request_size],
 			    dl_message_set_get_size(
@@ -250,9 +254,7 @@ dl_produce_request_encode(
 			request_size += dl_message_set_encode(
 			    request_partition->dlprp_message_set,
 			    &buffer[request_size]);
-		
 		}
 	}
-
 	return request_size;
 }
