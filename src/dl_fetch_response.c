@@ -46,11 +46,6 @@
 #include "dl_protocol.h"
 #include "dl_response.h"
 
-#define DL_DECODE_TOPIC_NAME(source, target) dl_decode_string(source, target)
-
-#define DL_ENCODE_TOPIC_NAME(buffer, value) \
-    dl_encode_string(buffer, value, DL_MAX_TOPIC_NAME_LEN)
-
 struct dl_response *
 dl_fetch_response_decode(char *buffer)
 {

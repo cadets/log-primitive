@@ -59,7 +59,6 @@
 #include "dl_config.h"
 #include "dl_event_handler.h"
 #include "dl_memory.h"
-#include "dl_partition.h"
 #include "dl_poll_reactor.h"
 #include "dl_protocol.h"
 #include "dl_request.h"

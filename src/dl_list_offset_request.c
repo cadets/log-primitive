@@ -42,12 +42,6 @@
 #include "dl_primitive_types.h"
 #include "dl_request.h"
 
-#define DL_ENCODE_PARTITION(target, value) dl_encode_int32(target, value)
-#define DL_ENCODE_TOPIC_NAME(target, value) \
-    dl_encode_string(target, value, DL_MAX_TOPIC_NAME_LEN)
-#define DL_ENCODE_REPLICA_ID(target, value) dl_encode_int32(target, value)
-#define DL_ENCODE_TIMESTAMP(target, value) dl_encode_int64(target, value)
-
 /**
  * TODO
  */

@@ -46,8 +46,6 @@
 #include "dl_protocol.h"
 #include "dl_response.h"
 
-#define DL_DECODE_TOPIC_NAME(buffer, value) dl_decode_string(buffer, value)
-
 struct dl_list_offset_response *
 dl_list_offset_response_new(char *topic_name, int16_t error_code, int64_t time,
     int64_t offset)

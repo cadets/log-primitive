@@ -41,7 +41,7 @@
 #include <sys/types.h>
 
 #include "dl_protocol.h"
-#include "dl_partition.h"
+#include "dl_broker_partition.h"
 
 // TODO: need to lookup segment in concurrent hashmap
 extern struct dl_broker_topic *topic;

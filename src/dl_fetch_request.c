@@ -46,15 +46,6 @@
 static const int32_t DL_DEFAULT_PARTITION = 0;
 static const int32_t DL_DEFAULT_REPLICA_ID = -1;
 
-#define DL_ENCODE_MAX_WAIT_TIME(target, value) \
-    dl_encode_int32(target, value)
-#define DL_ENCODE_MIN_BYTES(target, value) \
-    dl_encode_int32(target, value)
-#define DL_ENCODE_REPLICA_ID(target, value) \
-    dl_encode_int32(target, value)
-#define DL_ENCODE_TOPIC_NAME(target, source) \
-    dl_encode_string(target, source, DL_MAX_TOPIC_NAME_LEN)
-
 struct dl_request *
 dl_fetch_request_new(const int32_t correlation_id, char *client_id,
     char *topic_name, const int32_t min_bytes, const int32_t max_wait_time, 
@@ -123,7 +114,8 @@ dl_fetch_request_decode(char *source)
 	request_size += sizeof(int32_t);
 
 	/* Decode the FetchRequest MaxWaitTime from the buffer. */
-	request->dlfr_max_wait_time = DL_DECODE_MAX_WAIT_TIME(&source[request_size]);
+	request->dlfr_max_wait_time =
+	    DL_DECODE_MAX_WAIT_TIME(&source[request_size]);
 	source += sizeof(int32_t);
 
 	/* Decode the FetchRequest MinBytes from the buffer. */

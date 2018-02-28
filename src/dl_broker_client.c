@@ -43,10 +43,10 @@
 
 #include "dl_assert.h"
 #include "dl_broker_client.h"
+#include "dl_broker_partition.h"
 #include "dl_broker_topic.h"
 #include "dl_event_handler.h"
 #include "dl_memory.h"
-#include "dl_partition.h"
 #include "dl_poll_reactor.h"
 #include "dl_produce_request.h"
 #include "dl_request.h"

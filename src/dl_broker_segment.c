@@ -87,8 +87,8 @@
 
 #include <pthread.h>
 
+#include "dl_broker_segment.h"
 #include "dl_memory.h"
-#include "dl_segment.h"
 #include "dl_utils.h"
 
 static int dl_alloc_big_file(int, long int, long int);

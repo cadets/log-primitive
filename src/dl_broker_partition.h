@@ -40,7 +40,7 @@
 #include <sys/queue.h>
 #include <sys/types.h>
 
-#include "dl_segment.h"
+#include "dl_broker_segment.h"
 
 struct dl_partition {
 	SLIST_ENTRY(dl_partition) dlp_entries;

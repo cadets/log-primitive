@@ -46,19 +46,6 @@
 #include "dl_protocol.h"
 #include "dl_response.h"
 
-#define DL_ENCODE_OFFSET(target, source) dl_encode_int64(target, source)
-#define DL_ENCODE_ERROR_CODE(target, source) dl_encode_int16(target, source)
-#define DL_ENCODE_PARTITION(target, source) dl_encode_int32(target, source)
-#define DL_ENCODE_THROTTLE_TIME(target, source) dl_encode_int32(target, source)
-#define DL_ENCODE_TOPIC_NAME(target, source) \
-    dl_encode_string(target, source, DL_MAX_TOPIC_NAME_LEN)
-
-#define DL_DECODE_OFFSET(source) dl_decode_int64(source);
-#define DL_DECODE_ERROR_CODE(source) dl_decode_int16(source);
-#define DL_DECODE_PARTITION(source) dl_decode_int32(source);
-#define DL_DECODE_THROTTLE_TIME(source) dl_decode_int32(source)
-#define DL_DECODE_TOPIC_NAME(source, target) dl_decode_string(source, target)
-
 static struct dl_produce_response_partition *
     dl_produce_response_partition_decode(char const * const,
 	char const ** next);

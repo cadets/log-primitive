@@ -38,8 +38,8 @@
 
 #include <stddef.h>
 
+#include "dl_broker_partition.h"
 #include "dl_memory.h"
-#include "dl_partition.h"
 
 struct dl_partition *
 dl_partition_new(char *topic_name)

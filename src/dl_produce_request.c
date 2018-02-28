@@ -53,11 +53,6 @@
 #include "dl_produce_request.h"
 #include "dl_request.h"
 
-#define DL_ENCODE_REQUIRED_ACKS(buffer, value) dl_encode_int16(buffer, value);
-#define DL_ENCODE_TIMEOUT(buffer, value) dl_encode_int32(buffer, value);
-#define DL_ENCODE_TOPIC_NAME(buffer, value) \
-    dl_encode_string(buffer, value, DL_MAX_TOPIC_NAME_LEN)
-
 struct dl_request *
 dl_produce_request_new(int32_t correlation_id, char *client_id,
     char *topic_name, char * key, int key_len, char *value, int value_len)
