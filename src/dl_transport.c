@@ -36,6 +36,8 @@
 
 #include <sys/socket.h>
 #include <sys/poll.h>
+#include <sys/types.h>
+#include <sys/sbuf.h>
 
 #ifdef _KERNEL
 #else
@@ -65,7 +67,8 @@ dl_transport_connect(struct dl_transport *self,
      	// struct	ucred *cred, struct thread *td);
 #else
 #endif
-	if ((self->dlt_sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+	self->dlt_sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (self->dlt_sock == -1)
 		return -1;
 
 	bzero(&dest, sizeof(dest));
@@ -80,10 +83,9 @@ dl_transport_connect(struct dl_transport *self,
 	// 	 struct	ucred *cred, struct thread *td);
 #else
 	if (connect(self->dlt_sock, (struct sockaddr *) &dest,
-	    sizeof(dest)) != 0)
+	    sizeof(dest)) < 0)
 		return -3;
 #endif
-
 	return sockfd;
 }
 
@@ -123,7 +125,7 @@ dl_transport_read_msg(struct dl_transport *self, char *buffer)
 			}
 
 			for (int b = 0; b < req_or_res->dlrx_size; b++) {
-				DLOGTR1(PRIO_LOW, "<0x%02X>", buffer[b]);
+				DLOGTR1(PRIO_LOW, "<0x%02hhX>", buffer[b]);
 			}
 			DLOGTR0(PRIO_LOW, "\n");
 

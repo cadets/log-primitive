@@ -114,7 +114,7 @@ dl_handle_read_event(void *instance)
 			}
 
 			for (int b = 0; b < req_or_res->dlrx_size; b++) {
-				DLOGTR1(PRIO_LOW, "<0x%02X>", buffer[b]);
+				DLOGTR1(PRIO_LOW, "<0x%02hX>", buffer[b]);
 			}
 			DLOGTR0(PRIO_LOW, "\n");
 	

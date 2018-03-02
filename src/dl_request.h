@@ -38,6 +38,7 @@
 #define _DL_REQUEST_H
 
 #include <sys/types.h>
+#include <sys/sbuf.h>
 
 #include "dl_fetch_request.h"
 #include "dl_list_offset_request.h"
@@ -59,6 +60,6 @@ struct dl_request {
 extern struct dl_request * dl_request_new(const int16_t, const int32_t, char *);
 extern struct dl_request * dl_request_decode(char *);
 extern int dl_request_encode(struct dl_request const *,
-    struct dl_buffer const *);
+    struct dl_buffer *);
 
 #endif

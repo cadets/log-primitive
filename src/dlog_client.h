@@ -53,6 +53,26 @@
 
 struct dlog_handle;
 
+/**
+ * This function is invoked as a callback in case a disconnect on
+ * TCP level is detected.
+ */
+typedef void (*dl_on_server_closed_func)(void *, void *);
+
+struct dl_client_event_notifier {
+	/** An instance of the server owning the client.
+	 *  This instance shall be passed as an argument to the callbacks.
+	 */
+	void *server;
+
+	/** Specifies a callback to be used by the client to
+	 *  inform its server about a closed connection.
+	 */
+	dl_on_server_closed_func on_client_closed;
+
+	struct broker_configuration *dlben_conf;
+};
+
 extern struct dlog_handle * dlog_client_open(const char * const,
     const int, struct dl_client_configuration const * const);
 extern int dlog_client_close(struct dlog_handle *);

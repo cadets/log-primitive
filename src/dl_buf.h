@@ -34,30 +34,32 @@
  *
  */
 
-#ifndef _DL_NOTIFIER_H
-#define _DL_NOTIFIER_H
+#ifndef _DL_BUF_H
+#define _DL_BUF_H
 
-// TODO: is this needed?
-#include <sys/queue.h>
+#include <sys/types.h>
 
-#include "dl_config.h"
-
-struct notify_queue_element {
-	char pbuf[MTU];
-	STAILQ_ENTRY(notify_queue_element) entries;
+enum dl_buf_flags {
+	DL_BUF_AUTOEXTEND,
+	DL_BUF_FIXED,
+	DL_BUF_EXTERNBUF,
 };
+typedef enum dl_buf_flags dl_buf_flags;
 
-STAILQ_HEAD(notify_queue, notify_queue_element);
+struct dl_buf;
 
-/* Forward definition of the DLog notifier handle. */
-struct dl_notifier;
-
-extern struct dl_notifier * dl_notifier_new(
-    struct dl_client_configuration const *);
-extern void dl_notifier_fini(struct dl_notifier *);
-extern void dl_notifier_response(struct dl_notifier *,
-    struct notify_queue_element *);
-extern int dl_notifier_start(struct dl_notifier *);
-extern int dl_notifier_stop(struct dl_notifier *);
+extern int dl_buf_new(struct dl_buf **, char *, int, int);
+extern int dl_buf_new_auto(struct dl_buf **);
+extern void dl_buf_clear(struct dl_buf *);
+extern char * dl_buf_data(struct dl_buf *);
+extern int dl_buf_len(struct dl_buf *);
+extern int dl_buf_get_int8(struct dl_buf *, u_int8_t *);
+extern int dl_buf_get_int16(struct dl_buf *, u_int16_t *);
+extern int dl_buf_get_int32(struct dl_buf *, u_int32_t *);
+extern int dl_buf_get_int64(struct dl_buf *, u_int64_t *);
+extern int dl_buf_put_int8(struct dl_buf *, u_int8_t);
+extern int dl_buf_put_int16(struct dl_buf *, u_int16_t);
+extern int dl_buf_put_int32(struct dl_buf *, u_int32_t);
+extern int dl_buf_put_int64(struct dl_buf *, u_int64_t);
 
 #endif

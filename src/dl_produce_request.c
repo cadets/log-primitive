@@ -46,6 +46,7 @@
 #include <time.h>
 
 #include "dl_assert.h"
+#include "dl_buf.h"
 #include "dl_memory.h"
 #include "dl_message_set.h"
 #include "dl_primitive_types.h"
@@ -191,56 +192,62 @@ dl_produce_request_decode(char *source)
 int
 dl_produce_request_encode(
     struct dl_produce_request const * const produce_request,
-    char * buffer)
-//    struct dl_buffer const *buffer)
+    struct dl_buf *buffer)
 {
 	struct dl_produce_request_topic *request_topic;
 	struct dl_produce_request_partition *request_partition;
-	int32_t msg_set_size = 0, request_size = 0;
+	int32_t msg_set_size = 0;
 
 	DL_ASSERT(produce_request != NULL, "ProduceRequest cannot be NULL");
 	DL_ASSERT(buffer != NULL, "Target buffer cannot be NULL");
 
 	/* Encode the Request RequiredAcks into the buffer. */
-	request_size += DL_ENCODE_REQUIRED_ACKS(&buffer[request_size],
-	    	produce_request->dlpr_required_acks);
+	//DL_ENCODE_REQUIRED_ACKS(buffer, produce_request->dlpr_required_acks);
+	printf("here\n");
+	dl_buf_put_int16(buffer, produce_request->dlpr_required_acks);
+	printf("here\n");
 
 	/* Encode the Request Timeout into the buffer. */
-	request_size += DL_ENCODE_TIMEOUT( &buffer[request_size],
-	    produce_request->dlpr_timeout);
+	//DL_ENCODE_TIMEOUT(buffer, produce_request->dlpr_timeout);
+	dl_buf_put_int64(buffer, produce_request->dlpr_timeout);
 
 	/* Encode the [topic_data] array. */
-	request_size += dl_encode_int32(&buffer[request_size],
-	    produce_request->dlpr_ntopics);
+	dl_buf_put_int32(buffer, htobe32(produce_request->dlpr_ntopics));
 
 	SLIST_FOREACH(request_topic, &produce_request->dlpr_topics,
 	    dlprt_entries) {
 
 		/* Encode the Request TopicName into the buffer. */
-		request_size += DL_ENCODE_TOPIC_NAME(&buffer[request_size],
-		    request_topic->dlprt_topic_name);
-
+		//request_size += DL_ENCODE_TOPIC_NAME(&buffer[request_size],
+		//    request_topic->dlprt_topic_name);
+		dl_buf_put_int16(buffer,
+		    strlen(request_topic->dlprt_topic_name));
+		for (int i = 0; i < strlen(request_topic->dlprt_topic_name); i++) {
+			dl_buf_put_int8(buffer, request_topic->dlprt_topic_name[i]);
+		};
+		// TODO
+	
 		/* Encode the [data] array. */
-		request_size += dl_encode_int32(&buffer[request_size],
-		    request_topic->dlprt_npartitions);
+		dl_buf_put_int32(buffer,
+		    htobe32(request_topic->dlprt_npartitions));
 
 		SLIST_FOREACH(request_partition,
 		    &request_topic->dlprt_partitions, dlprp_entries) {
 
 			/* Encode the Partition into the buffer. */
-			request_size += dl_encode_int32(&buffer[request_size],
+			//DL_ENCODE_PARTITION(buffer,
+			//    request_partition->dlprp_partition);
+			dl_buf_put_int32(buffer,
 			    request_partition->dlprp_partition);
 
 			/* Encode the MessageSet Size into the buffer. */
-			request_size += dl_encode_int32(&buffer[request_size],
-			    dl_message_set_get_size(
+			dl_buf_put_int32(buffer, dl_message_set_get_size(
 			    request_partition->dlprp_message_set));
 
 			/* Encode the MessageSet */
-			request_size += dl_message_set_encode(
-			    request_partition->dlprp_message_set,
-			    &buffer[request_size]);
+			//request_size += dl_message_set_encode(
+			//    request_partition->dlprp_message_set, buffer);
 		}
 	}
-	return request_size;
+	return 0;
 }

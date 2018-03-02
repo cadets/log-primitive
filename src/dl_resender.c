@@ -52,43 +52,51 @@
 #include <unistd.h>
 
 #include "dl_assert.h"
+#include "dl_config.h"
 #include "dl_memory.h"
 #include "dl_request_queue.h"
 #include "dl_resender.h"
 #include "dl_transport.h"
 #include "dl_utils.h"
+#include "dlog_client.h"
+	
+RB_HEAD(dlr_unackd_requests, dl_request_element);
 
-struct dl_resender_argument {
-	struct dl_client_configuration const *dlra_config;
-	pthread_t *dlra_tid;
+struct dl_resender {
+	struct dlr_unackd_requests dlr_unackd;
+	pthread_t dlr_tid;
+	pthread_mutex_t dlr_unackd_mtx;
+	pthread_cond_t dlr_unackd_cond;
+	struct dlog_handle *dlr_handle;
+	int dlr_sleep_ms;
 };
 
-static struct dl_resender_argument resender_arg;
-static pthread_t resender;
+struct dl_resender_argument {
+	struct dl_resender *dlra_resender;
+};
 
-RB_HEAD(dl_unackd_requests, dl_request_element) unackd_requests;
-static pthread_mutex_t unackd_requests_mtx;
-static pthread_cond_t unackd_requests_cond;
+static int dl_request_element_cmp(struct dl_request_element *,
+    struct dl_request_element *);
+static void * dl_resender_thread(void *);
+
+RB_PROTOTYPE(dlr_unackd_requests, dl_request_element, dlrq_linkage,
+    dl_request_element_cmp);
+RB_GENERATE(dlr_unackd_requests, dl_request_element, dlrq_linkage,
+    dl_request_element_cmp);
 
 static int
 dl_request_element_cmp(struct dl_request_element *el1,
     struct dl_request_element *el2)
 {
-	return el2->dlrq_correlation_id -
-	    el1->dlrq_correlation_id;
+	return el2->dlrq_correlation_id - el1->dlrq_correlation_id;
 }
-
-RB_PROTOTYPE(dl_unackd_requests, dl_request_element, dlrq_linkage,
-    dl_request_element_cmp);
-RB_GENERATE(dl_unackd_requests, dl_request_element, dlrq_linkage,
-    dl_request_element_cmp);
-
-static void * dl_resender_thread(void *);
 
 static void *
 dl_resender_thread(void *vargp)
 {
-	struct dl_resender_argument *ra = (struct dl_resender_argument *) vargp;
+	struct dl_resender *resender;
+	struct dl_resender_argument *ra =
+	    (struct dl_resender_argument *) vargp;
 	struct dl_request_element *request, *request_temp;
 	time_t now;
 	int old_cancel_state;
@@ -96,6 +104,10 @@ dl_resender_thread(void *vargp)
 	DL_ASSERT(vargp != NULL, "Resender thread arguments cannot be NULL");
 
 	DLOGTR0(PRIO_LOW, "Resender thread started\n");
+
+	/* Take a copy of the resender thread arguments before freeing. */
+	resender = ra->dlra_resender;
+	dlog_free(vargp);
 
 	/* Defer cancellation of the thread until the cancellation point 
 	 * pthread_testcancel(). This ensures that thread isn't cancelled until
@@ -107,9 +119,9 @@ dl_resender_thread(void *vargp)
 		// TODO: should probably check that this is empty
 		pthread_testcancel();
 
-		pthread_mutex_lock(&unackd_requests_mtx);
-		RB_FOREACH_SAFE(request, dl_unackd_requests, &unackd_requests,
-		    request_temp) {
+		pthread_mutex_lock(&resender->dlr_unackd_mtx);
+		RB_FOREACH_SAFE(request, dlr_unackd_requests,
+		    &resender->dlr_unackd, request_temp) {
 			if (request->dlrq_should_resend) {
 				now = time(NULL);
 				DLOGTR4(PRIO_LOW, "Was sent %lu now is %lu. "
@@ -123,38 +135,42 @@ dl_resender_thread(void *vargp)
 				    request->dlrq_resend_timeout) {
 					request->dlrq_last_sent = time(NULL);
 
-					RB_REMOVE(dl_unackd_requests,
-					    &unackd_requests, request);
+					RB_REMOVE(dlr_unackd_requests,
+					    &resender->dlr_unackd, request);
 
 					dlog_free(request);
 					DLOGTR0(PRIO_LOW, "Done.\n");
 				}
 			}
 		}
-		pthread_mutex_unlock(&unackd_requests_mtx);
+		pthread_mutex_unlock(&resender->dlr_unackd_mtx);
 
 		DLOGTR1(PRIO_LOW,
 		    "Resender thread is going to sleep for %d seconds\n",
-		    ra->dlra_config->resender_thread_sleep_length);
+		    resender->dlr_sleep_ms);
 
-		// TODO: sleep_length is a slight odd name
-		// and it is in seconds
-		sleep(ra->dlra_config->resender_thread_sleep_length);
+		sleep(resender->dlr_sleep_ms);
 	}
-	return NULL;
+	pthread_exit(NULL);
 }
 
-int
-dl_resender_init(struct dl_client_configuration const *cc)
+struct dl_resender *
+dl_resender_new(struct dl_client_configuration *cc)
 {
+	struct dl_resender *resender;
+
+	resender = (struct dl_resender *) dlog_alloc(
+	    sizeof(struct dl_resender));
+
 	/* Initialise a red/black tree used to index the unacknowledge
 	 * responses.
 	 */
-	RB_INIT(&unackd_requests);
-	pthread_mutex_init(&unackd_requests_mtx, NULL);
+	RB_INIT(&resender->dlr_unackd);
+	pthread_mutex_init(&resender->dlr_unackd_mtx, NULL);
+	pthread_cond_init(&resender->dlr_unackd_cond, NULL);
+	resender->dlr_sleep_ms = cc->resender_thread_sleep_length;
 
-	resender_arg.dlra_config = cc;
-	return 0;
+	return resender;
 }	
 int
 dl_resender_fini()
@@ -163,36 +179,42 @@ dl_resender_fini()
 }
 
 int
-dl_resender_start(struct dl_client_configuration const *cc)
+dl_resender_start(struct dl_resender *resender)
 {
+	struct dl_resender_argument *resender_arg;
 	int ret;
 
-	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
+	DL_ASSERT(resender != NULL, "Resender instance cannot be NULL");
 
-	return pthread_create(&resender, NULL, dl_resender_thread,
-	    &resender_arg);
+	resender_arg = (struct dl_resender_argument *) dlog_alloc(
+	    sizeof(struct dl_resender_argument));
+	resender_arg->dlra_resender = resender;
+
+	return pthread_create(&resender->dlr_tid, NULL, dl_resender_thread,
+	    resender_arg);
 }
 
 /* Cancel the resender thread */
 int
-dl_resender_stop()
+dl_resender_stop(struct dl_resender *resender)
 {
 
-	return pthread_cancel(resender);
+	return pthread_cancel(resender->dlr_tid);
 }
 
 int
-dl_resender_unackd_request(struct dl_request_element *request)
+dl_resender_unackd_request(struct dl_resender *resender,
+    struct dl_request_element *request)
 {
-	pthread_mutex_lock(&unackd_requests_mtx);
-	RB_INSERT(dl_unackd_requests, &unackd_requests, request);
-	pthread_mutex_unlock(&unackd_requests_mtx);
+	pthread_mutex_lock(&resender->dlr_unackd_mtx);
+	RB_INSERT(dlr_unackd_requests, &resender->dlr_unackd, request);
+	pthread_mutex_unlock(&resender->dlr_unackd_mtx);
 
 	return 0;
 }
 
 struct dl_request_element *
-dl_resender_ackd_request(int correlation_id)
+dl_resender_ackd_request(struct dl_resender *resender, int correlation_id)
 {
 	struct dl_request_element find, *request = NULL;
 
@@ -201,20 +223,20 @@ dl_resender_ackd_request(int correlation_id)
  	 */
 	find.dlrq_correlation_id = correlation_id;
 
-	pthread_mutex_lock(&unackd_requests_mtx);
-	request = RB_FIND(dl_unackd_requests, &unackd_requests, &find);
+	pthread_mutex_lock(&resender->dlr_unackd_mtx);
+	request = RB_FIND(dlr_unackd_requests,
+	    &resender->dlr_unackd, &find);
 	if (request != NULL) {
-		DLOGTR1(PRIO_LOW,
-			"Found unacknowledged request id: %d\n",
-			request->dlrq_correlation_id);
+		DLOGTR1(PRIO_LOW, "Found unacknowledged request id: %d\n",
+		    request->dlrq_correlation_id);
 
 		/* Remove the unacknowledged request and return it
 		 * to the caller for processing.
 		 */
-		request = RB_REMOVE(dl_unackd_requests,
-			&unackd_requests, request);
+		request = RB_REMOVE(dlr_unackd_requests,
+		    &resender->dlr_unackd, request);
 	}
-	pthread_mutex_unlock(&unackd_requests_mtx);
+	pthread_mutex_unlock(&resender->dlr_unackd_mtx);
 
 	return request;
 }

@@ -40,6 +40,7 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 
+#include "dl_buf.h"
 #include "dl_protocol.h"
 
 STAILQ_HEAD(dl_messages, dl_message);

@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -38,15 +38,19 @@
 #define _DL_RESENDER_H
 
 #include "dl_config.h"
-
-#include "dl_config.h"
 #include "dl_request_queue.h"
 
-extern int dl_resender_init(struct dl_client_configuration const *);
+/* Forward definition of DLog resender handle. */
+struct dl_resender;
+
+extern struct dl_resender * dl_resender_new(
+    struct dl_client_configuration *);
 extern int dl_resender_fini();
-extern int dl_resender_start(struct dl_client_configuration const *);
-extern int dl_resender_stop();
-extern int dl_resender_unackd_request(struct dl_request_element *);
-extern struct dl_request_element * dl_resender_ackd_request(int);
+extern int dl_resender_start(struct dl_resender *);
+extern int dl_resender_stop(struct dl_resender *);
+extern int dl_resender_unackd_request(struct dl_resender *,
+    struct dl_request_element *);
+extern struct dl_request_element * dl_resender_ackd_request(
+    struct dl_resender *, int);
 
 #endif

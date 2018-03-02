@@ -361,14 +361,14 @@ dlog_broker_init(char const * const topic_name,
 	/* Install signal handler to report broker statistics. */
 	signal(SIGINFO, dl_siginfo_handler);
 
+	/* Create the specified partition; deleting if already present. */
+	dl_del_folder(topic_name);
+	dl_make_folder(topic_name);
+
 	/* Create the hashmap to store the names of the topics managed by the
 	 * broker and their segments.
 	 */
 	//TODO
-
-	/* Create the specified partition; deleting if already present. */
-	dl_del_folder(topic_name);
-	dl_make_folder(topic_name);
 
 	/* Preallocate an initial segement file for the topic. */
 	//partition = dl_partition_new(topic_name);

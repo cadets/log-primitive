@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -36,6 +36,9 @@
 
 #ifndef _DL_TRANSPORT_H
 #define _DL_TRANSPORT_H
+
+#include <sys/types.h>
+#include <sys/sbuf.h>
 
 #include "dl_protocol.h"
 
