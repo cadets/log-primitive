@@ -34,6 +34,7 @@
  *
  */
 
+#include <sbuf.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -61,7 +62,7 @@ static const int DEFAULT_PORT = 9092;
 static const int64_t DEFAULT_TIME = -1;
 
 static struct dlog_handle *handle;
-static char const * client_id = DEFAULT_CLIENT_ID;
+//static char const * client_id = DEFAULT_CLIENT_ID;
 
 static void dlc_siginfo_handler(int);
 static void dlc_sigint_handler(int);
@@ -190,23 +191,29 @@ int
 main(int argc, char **argv)
 {
 	struct dl_client_configuration cc;
-	char const * hostname = DEFAULT_HOSTNAME;
-	char const * topic = DEFAULT_TOPIC;
+	struct sbuf *client_id = NULL;
+	struct sbuf *hostname = NULL;
+	struct sbuf *topic = NULL;
 	int64_t time = DEFAULT_TIME;
 	int port = DEFAULT_PORT;
 	int opt;
+	
+	/* Configure the default values. */
+	sbuf_cpy(client_id, DEFAULT_CLIENT_ID);
+	sbuf_cpy(hostname, DEFAULT_HOSTNAME);
+	sbuf_cpy(topic, DEFAULT_TOPIC);
 
 	/* Parse the utilities command line arguments. */
 	while ((opt = getopt(argc, argv, "c::t::h::p::v")) != -1) {
 		switch (opt) {
 		case 'c':
-			client_id = optarg;
+			sbuf_cpy(client_id, optarg);
 			break;
 		case 't':
-			topic = optarg;
+			sbuf_cpy(topic, optarg);
 			break;
 		case 'h':
-			hostname = optarg;
+			sbuf_cpy(hostname, optarg);
 			break;
 		case 'p':
 			port = strtoul(optarg, NULL, 10);
@@ -228,8 +235,7 @@ main(int argc, char **argv)
 
 	/* Configure and initialise the distributed log client. */
 	cc.dlcc_on_response = dlc_on_response;
-	cc.client_id = client_id;
-	cc.to_resend = true;
+	cc.dlcc_client_id = client_id;
 	cc.resend_timeout = 40;
 	cc.resender_thread_sleep_length = 10;
 	cc.request_notifier_thread_sleep_length = 3;
@@ -249,6 +255,8 @@ main(int argc, char **argv)
 		sleep(1);
 	}
 
+	sbuf_delete(topic);
+	sbuf_delete(hostname);
 	dlog_client_close(handle);
 
 	return 0;

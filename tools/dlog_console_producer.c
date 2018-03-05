@@ -34,6 +34,7 @@
  *
  */
 
+#include <sbuf.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -90,6 +91,7 @@ dlp_on_response(struct dl_response const * const response)
 	struct dl_produce_response *produce_response;
 	struct dl_produce_response_partition *produce_partition;
 	struct dl_produce_response_topic *produce_topic;
+	int partition;
 
 	dl_debug(PRIO_LOW, "response size = %d\n", response->dlrs_size);
 	dl_debug(PRIO_LOW, "correlation id = %d\n", response->dlrs_correlation_id);
@@ -107,18 +109,18 @@ dlp_on_response(struct dl_response const * const response)
 			dl_debug(PRIO_LOW, "Topic: %s\n",
 				produce_topic->dlprt_topic_name);
 
-			SLIST_FOREACH(produce_partition,
-				&produce_topic->dlprt_partitions,
-				dlprp_entries) {
+			for (partition = 0;
+			    partition < produce_topic->dlprt_npartitions;
+			    partition++) {
 
 				dl_debug(PRIO_LOW, "Partition: %d\n",
-					produce_partition->dlprp_partition);
+				    produce_topic->dlprt_partitions[partition].dlprp_partition);
 
 				dl_debug(PRIO_LOW, "ErrorCode: %d\n",
-					produce_partition->dlprp_error_code);
+				    produce_topic->dlprt_partitions[partition].dlprp_error_code);
 
 				dl_debug(PRIO_LOW, "Base offset: %d\n",
-					produce_partition->dlprp_offset);
+					produce_topic->dlprt_partitions[partition].dlprp_offset);
 			};
 		};
 		break;
@@ -138,9 +140,9 @@ main(int argc, char **argv)
 {
 	struct dlog_handle *handle;
 	struct dl_client_configuration cc;
-	char const * client_id = DLC_DEFAULT_CLIENT_ID;
-	char const * topic = DLC_DEFAULT_TOPIC;
-	char const * hostname = DLC_DEFAULT_HOSTNAME;
+	struct sbuf *client_id = NULL;
+	struct sbuf *hostname = NULL;
+	struct sbuf *topic = NULL;
 	char * line;
 	int port = DLC_DEFAULT_PORT;
 	int resend_timeout = 40;
@@ -148,17 +150,22 @@ main(int argc, char **argv)
 	size_t len = 0;
 	size_t read = 0;
 
+	/* Configure the default values. */
+	sbuf_cpy(client_id, DLC_DEFAULT_CLIENT_ID);
+	sbuf_cpy(hostname, DLC_DEFAULT_HOSTNAME);
+	sbuf_cpy(topic, DLC_DEFAULT_TOPIC);
+
 	/* Parse the utilities command line arguments. */
 	while ((opt = getopt(argc, argv, "c::t::h::p::v")) != -1) {
 		switch (opt) {
 		case 'c':
-			client_id = optarg;
+			sbuf_cpy(client_id, optarg);
 			break;
 		case 't':
-			topic = optarg;
+			sbuf_cpy(topic, optarg);
 			break;
 		case 'h':
-			hostname = optarg;
+			sbuf_cpy(hostname, optarg);
 			break;
 		case 'p':
 			port = strtoul(optarg, NULL, 10);
@@ -181,7 +188,7 @@ main(int argc, char **argv)
 
 	/* Configure and initialise the distributed log client. */
 	cc.dlcc_on_response = dlp_on_response;
-	cc.client_id = client_id;
+	cc.dlcc_client_id = client_id;
 	cc.to_resend = true;
 	cc.resend_timeout = resend_timeout;
 	cc.resender_thread_sleep_length = 10;
@@ -209,8 +216,8 @@ main(int argc, char **argv)
 			 */
 			line[strlen(line) - 1] = '\0';
 
-			rc = dlog_produce(handle, topic,"key", strlen("key"),
-			    line, strlen(line));
+			rc = dlog_produce(handle, topic,
+			    "key", strlen("key"), line, strlen(line));
 			if (rc != 0) {
 				fprintf(stderr,
 				    "Failed writing to the log %d\n", rc); 
@@ -224,6 +231,10 @@ main(int argc, char **argv)
 
 	/* Close the distributed log before finishing. */
 	dlog_client_close(handle);
+
+	sbuf_delete(topic);
+	sbuf_delete(hostname);
+	sbuf_delete(client_id);
 
 	return 0;
 }
