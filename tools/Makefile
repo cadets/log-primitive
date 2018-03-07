@@ -47,6 +47,7 @@ MAN.dlog_console_consumer=
 LDADD+= -lz
 LDADD+= -lpthread
 LDADD+= -lm
+LDADD+= -lsbuf
 LDADD+= ${SRCTOP}/obj/libdlog.a
 
 CFLAGS+= -I${SRCTOP}

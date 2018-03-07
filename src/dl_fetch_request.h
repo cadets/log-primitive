@@ -38,16 +38,19 @@
 #define _DL_FETCH_REQUEST_H
 
 #include <sys/queue.h>
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
 
-#include "dl_protocol.h"
+#include "dl_buf.h"
 
 struct dl_request;
 
 SLIST_HEAD(dl_fetch_request_q, dl_fetch_request_topic);
-SLIST_HEAD(dl_fetch_request_partition_q, dl_fetch_request_partition);
 
 struct dl_fetch_request_partition {
-	SLIST_ENTRY(dl_fetch_request_partition) dlfrp_entries;
 	int64_t dlfrp_fetch_offset;
 	int32_t dlfrp_max_bytes;
 	int32_t dlfrp_partition;
@@ -55,22 +58,23 @@ struct dl_fetch_request_partition {
 
 struct dl_fetch_request_topic {
 	SLIST_ENTRY(dl_fetch_request_topic) dlfrt_entries;
-	struct dl_fetch_request_partition_q dlfrt_partitions;
-	char *dlfrt_topic_name;
-	int32_t dlfrt_nrequests;
+	struct sbuf *dlfrt_topic_name;
+	int32_t dlfrt_npartitions;
+	struct dl_fetch_request_partition dlfrt_partitions[1];
 };
 
 struct dl_fetch_request {
 	struct dl_fetch_request_q dlfr_topics;
-	int32_t dlfr_nrequests;
+	int32_t dlfr_ntopics;
 	int32_t dlfr_replica_id;
 	int32_t dlfr_max_wait_time;
 	int32_t dlfr_min_bytes;
 };
 
-extern struct dl_request * dl_fetch_request_new(const int32_t, char *, char *,
-    const int32_t, const int32_t,  const int64_t, const int32_t);
-extern struct dl_fetch_request * dl_fetch_request_decode(char *);
-extern int dl_fetch_request_encode(struct dl_fetch_request *, char *);
+extern struct dl_request * dl_fetch_request_new(const int32_t, struct sbuf *,
+    struct sbuf *, const int32_t, const int32_t,  const int64_t,
+    const int32_t);
+extern struct dl_fetch_request * dl_fetch_request_decode(struct dl_buf *);
+extern int dl_fetch_request_encode(struct dl_fetch_request *, struct dl_buf *);
 
 #endif

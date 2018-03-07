@@ -36,47 +36,36 @@
 
 #include <sys/time.h>
 
+#ifdef KERNEL
+// TODO: crc32 in kernel libkern/crc32.c
+#else
+#include <zlib.h>
+#endif
+
 #include <stddef.h>
 
-// In kernel
-#include <zlib.h>
-
 #include "dl_assert.h"
+#include "dl_buf.h"
 #include "dl_primitive_types.h"
 #include "dl_memory.h"
 #include "dl_message_set.h"
+#include "dl_utils.h"
 
-static const int8_t DL_MESSAGE_MAGIC_BYTE = 0x01;
+static const int8_t DL_MESSAGE_MAGIC_BYTE_V0 = 0x00;
+static const int8_t DL_MESSAGE_MAGIC_BYTE_V1 = 0x01;
+static const int8_t DL_MESSAGE_MAGIC_BYTE = DL_MESSAGE_MAGIC_BYTE_V1;
 static const int8_t DL_MESSAGE_ATTRIBUTES = 0x00;
 static const int64_t DL_DEFAULT_OFFSET = 0;
 
 #define DL_ATTRIBUTES_SIZE sizeof(int8_t)
 #define DL_CRC_SIZE sizeof(int32_t)
 #define DL_MAGIC_BYTE_SIZE sizeof(int8_t)
+#define DL_MESSAGE_SIZE sizeof(int32_t)
+#define DL_OFFSET_SIZE sizeof(int64_t)
 #define DL_TIMESTAMP_SIZE sizeof(int64_t)
 
-#define DL_MESSAGE_SET_SIZE_SIZE sizeof(int32_t)
-#define DL_OFFSET_SIZE sizeof(int64_t)
-
-#define DL_DECODE_OFFSET(source) dl_decode_int64(source)
-#define DL_DECODE_MESSAGE_SIZE(source) dl_decode_int32(source)
-#define DL_DECODE_CRC(source) dl_decode_int32(source)
-#define DL_DECODE_MAGIC_BYTE(source) dl_decode_int8(source)
-#define DL_DECODE_ATTRIBUTES(source) dl_decode_int8(source)
-#define DL_DECODE_TIMESTAMP(source) dl_decode_int64(source)
-
-#define DL_ENCODE_ATTRIBUTES(target) dl_encode_int8(target, 0)
-#define DL_ENCODE_CRC(target, value) dl_encode_int32(target, value)
-#define DL_ENCODE_MAGIC_BYTE(target) \
-    dl_encode_int8(target, DL_MESSAGE_MAGIC_BYTE)
-#define DL_ENCODE_MESSAGE_SIZE(target, value) dl_encode_int32(target, value)
-#define DL_ENCODE_OFFSET(target, value) dl_encode_int64(target, value)
-#define DL_ENCODE_TIMESTAMP(target, value) dl_encode_int64(target, value)
-
-static int32_t dl_message_encode(struct dl_message const *, char * const);
-static int32_t dl_message_get_size(struct dl_message const * const);
-static struct dl_message * dl_message_decode(char const * const,
-    int32_t *);
+static int dl_message_decode(struct dl_message **, struct dl_buf *);
+static int dl_message_encode(struct dl_message const *, struct dl_buf *);
 
 struct dl_message_set *
 dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
@@ -86,119 +75,167 @@ dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
 
 	message_set = (struct dl_message_set *) dlog_alloc(
 	    sizeof(struct dl_message_set));
+#ifdef KERNEL
+	DL_ASSERT(message_set != NULL, ("Failed allocating message set.\n"));
+	{
+#else
+	if (message_set != NULL) {
+#endif
+		STAILQ_INIT(&message_set->dlms_messages);
+		message_set->dlms_nmessages = 1;
 
-	STAILQ_INIT(&message_set->dlms_messages);
-	message_set->dlms_nmessages = 1;
+		message = (struct dl_message *) dlog_alloc(
+		    sizeof(struct dl_message));
+#ifdef KERNEL
+		DL_ASSERT(message != NULL, ("Failed allocating message.\n"));
+		{
+#else
+		if (message != NULL) {
+#endif
+			message->dlm_key = key;
+			message->dlm_key_len = key_len;
+			message->dlm_value = value;
+			message->dlm_value_len = value_len;
 
-	message = (struct dl_message *) dlog_alloc(sizeof(struct dl_message));
-
-	message->dlm_key = key;
-	message->dlm_key_len = key_len;
-	message->dlm_value = value;
-	message->dlm_value_len = value_len;
-
-	STAILQ_INSERT_HEAD(&message_set->dlms_messages, message, dlm_entries);
-
+			STAILQ_INSERT_HEAD(&message_set->dlms_messages,
+			    message, dlm_entries);
+		} else {
+			DLOGTR0(PRIO_HIGH, "Failed allocating message.\n");
+			dlog_free(message_set);
+			message_set = NULL;
+		}
+	}
 	return message_set;
 }
 
 struct dl_message_set *
-dl_message_set_decode(char const * const source,
-    int32_t message_set_size)
+dl_message_set_decode(struct dl_buf *source)
 {
 	struct dl_message *message;
 	struct dl_message_set *message_set;
-	int32_t msg_set_size = 0, msg_size;
+	int32_t msg_set_size;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
 
+	/* Decode the MessageSetSiz . */
+	DL_DECODE_MESSAGE_SET_SIZE(source, &msg_set_size);
+
 	message_set = (struct dl_message_set *) dlog_alloc(
 	    sizeof(struct dl_message_set));
-	STAILQ_INIT(&message_set->dlms_messages);
+#ifdef KERNEL
+	DL_ASSERT(message_set != NULL, ("Failed allocating MessageSet."));
+	{
+#else
+	if (message_set != NULL) {
+#endif
+		STAILQ_INIT(&message_set->dlms_messages);
 
-	/* Decode the MessageSet. */
-	while (message_set_size > 0) {
+		/* Decode the MessageSet. */
+		while (msg_set_size > 0) {
 
-		/* Decode the Message. */
-		message = dl_message_decode(&source[msg_set_size], &msg_size);
-		msg_set_size += msg_size;
-		message_set_size -= msg_size;
-		++message_set->dlms_nmessages;
+			/* Decode the Message. */
+			if (dl_message_decode(&message, source) == 0) {
+				++message_set->dlms_nmessages;
 
-		STAILQ_INSERT_TAIL(&message_set->dlms_messages, message,
-		    dlm_entries);
+				STAILQ_INSERT_TAIL(
+				    &message_set->dlms_messages, message,
+				    dlm_entries);
+			} else {
+				// TODO: Failure decoding
+			}
+		}
 	}
 	return message_set;
 }
 		
-static struct dl_message *
-dl_message_decode(char const * const source, int32_t *msg_size)
+static int
+dl_message_decode(struct dl_message **message, struct dl_buf *source)
 {
-	struct dl_message *message;
-	int32_t crc_val, msg_crc_val, size;
+	struct dl_message *self;
+	int32_t crc, msg_crc, size;
 	int8_t attributes, magic_byte;
 
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
+	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
+	DL_ASSERT(message != NULL, ("Message cannot be NULL"));
 
-	message = (struct dl_message *) dlog_alloc(sizeof(struct dl_message));
-#ifdef _KERNEL
+	self = *message = (struct dl_message *) dlog_alloc(
+	    sizeof(struct dl_message));
+#ifdef KERNEL
 	DL_ASSERT(message != NULL, ("Allocation of dl_message failed\n"));
 	{
 #else
-	if (message != NULL) {
+	if (self != NULL) {
 #endif
-		*msg_size = 0;
-
 		/* Decode the MessageSet Offset. */
-		message->dlm_offset = DL_DECODE_OFFSET(&source[*msg_size]);
-		*msg_size += sizeof(int64_t);
+		DL_DECODE_OFFSET(source, self->dlm_offset);
 
 		/* Decode the MessageSize. */
-		size = DL_DECODE_MESSAGE_SIZE(&source[*msg_size]);
-		*msg_size += sizeof(int32_t); 
+		DL_DECODE_MESSAGE_SIZE(source, &size);
+		if (size > 0) { //  && size <= dl_buf_space(source)) {
+			/* Decode and verify the CRC. */
+			DL_DECODE_CRC(source, &msg_crc);
 
-		/* Decode the CRC (placeholder value). */
-		msg_crc_val = DL_DECODE_CRC(&source[*msg_size]);
-		*msg_size += sizeof(int32_t);
+			/* Computed CRC value. */
+			crc = crc32(0L, Z_NULL, 0);
+			crc = crc32(crc, dl_buf_data(source),
+			    dl_buf_len(source));
+			if (crc == msg_crc) {
+				/* Decode and verify the MagicByte */
+				DL_DECODE_MAGIC_BYTE(source, &magic_byte);
+				if (magic_byte == DL_MESSAGE_MAGIC_BYTE_V0 ||
+				    magic_byte == DL_MESSAGE_MAGIC_BYTE_V1) {
+					/* Decode the Attributes */
+					DL_DECODE_ATTRIBUTES(source, &attributes);
 
-		/* Compute the CRC value. */
-		crc_val = crc32(0L, Z_NULL, 0);
-		crc_val = crc32(crc_val, &source[*msg_size], size-DL_CRC_SIZE);
-		
-		/* Decode the MagicByte */
-		magic_byte = DL_DECODE_MAGIC_BYTE(&source[*msg_size]);
-		*msg_size += sizeof(int8_t);
+					/* The MagicByte determines the MessageSet
+					* format v0 or v1.xi
+					*/
+					if (magic_byte ==
+					    DL_MESSAGE_MAGIC_BYTE) {	
+						/* Decode the Timestamp */
+						DL_DECODE_TIMESTAMP(source,
+						    &self->dlm_timestamp);
+					}
 
-		/* Decode the Attributes */
-		attributes = DL_DECODE_ATTRIBUTES(&source[*msg_size]);
-		*msg_size += sizeof(int8_t);
+					/* Decode the Key */
+					//dl_decode_bytes
+					/*
+					dl_decode_int32(&source[*msg_size]);
+					message->dlm_key_len = dl_decode_int32(&source[*msg_size]);
 
-		/* The MagicByte determines the MessageSet format v0 or v1. */
-		if (magic_byte == 0x01) {	
-			/* Decode the Timestamp */
-			message->dlm_timestamp = DL_DECODE_TIMESTAMP(&source[*msg_size]);
-			*msg_size += sizeof(uint64_t); 
-		}
+					if (message->dlm_key_len != -1) {
+						message->dlm_key = &source[*msg_size];
+						*msg_size += message->dlm_key_len;
+					} else {
+						message->dlm_key = NULL;
+					}
+					*/
 
-		/* Decode the Key */
-		message->dlm_key_len = dl_decode_int32(&source[*msg_size]);
-		*msg_size += sizeof(uint32_t); 
-
-		if (message->dlm_key_len != -1) {
-			message->dlm_key = &source[*msg_size];
-			*msg_size += message->dlm_key_len;
+					/* Decode the Value */
+					//dl_decode_bytes
+					/*
+					message->dlm_value_len = dl_decode_int32(&source[*msg_size]);
+					
+					message->dlm_value = &source[*msg_size];
+					*msg_size += message->dlm_value_len;
+					*/
+				} else {
+					// TODO
+				}
+			} else {
+				DLOGTR2(PRIO_HIGH,
+				    "Computed CRC (%d) doess't match value "
+				    "recieved value (%d).\n", crc, msg_crc);
+				dlog_free(message);
+				message = NULL;
+			}
 		} else {
-			message->dlm_key = NULL;
+			DLOGTR1(PRIO_HIGH,
+			    "Invalid Message size (%d)\n", size);
+			dlog_free(message);
+			message = NULL;
 		}
-
-		/* Decode the Value */
-		message->dlm_value_len = dl_decode_int32(&source[*msg_size]);
-		*msg_size += sizeof(uint32_t); 
-		
-		message->dlm_value = &source[*msg_size];
-		*msg_size += message->dlm_value_len;
 	}
-
 	return message;
 }
 
@@ -206,97 +243,96 @@ dl_message_decode(char const * const source, int32_t *msg_size)
  * N.B. MessageSets are not preceded by an int32 specifying the length unlike
  * other arrays.
  */
-int32_t
+int
 dl_message_set_encode(struct dl_message_set const *message_set,
-    char * const target)
+    struct dl_buf *target)
 {
 	struct dl_message const *message;
-	int32_t msg_set_size = 0;
+	int size_pos, size_start_pos;
 
 	DL_ASSERT(message_set != NULL, "MessageSet cannot be NULL");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 
+	/* Placeholder for the MessageSetSize. */
+	size_pos = dl_buf_pos(target);
+	dl_buf_put_int32(target, -1);
+
+	size_start_pos = dl_buf_pos(target);
 	STAILQ_FOREACH(message, &message_set->dlms_messages, dlm_entries) {
 	
-		/* Encode the MessageSet Offset into the buffer. */
-		msg_set_size += DL_ENCODE_OFFSET(&target[msg_set_size],
-		    DL_DEFAULT_OFFSET);
-
-		/* Encode the MessageSize. */
-		msg_set_size += DL_ENCODE_MESSAGE_SIZE(&target[msg_set_size],
-		    dl_message_get_size(message));
-
 		/* Encode the Message. */
-		msg_set_size += dl_message_encode(message,
-		    &target[msg_set_size]);
+		dl_message_encode(message, target);
 	}
-		
-	return msg_set_size;
+
+	/* Encode the MessageSetSize into the buffer. */
+	dl_buf_put_int32_at(target, dl_buf_pos(target)-size_start_pos,
+	    size_pos);
+
+	return 0;
 }
 
-static int32_t
-dl_message_encode(struct dl_message const *message, char * const target)
+static int
+dl_message_encode(struct dl_message const *message, struct dl_buf *target)
 {
-	int32_t msg_size = 0;
 	unsigned long crc_value, timestamp;
+	int32_t msg_size = 0;
+	int size_pos, crc_pos, crc_start_pos;
 
 	DL_ASSERT(message != NULL, "Message cannot be NULL");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 
-#ifdef _KERNEL
+	/* Encode the Message Offset into the target buffer. */
+	if (DL_ENCODE_OFFSET(target, DL_DEFAULT_OFFSET) != 0)
+		goto err;
+
+	/* Placeholder for the size of the encoded Message. */
+	size_pos = dl_buf_pos(target);
+	if (DL_ENCODE_MESSAGE_SIZE(target, -1) != 0)
+		goto err;
+
+	/* Placeholder for the CRC computed over the encoded Message. */
+	crc_pos = dl_buf_pos(target);
+	if (DL_ENCODE_CRC(target, -1) != 0)
+		goto err;
+	crc_start_pos = dl_buf_pos(target);
+	
+	/* Encode the MagicByte */
+	if (DL_ENCODE_MAGIC_BYTE(target) != 0)
+		goto err;
+	
+	/* Encode the Attributes */
+	if (DL_ENCODE_ATTRIBUTES(target, 0) != 0)
+		goto err;
+	
+	/* Encode the Timestamp */
+#ifdef KERNEL
 	// TODO: In-kernel timestamp ms since epoch?
 #else
 	timestamp = time(NULL);
 #endif
-
-	/* Encode the CRC (placeholder value). */
-	msg_size += DL_ENCODE_CRC(target, 0);
-
-	/* Encode the MagicByte */
-	msg_size += DL_ENCODE_MAGIC_BYTE(&target[msg_size]);
-	
-	/* Encode the Attributes */
-	msg_size+= DL_ENCODE_ATTRIBUTES(&target[msg_size]);
-	
-	/* Encode the Timestamp */
-	msg_size += DL_ENCODE_TIMESTAMP(&target[msg_size], timestamp);
+	if (DL_ENCODE_TIMESTAMP(target, timestamp) != 0)
+		goto err;
 	
 	/* Encode the Key */
-	msg_size += dl_encode_bytes(&target[msg_size], message->dlm_key,
-	    message->dlm_key_len);
+	if (dl_encode_bytes(message->dlm_key, message->dlm_key_len,
+	    target) != 0)
+		goto err;
 	
 	/* Encode the Value */
-	msg_size += dl_encode_bytes(&target[msg_size], message->dlm_value,
-	    message->dlm_value_len);
+	dl_encode_bytes(message->dlm_value, message->dlm_value_len, target);
 
-	/* Encode the CRC, with the correct value. */
-	crc_value = crc32(0L, Z_NULL, 0);
-	crc_value = crc32(crc_value, &target[DL_CRC_SIZE], msg_size-DL_CRC_SIZE);
-	DL_ENCODE_CRC(target, crc_value);
-
-	return msg_size;
-}
-
-int32_t dl_message_set_get_size(struct dl_message_set const * const message_set)
-{
-	struct dl_message const *message;
-	int32_t msg_set_size = 0;
-
-	msg_set_size += DL_MESSAGE_SET_SIZE_SIZE + DL_OFFSET_SIZE;
+	/* Encode the MessageSize. */
+	DL_ENCODE_MESSAGE_SIZE_AT(target, dl_buf_pos(target)-crc_pos,
+		size_pos);
 	
-	STAILQ_FOREACH(message, &message_set->dlms_messages, dlm_entries) {
-		msg_set_size += dl_message_get_size(message);
-	}
-	return msg_set_size;
+	/* Encode the CRC. */
+	char *crc_data = dl_buf_data(target) + crc_start_pos; 
+	crc_value = crc32(0L, Z_NULL, 0);
+	crc_value = crc32(crc_value, crc_data, dl_buf_pos(target)-crc_start_pos);
+	if (DL_ENCODE_CRC_AT(target, crc_value, crc_pos) != 0)
+		goto err;
+		
+	return 0;
+err:
+	return -1;
 }
-
-static int32_t
-dl_message_get_size(struct dl_message const * const message)
-{
-	DL_ASSERT(message != NULL, "Message cannot be NULL");
-
-	return DL_CRC_SIZE + DL_MAGIC_BYTE_SIZE + DL_ATTRIBUTES_SIZE +
-	    DL_TIMESTAMP_SIZE + sizeof(int32_t) + message->dlm_key_len +
-	    sizeof(int32_t) + message->dlm_value_len;
-}
-

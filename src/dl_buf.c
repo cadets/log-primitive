@@ -151,7 +151,6 @@ dl_buf_new(struct dl_buf **self, char *buf, int capacity, int flags)
 		newbuf->dlb_hdr.dlbh_capacity = capacity;
 		newbuf->dlb_hdr.dlbh_limit = capacity;
 		newbuf->dlb_hdr.dlbh_pos = 0;
-
 		return 0;
 	}
 	return -1;
@@ -257,7 +256,7 @@ dl_buf_get_int8(struct dl_buf *self, u_int8_t *value)
 
 	dl_buf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (hdr->dlbh_pos + sizeof(u_int8_t)) < hdr->dlbh_limit) {
+	    (int) (hdr->dlbh_pos + sizeof(u_int8_t)) <= hdr->dlbh_limit) {
 
 		*value = hdr->dlbh_data[hdr->dlbh_pos++];
 		return 0;
@@ -272,7 +271,7 @@ dl_buf_get_int16(struct dl_buf *self, u_int16_t *value)
 
 	dl_buf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (hdr->dlbh_pos + sizeof(u_int16_t)) < hdr->dlbh_limit) {
+	    (int) (hdr->dlbh_pos + sizeof(u_int16_t)) <= hdr->dlbh_limit) {
 
 		if (hdr->dlbh_flags & DL_BUF_BIGENDIAN) {
 			*value =
@@ -295,7 +294,7 @@ dl_buf_get_int32(struct dl_buf *self, u_int32_t *value)
 
 	dl_buf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (hdr->dlbh_pos + sizeof(u_int32_t)) < hdr->dlbh_limit) {
+	    (int) (hdr->dlbh_pos + sizeof(u_int32_t)) <= hdr->dlbh_limit) {
 
 		if (hdr->dlbh_flags & DL_BUF_BIGENDIAN) {
 			*value =
@@ -323,7 +322,7 @@ dl_buf_get_int64(struct dl_buf *self, u_int64_t *value)
 
 	dl_buf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (hdr->dlbh_pos + sizeof(u_int64_t)) < hdr->dlbh_limit) {
+	    (int) (hdr->dlbh_pos + sizeof(u_int64_t)) <= hdr->dlbh_limit) {
 
 		if (hdr->dlbh_flags & DL_BUF_BIGENDIAN) {
 			h =
@@ -401,13 +400,48 @@ dl_buf_put_int16(struct dl_buf *self, u_int16_t value)
 			return -1;
 		}
 	}
-
+	
 	if (hdr->dlbh_flags & DL_BUF_BIGENDIAN) {
 		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 8) & 0xFF;
 		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 0) & 0xFF;
 	} else {
 		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 0) & 0xFF;
 		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 8) & 0xFF;
+	}
+	return 0;
+}
+
+int
+dl_buf_put_int32_at(struct dl_buf *self, u_int32_t value, int pos)
+{
+	struct dl_buf_hdr *hdr = &self->dlb_hdr;
+	int add_len;
+
+	dl_buf_assert_integrity(__func__, self);
+	if (self != NULL &&
+	    (int) (pos + sizeof(u_int32_t)) >= hdr->dlbh_capacity) {
+
+		if (self->dlb_hdr.dlbh_flags & DL_BUF_AUTOEXTEND) {
+
+			add_len = (int) (pos + sizeof(u_int32_t)) -
+			    hdr->dlbh_capacity;
+			if (dl_buf_extend(&self, add_len) != 0)
+			    return -1;
+		} else {
+			return -1;
+		}
+	}
+	
+	if (hdr->dlbh_flags & DL_BUF_BIGENDIAN) {
+		hdr->dlbh_data[pos++] = (value >> 24) & 0xFF;
+		hdr->dlbh_data[pos++] = (value >> 16) & 0xFF;
+		hdr->dlbh_data[pos++] = (value >> 8) & 0xFF;
+		hdr->dlbh_data[pos++] = (value >> 0) & 0xFF;
+	} else {
+		hdr->dlbh_data[pos++] = (value >> 0) & 0xFF;
+		hdr->dlbh_data[pos++] = (value >> 8) & 0xFF;
+		hdr->dlbh_data[pos++] = (value >> 16) & 0xFF;
+		hdr->dlbh_data[pos++] = (value >> 24) & 0xFF;
 	}
 	return 0;
 }
@@ -469,14 +503,14 @@ dl_buf_put_int64(struct dl_buf *self, u_int64_t value)
 	}
 
 	if (hdr->dlbh_flags & DL_BUF_BIGENDIAN) {
-		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 0) & 0xFF;
-		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 8) & 0xFF;
-		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 16) & 0xFF;
-		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 24) & 0xFF;
-		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 32) & 0xFF;
-		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 40) & 0xFF;
-		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 48) & 0xFF;
 		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 56) & 0xFF;
+		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 48) & 0xFF;
+		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 40) & 0xFF;
+		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 32) & 0xFF;
+		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 24) & 0xFF;
+		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 16) & 0xFF;
+		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 8) & 0xFF;
+		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 0) & 0xFF;
 	} else {
 		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 0) & 0xFF;
 		hdr->dlbh_data[hdr->dlbh_pos++] = (value >> 8) & 0xFF;

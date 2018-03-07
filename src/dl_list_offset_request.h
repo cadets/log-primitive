@@ -38,25 +38,28 @@
 #define _DL_LIST_OFFSET_REQUEST_H
 
 #include <sys/queue.h>
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
 
-#include "dl_protocol.h"
+#include "dl_buf.h"
 
 struct dl_request;
 
 SLIST_HEAD(dl_list_offset_request_topics, dl_list_offset_request_topic);
-SLIST_HEAD(dl_list_offset_request_partitions, dl_list_offset_request_partition);
 
 struct dl_list_offset_request_partition {
-	SLIST_ENTRY(dl_list_offset_request_partition) dlorp_entries;
 	int32_t dlorp_partition;
 	int64_t dlorp_time;
 };
 
 struct dl_list_offset_request_topic {
 	SLIST_ENTRY(dl_list_offset_request_topic) dlort_entries;
-	struct dl_list_offset_request_partitions dlort_partitions;
-	char dlort_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	struct sbuf *dlort_topic_name;
 	int32_t dlort_npartitions;
+	struct dl_list_offset_request_partition dlort_partitions[1];
 };
 
 struct dl_list_offset_request {
@@ -65,10 +68,10 @@ struct dl_list_offset_request {
 	int32_t dlor_replica_id;
 };
 
-extern struct dl_request * dl_list_offset_request_new(int32_t, char *, char *,
-    int64_t);
+extern struct dl_request * dl_list_offset_request_new(int32_t, struct sbuf *,
+    struct sbuf *, int64_t);
 extern struct dl_list_offset_request * dl_list_offset_request_decode(char *);
 extern int dl_list_offset_request_encode(struct dl_list_offset_request *,
-    char *);
+    struct dl_buf *);
 
 #endif

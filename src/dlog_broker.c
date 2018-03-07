@@ -154,8 +154,8 @@ dl_fsync_thread(void *vargp)
 	 */	
 	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
 
-	pbuf = (char *) dlog_alloc(MTU * sizeof(char));
-	send_out_buf = (char *) dlog_alloc(MTU * sizeof(char));
+	//pbuf = (char *) dlog_alloc(MTU * sizeof(char));
+	//send_out_buf = (char *) dlog_alloc(MTU * sizeof(char));
 
 	STAILQ_INIT(&responses);	
 

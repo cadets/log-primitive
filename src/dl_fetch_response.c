@@ -36,10 +36,16 @@
 
 #include <sys/types.h>
 #include <sys/queue.h>
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
 
 #include <stddef.h>
 
 #include "dl_assert.h"
+#include "dl_buf.h"
 #include "dl_fetch_response.h"
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
@@ -54,6 +60,7 @@ dl_fetch_response_decode(char *buffer)
 	struct dl_fetch_response_topic *topic;
 	struct dl_fetch_response_partition *partition;
 	struct dl_response *response;
+	struct sbuf *topic_name;
 	int32_t partition_response, response_it;
 	
 	/* Construct the FetchResponse. */
@@ -68,16 +75,14 @@ dl_fetch_response_decode(char *buffer)
 		sizeof(struct dl_fetch_response));
 
 	/* Decode the ThrottleTime */	
-	fetch_response->dlfr_throttle_time = dl_decode_int32(buffer);
-	buffer += sizeof(int32_t);
+	DL_DECODE_THROTTLE_TIME(buffer, &fetch_response->dlfr_throttle_time);
 
         /* Decode the responses */	
 	SLIST_INIT(&fetch_response->dlfr_topics);
 
-	fetch_response->dlfr_ntopics = dl_decode_int32(buffer);
+	dl_buf_get_int32(buffer, &fetch_response->dlfr_ntopics);
 	DL_ASSERT(fetch_response->dlfr_ntopics > 0,
 	    "Response array is not NULLABLE");
-	buffer += sizeof(int32_t);
 
 	SLIST_INIT(&fetch_response->dlfr_topics);
 
@@ -88,12 +93,12 @@ dl_fetch_response_decode(char *buffer)
 		    sizeof(struct dl_fetch_response_topic));
 
 		/* Decode the TopicName */
-		buffer += DL_DECODE_TOPIC_NAME(buffer,
-		    topic->dlfrt_topic_name);
+		DL_DECODE_TOPIC_NAME(buffer, &topic_name);
+
+		topic->dlfrt_topic_name = topic_name;
 
 		/* Decode the partition responses */	
-		topic->dlfrt_npartitions = dl_decode_int32(buffer);
-		buffer += sizeof(int32_t);
+		dl_buf_get_int32(buffer, &topic->dlfrt_npartitions);
 	
 		SLIST_INIT(&topic->dlfrt_partitions);
 
@@ -106,27 +111,20 @@ dl_fetch_response_decode(char *buffer)
 				struct dl_fetch_response_partition));
 
 			/* Decode the Partition */
-			partition->dlfrpr_partition =
-			    dl_decode_int32(buffer);
-			buffer += sizeof(int32_t);
+			DL_DECODE_PARTITION(buffer,
+			    &partition->dlfrpr_partition);
 
 			/* Decode the ErrorCode */
-		    	partition->dlfrpr_error_code =
-			    dl_decode_int16(buffer);
-			buffer += sizeof(int16_t);
+			DL_DECODE_ERROR_CODE(buffer,
+			    &partition->dlfrpr_error_code);
 
 			/* Decode the HighWatermark */
-		    	partition->dlfrpr_high_watermark =
-			    dl_decode_int64(buffer);
-			buffer += sizeof(int64_t);
+		    	DL_DECODE_HIGH_WATERMARK(buffer,
+			    &partition->dlfrpr_high_watermark);
 
-			/* Decode the MessageSetSize */
-		    	int32_t mss = dl_decode_int32(buffer);
-			buffer += sizeof(int32_t);
-			
 			/* Decode the MessageSet */
 			partition->dlfrp_message_set =
-			    dl_message_set_decode(buffer, mss);
+			    dl_message_set_decode(buffer);
 		
 			SLIST_INSERT_HEAD(&topic->dlfrt_partitions, partition,
 			    dlfrp_entries);
@@ -139,22 +137,22 @@ dl_fetch_response_decode(char *buffer)
 }
 
 int
-dl_fetch_response_encode(struct dl_fetch_response *response, char *target)
+dl_fetch_response_encode(struct dl_fetch_response *response,
+    struct dl_buf *target)
 {
 	struct dl_fetch_response_partition *partition;
 	struct dl_fetch_response_topic *topic;
 	int32_t response_it, partition_response, response_size = 0;
 
 	/* Encode the ThrottleTime */	
-	response_size += dl_encode_int32(target, response->dlfr_throttle_time);
+	DL_ENCODE_THROTTLE_TIME(target, response->dlfr_throttle_time);
 
         /* Decode the responses */	
 	SLIST_INIT(&response->dlfr_topics);
 
 	DL_ASSERT(response->dlfr_ntopics > 0,
 	    "Response array is not NULLABLE");
-	response_size = dl_encode_int32(&target[response_size],
-	    response->dlfr_ntopics);
+	dl_buf_put_int32(target, response->dlfr_ntopics);
 
 	SLIST_INIT(&response->dlfr_topics);
 
@@ -165,12 +163,10 @@ dl_fetch_response_encode(struct dl_fetch_response *response, char *target)
 		    sizeof(struct dl_fetch_response_topic));
 
 		/* Decode the TopicName */
-		response_size += DL_ENCODE_TOPIC_NAME(&target[response_size],
-		    topic->dlfrt_topic_name);
+		DL_ENCODE_TOPIC_NAME(target, topic->dlfrt_topic_name);
 
 		/* Decode the partition responses */	
-		response_size += dl_encode_int32(&target[response_size],
-		    topic->dlfrt_npartitions);
+		dl_buf_put_int32(target, topic->dlfrt_npartitions);
 	
 		SLIST_INIT(&topic->dlfrt_partitions);
 
@@ -183,29 +179,20 @@ dl_fetch_response_encode(struct dl_fetch_response *response, char *target)
 				struct dl_fetch_response_partition));
 
 			/* Decode the Partition */
-			response_size += dl_encode_int32(
-			    &target[response_size],
+			DL_ENCODE_PARTITION(target,
 			    partition->dlfrpr_partition);
 
 			/* Decode the ErrorCode */
-		    	response_size += dl_encode_int16(
-			    &target[response_size],
+		    	DL_ENCODE_ERROR_CODE(target,
 			    partition->dlfrpr_error_code);
 
 			/* Decode the HighWatermark */
-		    	response_size += dl_encode_int64(
-			    &target[response_size],
+		    	DL_ENCODE_HIGH_WATERMARK(target,
 			    partition->dlfrpr_high_watermark);
 
-			/* Encode the MessageSet Size into the buffer. */
-			response_size += dl_encode_int32(&target[response_size],
-			    dl_message_set_get_size(
-			    partition->dlfrp_message_set));
-
 			/* Encode the MessageSet */
-			response_size += dl_message_set_encode(
-			    partition->dlfrp_message_set,
-			    &target[response_size]);
+			dl_message_set_encode(partition->dlfrp_message_set,
+			    target);
 
 			SLIST_INSERT_HEAD(&topic->dlfrt_partitions, partition,
 			    dlfrp_entries);

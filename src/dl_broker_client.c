@@ -50,7 +50,6 @@
 #include "dl_poll_reactor.h"
 #include "dl_produce_request.h"
 #include "dl_request.h"
-#include "dl_request_or_response.h"
 #include "dl_utils.h"
 
 static dl_event_handler_handle dl_accept_client_connection(const int);
@@ -84,36 +83,36 @@ dl_handle_read_event(void *instance)
 	int rc;
 	size_t bytes_read = 0, total = 0;
 	char *buffer = (char *) dlog_alloc(1024);
-	int32_t buffer_len = 0;
+	int32_t msg_size, buffer_len = 0;
 
 	DL_ASSERT(instance != NULL, ("Broker client instance cannot be NULL"));
 
 	/* Read the size of the request to process. */
-	rc = recv(client->client_socket, buffer,
-	    sizeof(req_or_res->dlrx_size), 0);
+	rc = recv(client->client_socket, msg_size, sizeof(int32_t), 0);
 	if (rc == 0) {
 		/* Peer has closed connection */
 	} else if (rc > 0) {
 
-		DLOGTR2(PRIO_LOW, "Read %d bytes (%p)...\n", rc, buffer);
-		req_or_res = dl_decode_request_or_response(buffer);
-		if (NULL != req_or_res) {
+		DLOGTR2(PRIO_LOW, "Read %d bytes (%p)...\n", rc, msg_size);
+		//req_or_res = dl_decode_request_or_response(buffer);
+		//if (NULL != req_or_res) {
 			DLOGTR1(PRIO_LOW, "\tNumber of bytes: %d\n",
-			    req_or_res->dlrx_size);
+			    msg_size);
+			    //req_or_res->dlrx_size);
 
 			total += sizeof(int32_t);
 
-			while (bytes_read < req_or_res->dlrx_size) {
+			while (bytes_read < msg_size) {
 				bytes_read = recv(client->client_socket,
 				    &buffer[total],
-				    req_or_res->dlrx_size-bytes_read, 0);
+				    msg_size-bytes_read, 0);
 				DLOGTR2(PRIO_LOW,
 				    "\tRead %d characters; expected %d\n",
-				    bytes_read, req_or_res->dlrx_size);
+				    bytes_read, msg_size);
 				total += bytes_read;
 			}
 
-			for (int b = 0; b < req_or_res->dlrx_size; b++) {
+			for (int b = 0; b < msg_size; b++) {
 				DLOGTR1(PRIO_LOW, "<0x%02hX>", buffer[b]);
 			}
 			DLOGTR0(PRIO_LOW, "\n");
@@ -142,7 +141,7 @@ dl_handle_read_event(void *instance)
 			} else {
 				DLOGTR0(PRIO_HIGH, "Error decoding request\n");
 			}
-		}
+		//}
 	} else {
 		client->event_notifier.on_client_closed(
 		    client->event_notifier.server, client);
@@ -209,7 +208,8 @@ dl_handle_fetch_request(struct dl_request *request)
 	struct dl_fetch_request_partition *fetch_partition;
 	struct dl_fetch_request_topic *fetch_topic;
 	struct dl_response *fetch_response = NULL;
-	
+	int partition;
+
 	DL_ASSERT(request!= NULL, "FetchRequest cannot be NULL");
 	
 	fetch_request = request->dlrqm_message.dlrqmt_offset_request;
@@ -224,8 +224,11 @@ dl_handle_fetch_request(struct dl_request *request)
 		    "Fetch request for the topicname '%s'\n",
 		    fetch_topic->dlfrt_topic_name);
 
-		SLIST_FOREACH(fetch_partition, &fetch_topic->dlfrt_partitions,
-		    dlfrp_entries) {
+		for (partition = 0; partition < fetch_topic->dlfrt_npartitions;
+		    partition++) {
+
+			fetch_partition =
+			    &fetch_topic->dlfrt_partitions[partition];
 
 			struct dl_partition *partition =
 			    SLIST_FIRST(&topic->dlt_partitions);
@@ -246,6 +249,7 @@ dl_handle_produce_request(struct dl_request *request,
 	struct dl_produce_request *produce_request;
 	struct dl_produce_request_topic *produce_request_topic;
 	struct dl_produce_request_partition *produce_request_partition;
+	int partition;
 
 	DL_ASSERT(request != NULL, "ProduceRequest cannot be NULL");
 	
@@ -262,9 +266,9 @@ dl_handle_produce_request(struct dl_request *request,
 		    "Inserting messages into the topicname '%s'\n",
 		    produce_request_topic->dlprt_topic_name);
 
-		SLIST_FOREACH(produce_request_partition,
-		    &produce_request_topic->dlprt_partitions,
-		    dlprp_entries) {
+		for (partition = 0;
+		    partition < produce_request_topic->dlprt_npartitions;
+		    partition++) { 
 
 			// Insert the message
 			struct dl_partition *partition =
@@ -293,6 +297,7 @@ dl_handle_list_offset_request(struct dl_request *request)
 	struct dl_list_offset_response *offset_response;
 	struct dl_list_offset_response_partition *response_partition;
 	struct dl_list_offset_response_topic *response_topic;
+	int partition;
 
 	DL_ASSERT(request!= NULL, "ListOffsetRequest cannot be NULL");
 
@@ -334,9 +339,11 @@ dl_handle_list_offset_request(struct dl_request *request)
 				    request_topic->dlort_topic_name,
 				    DL_MAX_TOPIC_NAME_LEN);
 
-				SLIST_FOREACH(request_partition,
-				    &request_topic->dlort_partitions,
-				    dlorp_entries) {
+				for (partition = 0;
+				    partition < request_topic->dlort_npartitions;
+				    partition++) {
+					request_partition =
+					    &request_topic->dlort_partitions[partition];
 
 					response_partition = (struct dl_list_offset_response_partition *)
 					    dlog_alloc(sizeof(struct dl_list_offset_response_partition));

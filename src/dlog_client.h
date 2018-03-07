@@ -38,14 +38,15 @@
 #ifndef _DLOG_CLIENT_H
 #define _DLOG_CLIENT_H
 
-#ifdef _KERNEL
-#include <sys/types.h>
-#else
-#include <stdbool.h>
-#endif
-
 #include <sys/queue.h>
 #include <sys/tree.h>
+#ifdef _KERNEL
+#include <sys/sbuf.h>
+#include <sys/types.h>
+#else
+#include <sbuf.h>
+#include <stdbool.h>
+#endif
 
 #include "dl_response.h" 
 #include "dl_request.h"
@@ -73,14 +74,14 @@ struct dl_client_event_notifier {
 	struct broker_configuration *dlben_conf;
 };
 
-extern struct dlog_handle * dlog_client_open(const char * const,
+extern struct dlog_handle * dlog_client_open(struct sbuf *,
     const int, struct dl_client_configuration const * const);
 extern int dlog_client_close(struct dlog_handle *);
 
-extern int dlog_fetch(struct dlog_handle *, char *, 
+extern int dlog_fetch(struct dlog_handle *, struct sbuf *, 
     const int32_t, const int32_t,  const int64_t, const int32_t);
-extern int dlog_list_offset(struct dlog_handle *, char const * const, int64_t);
-extern int dlog_produce(struct dlog_handle *, char *, char *, int, char *,
-    int); 
+extern int dlog_list_offset(struct dlog_handle *, struct sbuf *, int64_t);
+extern int dlog_produce(struct dlog_handle *, struct sbuf *, char *, int,
+    char *, int); 
 
 #endif

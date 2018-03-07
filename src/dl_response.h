@@ -39,6 +39,7 @@
 
 #include <sys/types.h>
 
+#include "dl_buf.h"
 #include "dl_fetch_response.h"
 #include "dl_list_offset_response.h"
 #include "dl_produce_response.h"
@@ -50,19 +51,22 @@ union dl_response_message {
 };
 
 struct dl_response_header {
+	// TODO: don't think size if needed
 	int32_t dlrsh_size;
 	int32_t dlrsh_correlation_id;
 };
 
 struct dl_response {
 	union dl_response_message dlrs_message;
+	// TODO: don't think size if needed
 	int32_t dlrs_size;
 	int32_t dlrs_correlation_id;
 	int16_t dlrs_api_key;
 };
 
-//extern struct dl_response * dl_decode_response(char *);
-extern struct dl_response_header * dl_response_header_decode(char *, char**);
-extern int32_t dl_response_encode(struct dl_response *, char *);
+//extern int dl_decode_response(struct dl_response *, char *);
+extern int dl_response_header_decode(struct dl_response_header **,
+    struct dl_buf *);
+extern int32_t dl_response_encode(struct dl_response *, struct dl_buf *);
 
 #endif

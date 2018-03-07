@@ -39,14 +39,18 @@
 
 #include <sys/types.h>
 #include <sys/queue.h>
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
 
-#include "dl_protocol.h"
+#include "dl_buf.h"
+#include "dl_response.h"
 
 SLIST_HEAD(dl_produce_response_topics, dl_produce_response_topic);
-SLIST_HEAD(dl_produce_response_partitions, dl_produce_response_partition);
 
 struct dl_produce_response_partition {
-	SLIST_ENTRY(dl_produce_response_partition) dlprp_entries;
 	int64_t dlprp_offset;
 	int32_t dlprp_partition;
 	int16_t dlprp_error_code;
@@ -54,9 +58,9 @@ struct dl_produce_response_partition {
 
 struct dl_produce_response_topic {
 	SLIST_ENTRY(dl_produce_response_topic) dlprt_entries;
-	struct dl_produce_response_partitions dlprt_partitions;
 	int32_t dlprt_npartitions;
-	char dlprt_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	struct sbuf* dlprt_topic_name;
+	struct dl_produce_response_partition dlprt_partitions[1];
 };	
 
 struct dl_produce_response {
@@ -65,9 +69,9 @@ struct dl_produce_response {
 	int32_t dlpr_throttle_time;
 };
 
-extern struct dl_response * dl_produce_response_decode(char const * const);
+extern int dl_produce_response_decode(struct dl_response **, struct dl_buf *);
 extern int32_t dl_produce_response_encode(struct dl_produce_response *,
-    char *);
+    struct dl_buf *);
 struct dl_produce_response * dl_produce_response_new(char *, int32_t, int64_t,
     int16_t);
 

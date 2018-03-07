@@ -97,6 +97,7 @@ dlc_on_response(struct dl_response const * const response)
 	struct dl_list_offset_response_partition *offset_partition;
 	struct dl_list_offset_response_topic *offset_topic;
 	struct dl_message *message;
+	struct sbuf *hostname = NULL;
 	int max_wait_time = 2000;
 	int maxbytes = 1000;
 	int minbytes = 1;
@@ -114,7 +115,7 @@ dlc_on_response(struct dl_response const * const response)
 			&fetch_response->dlfr_topics, dlfrt_entries) {
 
 			dl_debug(PRIO_LOW, "Topic: %s\n",
-				fetch_topic->dlfrt_topic_name);
+				sbuf_data(fetch_topic->dlfrt_topic_name));
 
 			SLIST_FOREACH(fetch_partition,
 				&fetch_topic->dlfrt_partitions,
@@ -137,15 +138,18 @@ dlc_on_response(struct dl_response const * const response)
 					write(1, "\n", 1);
 				};
 			
-
 				dl_debug(PRIO_LOW, "HighWatermark: %d\n",
 					fetch_partition->dlfrpr_high_watermark);
+			
+				hostname = sbuf_new_auto();
+				sbuf_cpy(hostname, sbuf_data(fetch_topic->dlfrt_topic_name));
 
 				dlog_fetch(handle,
-					fetch_topic->dlfrt_topic_name,
+				        hostname,	
 					minbytes, max_wait_time,
 				    	fetch_partition->dlfrpr_high_watermark,
 					maxbytes);
+				sbuf_delete(hostname);
 			};
 		};
 		break;
@@ -167,12 +171,16 @@ dlc_on_response(struct dl_response const * const response)
 
 				dl_debug(PRIO_NORMAL, "Offset: %d\n",
 					offset_partition->dlorp_offset);
-				
+			
+				hostname = sbuf_new_auto();
+				sbuf_cpy(hostname, sbuf_data(offset_topic->dlort_topic_name));
+	
 				dlog_fetch(handle,
-					offset_topic->dlort_topic_name,
+					hostname,
 					minbytes, max_wait_time,
 					offset_partition->dlorp_offset,
 					maxbytes);
+				sbuf_delete(hostname);
 
 			};
 		};
@@ -199,8 +207,13 @@ main(int argc, char **argv)
 	int opt;
 	
 	/* Configure the default values. */
+	client_id = sbuf_new_auto();
 	sbuf_cpy(client_id, DEFAULT_CLIENT_ID);
+	
+	hostname = sbuf_new_auto();
 	sbuf_cpy(hostname, DEFAULT_HOSTNAME);
+
+	topic = sbuf_new_auto();
 	sbuf_cpy(topic, DEFAULT_TOPIC);
 
 	/* Parse the utilities command line arguments. */

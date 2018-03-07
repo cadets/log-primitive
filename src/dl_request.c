@@ -35,6 +35,11 @@
  */
 
 #include <sys/types.h>
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
 
 #include <stddef.h>
 
@@ -45,47 +50,33 @@
 #include "dl_memory.h"
 #include "dl_produce_request.h"
 #include "dl_protocol.h"
-#include "dl_primitive_types.h"
 #include "dl_request.h"
 #include "dl_utils.h"
 
-#define DL_ENCODE_API_KEY(buffer, value) dl_encode_int16(buffer, value)
-#define DL_ENCODE_CORRELATION_ID(buffer, value) dl_encode_int32(buffer, value)
-#define DL_ENCODE_API_VERSION(buffer) \
-    dl_encode_int16(buffer, DLOG_API_VERSION)
-#define DL_ENCODE_CLIENT_ID(buffer, value) \
-    dl_encode_string(buffer, value, DL_MAX_CLIENT_ID_LEN)
-#define DL_ENCODE_SIZE(buffer, value) dl_encode_int32(buffer, value)
-
-static int32_t dl_request_header_encode(struct dl_request const * const,
-    char * const);
+static int dl_request_header_encode(struct dl_request const * const,
+    struct dl_buf *);
 static int32_t dl_request_size_encode(char const *, const int32_t);
-static int dl_request_header_decode(struct dl_request *, char *);
+static int dl_request_header_decode(struct dl_request *, struct dl_buf *);
 
 /**
  * Request constructor.
  */
 struct dl_request *
 dl_request_new(const int16_t api_key, const int32_t correlation_id,
-    char *client_id)
+    struct sbuf *client_id)
 {
 	struct dl_request *request;
-
+	
 	request = (struct dl_request *) dlog_alloc(sizeof(struct dl_request));
-#ifdef _KERNEL
-	DL_ASSERT(request != NULL, "Allocation for Request failed");
+#ifdef KERNEL
+	DL_ASSERT(request != NULL, *"Allocation for Request failed"));
 	{
 #else
 	if (request != NULL) {
 #endif
-
 		request->dlrqm_api_key = api_key;
 		request->dlrqm_correlation_id = correlation_id;
-#ifdef _KERNEL
-#else
-		strlcpy(request->dlrqm_client_id, client_id,
-		    DL_MAX_CLIENT_ID_LEN);
-#endif
+		request->dlrqm_client_id = client_id;
 	}
 	return request;
 }
@@ -97,53 +88,57 @@ dl_request_new(const int16_t api_key, const int32_t correlation_id,
  *
  */
 int
-dl_request_encode(struct dl_request const *request,
-    struct dl_buffer *buffer)
+dl_request_encode(struct dl_request const *request, struct dl_buf **target)
 {
-	int32_t request_size = 0;
-	char *request_body, *request_header;
-	
-	DL_ASSERT(request != NULL, "Request cannot be NULL");
-	DL_ASSERT(buffer != NULL, "Target Buffer cannot be NULL");
+
+	DL_ASSERT(request != NULL, ("Request cannot be NULL"));
+	DL_ASSERT(target != NULL, ("Target buffer cannot be NULL"));
 
 	/*
 	 * Skip the Request Size. This is determined by encoding the request
 	 * and then is added to the buffer once known.
 	 */
 	//request_header = &buffer->dlb_hdr.dlbh_data[sizeof(int32_t)];
-	
-	/* Encode the Request Header. */
-	request_size += dl_request_header_encode(request, buffer); //request_header);
-	request_body = request_header + request_size;
 
-	/* Encode the Request Body. */
-	switch (request->dlrqm_api_key) {
-	case DL_PRODUCE_API_KEY:
-		request_size += dl_produce_request_encode(
-		    request->dlrqm_message.dlrqmt_produce_request, buffer);
-		break;
-	case DL_FETCH_API_KEY:
-		request_size += dl_fetch_request_encode(
-		    request->dlrqm_message.dlrqmt_fetch_request,
-		    request_body);
-		break;
-	case DL_OFFSET_API_KEY:
-		request_size += dl_list_offset_request_encode(
-		    request->dlrqm_message.dlrqmt_offset_request,
-		    request_body);
-		break;
-	default:
-		DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
-		    request->dlrqm_api_key);
-		return -1;
-		break;
+	/* Allocate and initialise a buffer to encode the request. */
+	if (dl_buf_new(target, NULL, DL_MTU,
+	    DL_BUF_FIXEDLEN|DL_BUF_BIGENDIAN) == 0) {
+		
+		/* Encode the Request Header. */
+		if (dl_request_header_encode(request, *target) == 0) {
+
+			/* Encode the Request Body. */
+			switch (request->dlrqm_api_key) {
+			case DL_PRODUCE_API_KEY:
+				return dl_produce_request_encode(
+				    request->dlrqm_message.dlrqmt_produce_request,
+				    *target);
+				break;
+			case DL_FETCH_API_KEY:
+				return dl_fetch_request_encode(
+				request->dlrqm_message.dlrqmt_fetch_request,
+				*target);
+				break;
+			case DL_OFFSET_API_KEY:
+				return dl_list_offset_request_encode(
+				request->dlrqm_message.dlrqmt_offset_request,
+				*target);
+				break;
+			default:
+				DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
+				request->dlrqm_api_key);
+				return -1;
+			}
+		} else {
+			DLOGTR0(PRIO_LOW, "Failed encoding request header.\n");
+			return -1;
+		}
+
+		/* Now that the size is known, encode this in the Request Size. */ 
+		//request_size += dl_request_size_encode(buffer->dlb_databuf,
+		//    request_size);
 	}
-
-	/* Now that the size is known, encode this in the Request Size. */ 
-	//request_size += dl_request_size_encode(buffer->dlb_databuf,
-	//    request_size);
-
-	return request_size;
+	return 0;
 }
 
 /**
@@ -173,39 +168,34 @@ dl_request_size_encode(char const *buffer, const int32_t size)
  * CorrelationId
  * ClientId
  */
-static int32_t 
+static int
 dl_request_header_encode(struct dl_request const * const request,
-    char * const buffer)
+    struct dl_buf *buffer)
 {
-	int32_t req_header_size = 0;
 	
 	DL_ASSERT(request!= NULL, "Request cannot be NULL");
 	DL_ASSERT(buffer != NULL, "Buffer for encoding cannot be NULL");
 
 	/* Encode the Request APIKey into the buffer. */
-	//req_header_size += DL_ENCODE_API_KEY(&buffer[req_header_size],
-	//    request->dlrqm_api_key);
-	dl_buf_put_int16(buffer, htobe16(request->dlrqm_api_key));
+	if (DL_ENCODE_API_KEY(buffer, request->dlrqm_api_key) != 0)
+		goto err;
 
 	/* Encode the Request APIVersion into the buffer. */
-	//req_header_size += DL_ENCODE_API_VERSION(&buffer[req_header_size]);
-	dl_buf_put_int16(buffer, htobe16(DLOG_API_VERSION));
+	if (DL_ENCODE_API_VERSION(buffer, DLOG_API_VERSION) != 0)
+		goto err;
 
 	/* Encode the Request CorrelationId into the buffer. */
-	//req_header_size += DL_ENCODE_CORRELATION_ID(&buffer[req_header_size],
-	//    request->dlrqm_correlation_id);
-	dl_buf_put_int32(buffer, htobe32(request->dlrqm_correlation_id));
+	if (DL_ENCODE_CORRELATION_ID(buffer,
+	    request->dlrqm_correlation_id) != 0)
+		goto err;
 
 	/* Encode the Request ClientId into the buffer. */
-	// TODO: change client id to a pointer; client owned memory
-	//req_header_size += DL_ENCODE_CLIENT_ID(&buffer[req_header_size],
-	    //request->dlrqm_client_id);
-	dl_buf_put_int16(buffer, htobe16(strlen(request->dlrqm_client_id)));
-	for (int i = 0; i < strlen(request->dlrqm_client_id); i++) {
-		dl_buf_put_int8(buffer, request->dlrqm_client_id[i]);
-	};
+	if (DL_ENCODE_CLIENT_ID(buffer, request->dlrqm_client_id) != 0)
+		goto err;
 
-	return req_header_size;
+	return 0;
+err:
+	return -1;
 }
 
 struct dl_request *
@@ -251,35 +241,29 @@ dl_request_decode(char *source)
 }
 	
 static int
-dl_request_header_decode(struct dl_request *request, char *source)
+dl_request_header_decode(struct dl_request *request, struct dl_buf *source)
 {
 	int16_t api_version;
-	ssize_t header_size = 0;
 
 	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
 
 	/* Decode the Request Size. */
 	// TODO: verify that the size checks out
-	printf("size = %d\n", dl_decode_int32(source));
-	header_size += sizeof(int32_t);
+	//printf("size = %d\n", dl_decode_int32(source));
 
 	/* Decode the Request APIKey. */
-	request->dlrqm_api_key = dl_decode_int16(&source[header_size]);
-	header_size += sizeof(int16_t);
+	DL_DECODE_API_KEY(source, &request->dlrqm_api_key);
 
 	/* Decode the Request APIVersion. */
-	api_version = dl_decode_int16(&source[header_size]);
-	// TOOD: Check API version is supported
-	header_size += sizeof(int16_t);
+	DL_DECODE_API_VERSION(source, &api_version);
+	// TODO: Check API version is supported
 
 	/* Decode the Request CorrelationId. */
-	request->dlrqm_correlation_id = dl_decode_int32(&source[header_size]);
-	header_size += sizeof(int32_t);
+	DL_DECODE_CORRELATION_ID(source, &request->dlrqm_correlation_id);
 
 	/* Decode the Request ClientId. */
-	header_size += dl_decode_string(&source[header_size],
-	    request->dlrqm_client_id);
+	DL_DECODE_CLIENT_ID(source, &request->dlrqm_client_id);
 
-	return header_size;
+	return 0;
 }
 

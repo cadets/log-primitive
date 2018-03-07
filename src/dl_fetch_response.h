@@ -39,9 +39,14 @@
 
 #include <sys/types.h>
 #include <sys/queue.h>
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
 
+#include "dl_buf.h"
 #include "dl_message_set.h"
-#include "dl_protocol.h"
 
 SLIST_HEAD(dl_fetch_response_topics, dl_fetch_response_topic);
 SLIST_HEAD(dl_fetch_response_partitions, dl_fetch_response_partition);
@@ -57,7 +62,7 @@ struct dl_fetch_response_partition {
 struct dl_fetch_response_topic {
 	struct dl_fetch_response_partitions dlfrt_partitions;
 	SLIST_ENTRY(dl_fetch_response_topic) dlfrt_entries;
-	char dlfrt_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	struct sbuf *dlfrt_topic_name;
 	int32_t dlfrt_npartitions;
 };	
 
@@ -68,6 +73,7 @@ struct dl_fetch_response {
 };
 
 extern struct dl_response * dl_fetch_response_decode(char *);
-extern int dl_fetch_response_encode(struct dl_fetch_response *, char *);
+extern int dl_fetch_response_encode(struct dl_fetch_response *,
+    struct dl_buf *);
 
 #endif

@@ -38,7 +38,13 @@
 #define _DL_LIST_OFFSET_RESPONSE_H
 
 #include <sys/queue.h>
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
 
+#include "dl_buf.h"
 #include "dl_protocol.h"
 
 SLIST_HEAD(dl_list_offset_response_topics, dl_list_offset_response_topic);
@@ -57,7 +63,7 @@ struct dl_list_offset_response_topic {
 	SLIST_ENTRY(dl_list_offset_response_topic) dlort_entries;
 	struct dl_list_offset_response_partitions dlort_partitions;
 	int32_t dlort_npartitions;
-	char dlort_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	struct sbuf *dlort_topic_name;
 };
 
 struct dl_list_offset_response {
@@ -65,9 +71,9 @@ struct dl_list_offset_response {
 	int32_t dlor_ntopics;
 };
 
-extern struct dl_response * dl_list_offset_response_decode(char *);
+extern struct dl_response * dl_list_offset_response_decode(struct dl_buf *);
 extern int32_t dl_list_offset_response_encode(struct dl_list_offset_response *,
-    char *);
+    struct dl_buf *);
 extern struct dl_list_offset_response * dl_list_offset_response_new(char *,
     int16_t, int64_t, int64_t);
 

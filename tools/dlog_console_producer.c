@@ -107,7 +107,7 @@ dlp_on_response(struct dl_response const * const response)
 			&produce_response->dlpr_topics, dlprt_entries) {
 
 			dl_debug(PRIO_LOW, "Topic: %s\n",
-				produce_topic->dlprt_topic_name);
+				sbuf_data(produce_topic->dlprt_topic_name));
 
 			for (partition = 0;
 			    partition < produce_topic->dlprt_npartitions;
@@ -151,8 +151,13 @@ main(int argc, char **argv)
 	size_t read = 0;
 
 	/* Configure the default values. */
+	client_id = sbuf_new_auto();
 	sbuf_cpy(client_id, DLC_DEFAULT_CLIENT_ID);
+
+	hostname = sbuf_new_auto();
 	sbuf_cpy(hostname, DLC_DEFAULT_HOSTNAME);
+
+	topic = sbuf_new_auto();
 	sbuf_cpy(topic, DLC_DEFAULT_TOPIC);
 
 	/* Parse the utilities command line arguments. */

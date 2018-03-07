@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -37,9 +37,10 @@
 #include <sys/socket.h>
 #include <sys/poll.h>
 #include <sys/types.h>
-#include <sys/sbuf.h>
+#include <sys/uio.h>
 
 #ifdef _KERNEL
+#include <sys/sbu.h>
 #else
 #include <arpa/inet.h>
 #include <netinet/ip.h>
@@ -47,9 +48,9 @@
 #endif
 
 #include "dl_assert.h"
+#include "dl_buf.h"
+#include "dl_primitive_types.h"
 #include "dl_memory.h"
-#include "dl_protocol.h"
-#include "dl_request_or_response.h"
 #include "dl_transport.h"
 #include "dl_utils.h"
 
@@ -90,10 +91,11 @@ dl_transport_connect(struct dl_transport *self,
 }
 
 int
-dl_transport_read_msg(struct dl_transport *self, char *buffer)
+dl_transport_read_msg(struct dl_transport *self, struct dl_buf **target)
 {
 	struct dl_request_or_response *req_or_res;
 	int ret, total = 0;
+	int32_t msg_size;
 	
 	DL_ASSERT(self != NULL, "Transport instance cannot be NULL");
 	DL_ASSERT(self != NULL, "Target buffer  cannot be NULL");
@@ -102,35 +104,39 @@ dl_transport_read_msg(struct dl_transport *self, char *buffer)
 #ifdef _KERNEL
 	//soreceive
 #else
-	ret = recv(self->dlt_sock, buffer, sizeof(req_or_res->dlrx_size), 0);
+	ret = recv(self->dlt_sock, &msg_size, sizeof(int32_t), 0);
+	msg_size = be32toh(msg_size);
 #endif
-	DLOGTR2(PRIO_LOW, "Read %d bytes (%p)...\n", ret, buffer);
+	DLOGTR2(PRIO_LOW, "Read %d bytes (%p)...\n", ret, msg_size);
 	if (ret == 0) {
 		/* Peer has closed connection */
 	} else if (ret > 0) {
-		req_or_res = dl_decode_request_or_response(buffer);
-		if (NULL != req_or_res) {
-			DLOGTR1(PRIO_LOW, "\tNumber of bytes: %d\n",
-			    req_or_res->dlrx_size);
+		//req_or_res = dl_decode_request_or_response(&msg_size);
+		//if (NULL != req_or_res) {
+			DLOGTR1(PRIO_LOW, "\tNumber of bytes: %d\n", msg_size);
+			    //req_or_res->dlrx_size);
 
-			buffer += sizeof(int32_t);
+			char *buffer = dlog_alloc(sizeof(char) * msg_size);
+			dl_buf_new(target, NULL, msg_size,
+			    DL_BUF_FIXEDLEN | DL_BUF_BIGENDIAN);
 
-			while (total < req_or_res->dlrx_size) {
-				ret = recv(self->dlt_sock, &buffer[total],
-				    req_or_res->dlrx_size-total, 0);
+			while (total < msg_size) {
+				total += ret = recv(self->dlt_sock, buffer,
+				    msg_size-total, 0);
 				DLOGTR2(PRIO_LOW,
 				    "\tRead %d characters; expected %d\n",
-				    ret, req_or_res->dlrx_size);
-				total += ret;
+				    ret, msg_size);
+				dl_buf_bcat(*target, buffer, ret);
 			}
+			dlog_free(buffer);
 
-			for (int b = 0; b < req_or_res->dlrx_size; b++) {
+			for (int b = 0; b < msg_size; b++) {
 				DLOGTR1(PRIO_LOW, "<0x%02hhX>", buffer[b]);
 			}
 			DLOGTR0(PRIO_LOW, "\n");
 
-			return ret;
-		}
+			return 0;
+		//}
 	} else {
 		return -1;
 	}
@@ -139,19 +145,28 @@ dl_transport_read_msg(struct dl_transport *self, char *buffer)
 
 int
 dl_transport_send_request(const struct dl_transport *self,
-    const struct dl_buffer *buffer, int32_t buffer_len)
+    const struct dl_buf *buffer)
 {
-	
+	struct iovec iov[2];
+	int32_t buflen;
+
 	DL_ASSERT(self != NULL, "Transport instance cannot be NULL");
 	DL_ASSERT(buffer != NULL, "Buffer to send cannot be NULL");
-	DL_ASSERT(buffer_len > 0, "Buffer length cannot be <= 0");
 
 #ifdef _KERNEL
 	// octets_sent = sosend(struct socket *so, struct sockaddr *addr, struct uio *uio,
 	// 	 struct	mbuf *top, struct mbuf *control, int flags,
 	// 	 	 struct	thread *td);
 #else
-	return send(self->dlt_sock, buffer->dlb_databuf, buffer_len, 0);
+	buflen = htobe32(dl_buf_pos(buffer));
+
+	iov[0].iov_base = &buflen;
+	iov[0].iov_len = sizeof(int32_t);
+
+	iov[1].iov_base = dl_buf_data(buffer);
+	iov[1].iov_len = dl_buf_pos(buffer);
+
+	return writev(self->dlt_sock, iov, 2);
 #endif
 }
 
@@ -171,6 +186,7 @@ dl_transport_poll(const struct dl_transport *self, int timeout)
 #else
 	ufd.fd = self->dlt_sock;
 	ufd.events = POLLIN;
+
 	return poll(&ufd, 1, timeout);
 #endif
 }

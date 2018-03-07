@@ -38,13 +38,13 @@
 #define _DL_RESENDER_H
 
 #include "dl_config.h"
+#include "dlog_client_impl.h"
 #include "dl_request_queue.h"
 
 /* Forward definition of DLog resender handle. */
 struct dl_resender;
 
-extern struct dl_resender * dl_resender_new(
-    struct dl_client_configuration *);
+extern struct dl_resender * dl_resender_new(struct dlog_handle *);
 extern int dl_resender_fini();
 extern int dl_resender_start(struct dl_resender *);
 extern int dl_resender_stop(struct dl_resender *);

@@ -64,8 +64,12 @@ extern int dl_buf_get_int64(struct dl_buf *, u_int64_t *);
 extern int dl_buf_len(struct dl_buf *);
 extern int dl_buf_pos(struct dl_buf *);
 extern int dl_buf_put_int8(struct dl_buf *, u_int8_t);
+extern int dl_buf_put_int8_at(struct dl_buf *, u_int8_t, int);
 extern int dl_buf_put_int16(struct dl_buf *, u_int16_t);
+extern int dl_buf_put_int16_at(struct dl_buf *, u_int16_t, int);
 extern int dl_buf_put_int32(struct dl_buf *, u_int32_t);
+extern int dl_buf_put_int32_at(struct dl_buf *, u_int32_t, int);
 extern int dl_buf_put_int64(struct dl_buf *, u_int64_t);
+extern int dl_buf_put_int64_at(struct dl_buf *, u_int64_t, int);
 
 #endif

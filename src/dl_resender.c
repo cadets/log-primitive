@@ -58,7 +58,7 @@
 #include "dl_resender.h"
 #include "dl_transport.h"
 #include "dl_utils.h"
-#include "dlog_client.h"
+#include "dlog_client_impl.h"
 	
 RB_HEAD(dlr_unackd_requests, dl_request_element);
 
@@ -122,17 +122,17 @@ dl_resender_thread(void *vargp)
 		pthread_mutex_lock(&resender->dlr_unackd_mtx);
 		RB_FOREACH_SAFE(request, dlr_unackd_requests,
 		    &resender->dlr_unackd, request_temp) {
-			if (request->dlrq_should_resend) {
+			if (resender->dlr_handle->dlh_config->to_resend) {
 				now = time(NULL);
 				DLOGTR4(PRIO_LOW, "Was sent %lu now is %lu. "
 				    "Resend when the difference is %lu. "
 				    "Current: %lu\n",
 				    request->dlrq_last_sent, now,
-				    request->dlrq_resend_timeout,
+				    resender->dlr_handle->dlh_config->resend_timeout, 
 				    request->dlrq_last_sent);
 
 				if ((now - request->dlrq_last_sent) >
-				    request->dlrq_resend_timeout) {
+				    resender->dlr_handle->dlh_config->resend_timeout) {
 					request->dlrq_last_sent = time(NULL);
 
 					RB_REMOVE(dlr_unackd_requests,
@@ -155,7 +155,7 @@ dl_resender_thread(void *vargp)
 }
 
 struct dl_resender *
-dl_resender_new(struct dl_client_configuration *cc)
+dl_resender_new(struct dlog_handle *handle)
 {
 	struct dl_resender *resender;
 
@@ -168,7 +168,7 @@ dl_resender_new(struct dl_client_configuration *cc)
 	RB_INIT(&resender->dlr_unackd);
 	pthread_mutex_init(&resender->dlr_unackd_mtx, NULL);
 	pthread_cond_init(&resender->dlr_unackd_cond, NULL);
-	resender->dlr_sleep_ms = cc->resender_thread_sleep_length;
+	resender->dlr_sleep_ms = handle->dlh_config->resender_thread_sleep_length;
 
 	return resender;
 }	

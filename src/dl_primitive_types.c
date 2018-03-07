@@ -35,19 +35,10 @@
  */
 
 #include <sys/types.h>
-
-#ifdef __APPLE__
-#include <libkern/OSByteOrder.h>
-
-#define htobe16(x) OSSwapHostToBigInt16(x)
-#define htobe32(x) OSSwapHostToBigInt32(x)
-#define htobe64(x) OSSwapHostToBigInt64(x)
-
-#define be16toh(x) OSSwapBigToHostInt16(x)
-#define be32toh(x) OSSwapBigToHostInt32(x)
-#define be64toh(x) OSSwapBigToHostInt64(x)
+#ifdef KERNEL
+#include <sys/sbuf.h>
 #else
-#include <sys/endian.h>
+#include <sbuf.h>
 #endif
 
 #ifdef _KERNEL
@@ -59,6 +50,8 @@
 #include <stddef.h>
 
 #include "dl_assert.h"
+// TODO: temporary
+#include "dl_memory.h"
 #include "dl_primitive_types.h"
 
 /* NULLABLE Strings and arrays of Bytes are represented with the value -1. */
@@ -70,28 +63,28 @@ static const int32_t DL_BYTES_NULL = -1;
  * a value of -1 indicates a NULL string.
  */
 int
-dl_decode_string(char const * const source, char * const string)
+dl_decode_string(struct dl_buf *source, struct sbuf **target)
 {
-	int string_len, decoded_len = 0;
+	int16_t slen;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
-	DL_ASSERT(string != NULL, "String cannot be NULL");
+	DL_ASSERT(target != NULL, "Traget sbuf cannot be NULL");
 
 	/* Strings are NULLABLE.
 	 * Therefore first check whether there is a value to decode.
 	 */
-	if (DL_STRING_NULL == dl_decode_int32(source)) {
-		decoded_len += sizeof(int32_t);
+	if (dl_buf_get_int16(source, &slen) != 0)
+		return -1;
+	if (slen == DL_STRING_NULL) {
+		*target = NULL;
 	} else {
-		/* Decode the string length */
-		string_len = dl_decode_int16(source);
-		decoded_len += sizeof(int16_t);
-
-		strlcpy(string, &source[sizeof(int16_t)], string_len+1);
-		decoded_len += string_len;
+		char * temp = (char *) dlog_alloc(sizeof(char) * slen);
+		/* TODO: Replace with bulk drain function in dl_buf */
+		for (int i = 0; i < slen; i++)
+			dl_buf_get_int8(source, &temp[i]);
+		*target = sbuf_new(NULL, temp, slen, SBUF_FIXEDLEN);
 	}
-
-	return decoded_len;
+	return 0;
 }
 
 /**
@@ -99,9 +92,10 @@ dl_decode_string(char const * const source, char * const string)
  * a value of -1 indicates a NULL string.
  */
 int
-dl_decode_bytes(char const * const source, char * const target)
+dl_decode_bytes(char const * const target, int *target_len, struct dl_buf *source)
 {
 	int bytes_len, decoded_len = 0;
+	int32_t nbytes;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
@@ -109,17 +103,16 @@ dl_decode_bytes(char const * const source, char * const target)
 	/* Bytes are NULLABLE.
 	 * therefore first check whether there is a value to decode.
 	 */
-	if (DL_BYTES_NULL == dl_decode_int32(source)) {
-		decoded_len += sizeof(int32_t);
+	dl_buf_get_int32(source, nbytes);
+	if (nbytes == DL_BYTES_NULL) {
+		*target_len = 0;
+		return 0;
 	} else {
-		/* Decode the bytes length */
-		bytes_len = dl_decode_int32(source);
-		decoded_len += sizeof(int16_t);
-
-		memcpy(target, &source[sizeof(int32_t)], bytes_len);
-		decoded_len += bytes_len;
+		*target_len = nbytes;
+		for (int i = 0; i < nbytes; i++) {
+			dl_buf_get_int8(source, target[i]);
+		}
 	}
-
 	return decoded_len;
 }
 
@@ -127,47 +120,46 @@ dl_decode_bytes(char const * const source, char * const target)
  * Encoded strings are prefixed with their length (int16).
  */
 int32_t
-dl_encode_string(char * const target, char const * const source,
-    const size_t max_len)
+dl_encode_string(struct dl_buf *target, struct sbuf *source)
 {
-	int32_t encoded_size = 0;
-	char * const string_len = target;
-	char * const string_value = &target[sizeof(uint16_t)];
+	char *sval;
 
-	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
+	if (source == NULL) {
+		dl_buf_put_int32(source, DL_BYTES_NULL);
+	} else {
+		/* Prepended a 16bit value indicating the length (in bytes). */
+		if (dl_buf_put_int16(target, sbuf_len(source)) == 0) {
 
-	/* Prepended a 16bit value indicating the length (in bytes). */
-	encoded_size += dl_encode_int16(string_len, strlen(source));
-
-#ifdef _KERNEL
-	// TODO: In kernel strlcpy?
-#else
-	encoded_size += strlcpy(string_value, source, max_len);
-#endif
-	return encoded_size;
+			sval = sbuf_data(source);
+			for (int i = 0; i < sbuf_len(source); i++) {
+				dl_buf_put_int8(target, sval[i]);
+			}
+		} else {
+			return -1;
+		}
+	}
+	return 0;
 }
 
 /**
  * Encoded byte arrays are prefixed with their length (int32).
  */
-int32_t
-dl_encode_bytes(char * const target, char const * const source,
-    const int32_t source_len)
+int
+dl_encode_bytes(char const * const source, const int32_t source_len,
+    struct dl_buf * target)
 {
 	int32_t encoded_len_bytes = 0;
-	char * const bytes_len = target;
-	char * const bytes_value = &target[sizeof(uint32_t)];
 
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
 
-	/* Prepend a 32bit value indicating the length (in bytes). */
-	encoded_len_bytes = dl_encode_int32(bytes_len, source_len);
+	if (source == NULL) 
+		dl_buf_put_int32(target, DL_BYTES_NULL);
+	else {
+		/* Prepend a 32bit value indicating the length (in bytes). */
+		dl_buf_put_int32(target, source_len);
 
-	/* Copy source_len bytes into the target buffer. */
-	memcpy(bytes_value, source, source_len);
-	encoded_len_bytes += source_len;
-
-	return encoded_len_bytes;
+		/* Copy source_len bytes into the target buffer. */
+		dl_buf_bcat(target, source, source_len);
+	}
+	return 0;
 }

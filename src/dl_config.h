@@ -38,6 +38,12 @@
 #ifndef _DL_CONFIG_H
 #define _DL_CONFIG_H
 
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
+
 #include "dl_protocol.h" 
 #include "dl_response.h" 
 #include "dl_request.h" 
@@ -58,7 +64,7 @@ struct broker_configuration {
 
 struct dl_client_configuration {
 	dl_response_function dlcc_on_response;
-	char const *client_id;
+	struct sbuf *dlcc_client_id;
 	int to_resend;
 	int resend_timeout;
 	int resender_thread_sleep_length;

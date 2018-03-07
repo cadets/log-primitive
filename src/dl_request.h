@@ -38,8 +38,13 @@
 #define _DL_REQUEST_H
 
 #include <sys/types.h>
+#ifdef KERNEL
 #include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
 
+#include "dl_buf.h"
 #include "dl_fetch_request.h"
 #include "dl_list_offset_request.h"
 #include "dl_produce_request.h"
@@ -51,15 +56,15 @@ union dl_request_message {
 };
 
 struct dl_request {
-	char dlrqm_client_id[DL_MAX_CLIENT_ID_LEN];
+	struct sbuf *dlrqm_client_id;
 	union dl_request_message dlrqm_message;
 	int32_t dlrqm_correlation_id;
 	int16_t dlrqm_api_key;
 };
 
-extern struct dl_request * dl_request_new(const int16_t, const int32_t, char *);
+extern struct dl_request * dl_request_new(const int16_t, const int32_t,
+    struct sbuf *);
 extern struct dl_request * dl_request_decode(char *);
-extern int dl_request_encode(struct dl_request const *,
-    struct dl_buffer *);
+extern int dl_request_encode(struct dl_request const *, struct dl_buf **); 
 
 #endif

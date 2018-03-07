@@ -48,69 +48,68 @@ static int32_t dl_encode_response_header(struct dl_response const * const,
     char * const);
 static int32_t dl_encode_response_size(char const *, const int32_t);
 
-#define DL_ENCODE_CORRELATION_ID(source, value) dl_encode_int32(source, value)
 #define DL_ENCODE_SIZE(buffer, value) dl_encode_int32(buffer, value)
 
-struct dl_response_header *
-dl_response_header_decode(char *source, char **next)
+int
+dl_response_header_decode(struct dl_response_header **header,
+    struct dl_buf *source)
 {
-	struct dl_response_header *header;
+	struct dl_response_header *self;
 	int32_t response_size;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL\n");
 
-	*next = source;
-
-	header = (struct dl_response_header *) dlog_alloc(
+	self = *header = (struct dl_response_header *) dlog_alloc(
 	    sizeof(struct dl_response_header));
-
-        /* Decode the Size */	
-	header->dlrsh_size = dl_decode_int32(*next);
-	*next += sizeof(int32_t);
-
-        /* Decode the CorrelationId */	
-	header->dlrsh_correlation_id = dl_decode_int32(*next);
-	*next += sizeof(int32_t);
-
-	return header;
+#ifdef KERNEL
+	DL_ASSERT(header != NULL, ("Failed allocateding Response header.\n"));
+#else
+	if (self != NULL) {
+#endif
+		/* Decode the CorrelationId */	
+		dl_buf_get_int32(source, &self->dlrsh_correlation_id);
+		return 0;
+	}
+	return -1;
 }
 
 int32_t
-dl_response_encode(struct dl_response *response, char *target)
+dl_response_encode(struct dl_response *response, struct dl_buf *target)
 {
-	int32_t response_size = 0;
-	char *response_body, *response_header;
 
 	DL_ASSERT(response != NULL, "Response message cannot be NULL\n");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL\n");
 
-	/* Encode the Response Header. */
-	response_header = target + sizeof(int32_t);
+	if (dl_encode_response_header(response, target) == 0) {
 
-	response_size += dl_encode_response_header(response, response_header);
-	response_body = response_header + response_size;
-	
-	switch (response->dlrs_api_key) {
-	case DL_OFFSET_API_KEY:
-		DLOGTR0(PRIO_LOW, "Encoding ListOffsetResponse...\n");
+		switch (response->dlrs_api_key) {
+		case DL_OFFSET_API_KEY:
+			DLOGTR0(PRIO_LOW, "Encoding ListOffsetResponse...\n");
 
-		response_size += dl_list_offset_response_encode(
-			response->dlrs_message.dlrs_offset_message,
-			response_body);
-		break;
-	case DL_PRODUCE_API_KEY:
-		DLOGTR0(PRIO_LOW, "Encoding ProduceResponse...\n");
+			 dl_list_offset_response_encode(
+				response->dlrs_message.dlrs_offset_message,
+				target);
+			break;
+		case DL_PRODUCE_API_KEY:
+			DLOGTR0(PRIO_LOW, "Encoding ProduceResponse...\n");
 
-		response_size += dl_produce_response_encode(
-			response->dlrs_message.dlrs_produce_message,
-			response_body);
-		break;
+			dl_produce_response_encode(
+				response->dlrs_message.dlrs_produce_message,
+				target);
+			break;
+		default:
+			// TODO
+			break;
+		}
+
+		/* Now that the size is known, encode this in the
+		 * Request Size. */ 
+		//response_size += dl_encode_response_size(target, response_size);
+
+		return 0;
+	} else {
+		return -1;
 	}
-
-	/* Now that the size is known, encode this in the Request Size. */ 
-	response_size += dl_encode_response_size(target, response_size);
-
-	return response_size;
 }
 
 /**

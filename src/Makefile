@@ -56,7 +56,6 @@ SRCS= dlog_broker.c \
 	dl_produce_request.c \
 	dl_produce_response.c \
 	dl_request.c \
-	dl_request_or_response.c \
 	dl_response.c
 
 .include <bsd.lib.mk>

@@ -1,5 +1,4 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
  * Copyright (c) 2017 (Graeme Jenkinson)
  * All rights reserved.
  *
@@ -40,38 +39,41 @@
 
 #include <sys/types.h>
 #include <sys/queue.h>
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
 
 #include "dl_buf.h"
 #include "dl_message_set.h"
-#include "dl_protocol.h"
+#include "dl_request.h"
 
-SLIST_HEAD(dl_produce_request_partitions, dl_produce_request_partition);
 SLIST_HEAD(dl_produce_request_topics, dl_produce_request_topic);
 
 struct dl_produce_request_partition {
-	SLIST_ENTRY(dl_produce_request_partition) dlprp_entries;
 	struct dl_message_set *dlprp_message_set;
 	int32_t dlprp_partition;
 };
 
 struct dl_produce_request_topic {
 	SLIST_ENTRY(dl_produce_request_topic) dlprt_entries;
-	struct dl_produce_request_partitions dlprt_partitions;
+	struct sbuf *dlprt_topic_name;
 	int32_t dlprt_npartitions;
-	char dlprt_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	struct dl_produce_request_partition dlprt_partitions[1];
 };
 
 struct dl_produce_request {
-	int16_t dlpr_required_acks;
+	struct dl_produce_request_topics dlpr_topics;
 	int32_t dlpr_timeout;
 	int32_t dlpr_ntopics;
-	struct dl_produce_request_topics dlpr_topics;
+	int16_t dlpr_required_acks;
 };
 
-extern struct dl_produce_request * dl_produce_request_decode(char *);
+extern struct dl_produce_request * dl_produce_request_decode(struct dl_buf *);
 extern int dl_produce_request_encode(struct dl_produce_request const * const,
     struct dl_buf *);
-extern struct dl_request * dl_produce_request_new(const int32_t,
-    char *, char *, char*, int, char *, int);
+extern int dl_produce_request_new(struct dl_request **, const int32_t,
+    struct sbuf *, struct sbuf *, char*, int, char *, int);
 
 #endif

@@ -38,6 +38,12 @@
 #define _DL_PRIMITIVE_TYPES_H
 
 #include <sys/types.h>
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
+
 #ifdef __APPLE__
 #include <libkern/OSByteOrder.h>
 
@@ -52,116 +58,17 @@
 #include <sys/endian.h>
 #endif
 
+
 #include "dl_assert.h"
+#include "dl_buf.h"
 
 /* Functions for decoding primitive types (bytes and strings). */
-extern int dl_decode_string(char const * const, char * const);
-extern int dl_decode_bytes(char const * const, char * const);
+extern int dl_decode_string(struct dl_buf *, struct sbuf **);
+extern int dl_decode_bytes(char const * const, int *, struct dl_buf * const);
 
 /* Functions for encoding primitive types (bytes and strings). */
-extern int32_t dl_encode_string(char * const, char const * const,
-    const size_t);
-extern int32_t dl_encode_bytes(char * const, char const * const,
-    const int32_t);
-
-/**
- * Decode a int8_t (big endian) from the source buffer.
- */
-inline int8_t
-dl_decode_int8(char const * const source)
-{
-
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
-
-	return *((int8_t *) source);
-}
-
-/**
- * Decode a int16_t (big endian) from the source buffer.
- */
-inline int16_t
-dl_decode_int16(char const * const source)
-{
-
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
-
-	return be16toh(*((int16_t *) source));
-}
-
-/**
- * Decode a int32_t (big endian) from the source buffer.
- */
-inline int32_t
-dl_decode_int32(char const * const source)
-{
-
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
-
-	return be32toh(*((int32_t *) source));
-}
-
-/**
- * Decode a int64_t (big endian) from the source buffer.
- */
-inline int64_t
-dl_decode_int64(char const * const source)
-{
-
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
-
-	return be64toh(*((int64_t *) source));
-}
-
-/**
- * Encoded a int8_t value into the source (be).
- */
-inline int32_t
-dl_encode_int8(char const *target, const int8_t value)
-{
-
-	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
-
-	(*(int8_t *) target) = value;
-	return sizeof(int8_t);
-}
-
-/**
- * Encoded a int16_t value into the source (be).
- */
-inline int32_t
-dl_encode_int16(char const *source, const int16_t value)
-{
-
-	DL_ASSERT(source != NULL, "source cannot be NULL");
-
-	(*(int16_t *) source) = htobe16(value);
-	return sizeof(int16_t);
-}
-
-/**
- * Encoded a int32_t value into the source (be).
- */
-inline int32_t
-dl_encode_int32(char const *source, const int32_t value)
-{
-
-	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
-
-	(*(int32_t *) source) = htobe32(value);
-	return sizeof(int32_t);
-}
-
-/**
- * Encoded a int64_t value into the source (be).
- */
-inline int32_t
-dl_encode_int64(char const *source, const int64_t value)
-{
-
-	DL_ASSERT(source != NULL, "source cannot be NULL");
-
-	(*(int64_t *) source) = htobe64(value);
-	return sizeof(int64_t);
-}
+extern int32_t dl_encode_string(struct dl_buf *, struct sbuf *);
+extern int dl_encode_bytes(char const * const, const int32_t,
+    struct dl_buf *);
 
 #endif
