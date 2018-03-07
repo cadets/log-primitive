@@ -492,7 +492,7 @@ dl_buf_put_int32(struct dl_buf *self, u_int32_t value)
 }
 
 int
-dl_buf_put_int64(struct dl_buf *self, u_int64_t value, int pos)
+dl_buf_put_int64_at(struct dl_buf *self, u_int64_t value, int pos)
 {
 	struct dl_buf_hdr *hdr = &self->dlb_hdr;
 	int add_len;
