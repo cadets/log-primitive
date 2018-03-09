@@ -44,27 +44,29 @@
 #include <sbuf.h>
 #endif
 
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_fetch_request.h"
 #include "dl_list_offset_request.h"
 #include "dl_produce_request.h"
 
-union dl_request_message {
-	struct dl_produce_request *dlrqmt_produce_request;
-	struct dl_fetch_request *dlrqmt_fetch_request;
-	struct dl_list_offset_request *dlrqmt_offset_request;
-};
-
 struct dl_request {
 	struct sbuf *dlrqm_client_id;
-	union dl_request_message dlrqm_message;
+	union {
+		struct dl_produce_request *dlrqm_produce_request;
+		struct dl_fetch_request *dlrqm_fetch_request;
+		struct dl_list_offset_request *dlrqm_offset_request;
+	};
 	int32_t dlrqm_correlation_id;
 	int16_t dlrqm_api_key;
 };
 
-extern struct dl_request * dl_request_new(const int16_t, const int32_t,
+extern void dl_request_delete(struct dl_request const * const);
+extern int dl_request_new(struct dl_request **, const int16_t, const int32_t,
     struct sbuf *);
-extern struct dl_request * dl_request_decode(char *);
-extern int dl_request_encode(struct dl_request const *, struct dl_buf **); 
+
+extern int dl_request_decode(struct dl_request ** const,
+    struct dl_bbuf const * const);
+extern int dl_request_encode(struct dl_request const *,
+    struct dl_bbuf ** const); 
 
 #endif
