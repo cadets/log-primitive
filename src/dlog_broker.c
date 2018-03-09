@@ -36,6 +36,7 @@
 
 #include <sys/poll.h>
 #include <sys/socket.h>
+#include <sys/event.h>
 #include <sys/queue.h>
 
 #include <arpa/inet.h>
@@ -55,6 +56,7 @@
 
 #include "dl_assert.h"
 #include "dl_broker_client.h"
+#include "dl_broker_segment.h"
 #include "dl_broker_topic.h"
 #include "dl_config.h"
 #include "dl_event_handler.h"
@@ -75,33 +77,12 @@ struct dlog_broker_handle {
 	dl_event_handler_handle socket;
 };
 
-static void * dl_fsync_thread(void *);
 static void dl_siginfo_handler(int);
 static void dl_sigint_handler(int);
 static int dl_init_listening_socket(int);
-static int dl_start_fsync_thread(struct broker_configuration *,
-    struct dl_broker_topic *);
 
-struct response_pool_element {
-	struct dl_response *rsp_msg;
-	STAILQ_ENTRY(response_pool_element) entries;
-	int fd;
-};
-
-STAILQ_HEAD(unfsynced_response, response_pool_element);
-static struct unfsynced_response unfsynced_responses; 
-static pthread_mutex_t unfsynced_responses_mtx;
-static pthread_cond_t unfsynced_responses_cond;
-
-struct dl_fsync_argument {
-	int index;
-	pthread_t const *tid;
-	struct broker_configuration const *config;
-	struct dl_topic *topic;
-};
-
-static pthread_t fsy_thread;
-static struct dl_fsync_argument fsy_args;
+static dl_event_handler_handle dl_get_kq(void *);
+static void dl_handle_kq(void *);
 
 struct dlog_broker_statistics dlog_broker_stats;
 
@@ -130,111 +111,6 @@ dl_init_listening_socket(int portnumber)
 		return -3;
 
 	return sockfd;
-}
-
-/* TODO: Fix up coarse locking and multithreading */
-static void *
-dl_fsync_thread(void *vargp)
-{
-	char *pbuf;
-        char *send_out_buf;
-	struct dl_fsync_argument *pa =
-	    (struct dl_fsync_argument *) vargp;
-	struct dl_broker_topic *topic = pa->topic;
-	struct response_pool_element *response, *response_temp;
-	ssize_t rc;
-	int old_cancel_state;
-	struct unfsynced_response responses; 
-
-	DL_ASSERT(vargp != NULL, "fsync thread argument cannot be NULL");
-
-	/* Defer cancellation of the thread until the cancellation point 
-	 * pthread_testcancel(). This ensures that thread ins't cancelled until
-	 * outstanding requests have been processed.
-	 */	
-	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
-
-	//pbuf = (char *) dlog_alloc(MTU * sizeof(char));
-	//send_out_buf = (char *) dlog_alloc(MTU * sizeof(char));
-
-	STAILQ_INIT(&responses);	
-
-	dl_debug(PRIO_LOW, "FSync thread started... %d\n", pa->index);
-
-	for (;;) {
-		pthread_mutex_lock(&unfsynced_responses_mtx);
-		
-		/* If there are un-fsynced response, fsync the log and
-		 * the disk and send the responses.
-	 	 */
-		while (STAILQ_EMPTY(&unfsynced_responses) != 0) {
-			pthread_cond_wait(&unfsynced_responses_cond,
-			    &unfsynced_responses_mtx);
-		}
-		
-		/* Enqueue the unfsynced responses to a thread local queue.*/
-		while ((response = STAILQ_FIRST(&unfsynced_responses))) {
-			STAILQ_REMOVE_HEAD(&unfsynced_responses, entries);
-			STAILQ_INSERT_TAIL(&responses, response, entries);
-		}
-		pthread_mutex_unlock(&unfsynced_responses_mtx);
-
-		STAILQ_FOREACH_SAFE(response, &responses, entries,
-		    response_temp) {
-			dl_debug(PRIO_LOW, "Unfsynching: %d\n",
-			    response->rsp_msg->dlrs_correlation_id);
-		
-			//int fi = wrap_with_size(&response->rsp_msg, pbuf,
-			//    send_out_buf, (enum request_type) response->fd);
-			// TODO: dl_encode_response();
-			dl_debug(PRIO_NORMAL, "Sending: '%s'\n", send_out_buf);
-			//rc = send(response->fd, send_out_buf, fi, 0);
-			if (rc != -1) {
-				/* Response has been ack'd, remove it from the
-				 * unfsynced_responses and return to the
-				 * appropriate response pool
-				 */
-				STAILQ_REMOVE_HEAD(&responses, entries);
-
-				// TODO: Free the response
-				// dlog_free(response);
-			} else {
-				// What if some of the sends failed?
-			}
-		}
-
-
-		/* Sync both the log and the index to the disk. */
-		//dl_lock_seg(partition->dlp_active_segment);
-		//fsync(partition->dlp_active_segment->_log);
-		//fsync(partition->dlp_active_segment->_index);
-		//dl_unlock_seg(partition->dlp_active_segment);
-	
-		/* Fsync'd all outstanding responses. Check whether the
-		 * thread has been canceled.
-		 */	
-		pthread_testcancel();
-
-		dl_debug(PRIO_LOW, "Fsynch thread is going to sleep for %d "
-		    "seconds\n", pa->config->fsync_thread_sleep_length);
-		
-		sleep(pa->config->fsync_thread_sleep_length);
-	}
-
-	dlog_free(pbuf);
-	dlog_free(send_out_buf);
-
-	return NULL;
-}
-
-static int 
-dl_start_fsync_thread(struct broker_configuration *conf,
-    struct dl_broker_topic *topic)
-{
-
-	fsy_args.config = conf;
-	fsy_args.topic = topic;
-	return pthread_create(&fsy_thread, NULL, dl_fsync_thread, &fsy_args);
 }
 
 static void
@@ -347,10 +223,52 @@ dl_handle_read_event(void *instance)
 	}
 }
 
+static dl_event_handler_handle
+dl_get_kq(void* instance)
+{
+	const struct dl_partition *partition = instance;
+	DLOGTR0(PRIO_HIGH, "Getting handle.\n");
+	return partition->_klog;
+}
+
+static void
+dl_handle_kq(void *instance)
+{
+	struct dl_partition * const partition = instance;
+	struct segment *segment = partition->dlp_active_segment;
+	struct kevent event;
+	off_t log_position;
+	int rc;
+
+	rc = kevent(partition->_klog, 0, 0, &event, 1, 0);
+	if (rc == -1)
+		DLOGTR2(PRIO_HIGH, "Error reading event %d %d\n.", rc, errno);
+	else {
+		DLOGTR1(PRIO_LOW, "Read of kqueue = %p.\n", event.data);
+
+		dl_lock_seg(segment);
+		log_position = lseek(segment->_log, 0, SEEK_END);
+		DLOGTR2(PRIO_HIGH, "log_position = %d, last_sync_pos = %d\n",
+		    log_position, segment->last_sync_pos);
+		if (log_position - segment->last_sync_pos > 100) {
+
+			DLOGTR0(PRIO_NORMAL, "Syncing the index and log...\n");
+
+			fsync(segment->_log);
+			fsync(segment->_index);
+			segment->last_sync_pos = log_position;
+		}
+		dl_unlock_seg(segment);
+	}
+}
+
 void
 dlog_broker_init(char const * const topic_name,
     struct broker_configuration const * const conf)
 {
+	struct kevent event;
+	struct dl_partition *topic_partition;
+	struct segment *active_segment;
 
 	DL_ASSERT(topic_name != NULL, "Partition name cannot be NULL");
 	DL_ASSERT(conf != NULL, "Broker configuration cannot be NULL");
@@ -361,33 +279,28 @@ dlog_broker_init(char const * const topic_name,
 	/* Install signal handler to report broker statistics. */
 	signal(SIGINFO, dl_siginfo_handler);
 
-	/* Create the specified partition; deleting if already present. */
-	dl_del_folder(topic_name);
-	dl_make_folder(topic_name);
-
 	/* Create the hashmap to store the names of the topics managed by the
 	 * broker and their segments.
 	 */
 	//TODO
 
 	/* Preallocate an initial segement file for the topic. */
-	//partition = dl_partition_new(topic_name);
 	topic = dl_topic_new(topic_name);
 
-	/* Store the topic and it's segment in the hashmap. */
-	// TODO
+	/* TODO: monitor writes on the partitions active segment. */
+	topic_partition = SLIST_FIRST(&topic->dlt_partitions);
+	active_segment = topic_partition->dlp_active_segment; 
 
-	/* If the broker isn't configured to immediately fsync log entries,
-	 * create the a queue used to asynchronously fsync requests.
-	 */
-	print_configuration(conf);
-	if (!(conf->val & BROKER_FSYNC_ALWAYS)) {
-		STAILQ_INIT(&unfsynced_responses);
-		pthread_mutex_init(&unfsynced_responses_mtx, NULL);
-		pthread_cond_init(&unfsynced_responses_cond, NULL);
-		
-		dl_start_fsync_thread(conf, topic);
-	}
+	topic_partition->_klog = kqueue();
+	EV_SET(&event, active_segment->_log, EVFILT_VNODE, EV_ADD | EV_CLEAR,
+	    NOTE_WRITE, 0, NULL);
+       	kevent(topic_partition->_klog, &event, 1, NULL, 0, NULL); 
+        topic_partition->event_handler.dleh_instance = topic_partition;
+	topic_partition->event_handler.dleh_get_handle = dl_get_kq;
+	topic_partition->event_handler.dleh_handle_event = dl_handle_kq;
+
+	/* Register the topics active partition with the poll reactor. */
+	dl_poll_reactor_register(&topic_partition->event_handler);
 }
 
 /* TODO allow specifying which network interface to bind to */
@@ -425,5 +338,5 @@ dlog_broker_create_server(const int portnumber,
 void
 dlog_broker_fini()
 {
-	// Cancel the fsync thread for the topic
+	// unregister the handlers?
 }
