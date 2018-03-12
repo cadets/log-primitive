@@ -51,6 +51,7 @@ SLIST_HEAD(dl_partitions, dl_partition);
 struct dl_broker_topic {
 	struct dl_partitions dlt_partitions;
 	u_int64_t dlt_offset; /* Current position in the log. */
+	//struct sbuf *dlbt_topic_name;
 	char dlt_topic_name[DL_MAX_TOPIC_NAME_LEN];
 };
 

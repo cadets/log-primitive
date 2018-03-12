@@ -34,7 +34,11 @@
  *
  */
 
-#include <sys/queue.h>
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
 
 #include <stddef.h>
 
@@ -50,17 +54,27 @@ dl_topic_new(char *topic_name)
 {
 	struct dl_partition *partition;
 	struct dl_broker_topic *topic;
-
+	struct sbuf *tname;
+		
 	topic = (struct dl_broker_topic *) dlog_alloc(
 	    sizeof(struct dl_broker_topic));
+#ifdef KERNEL
+	DL_ASSERT(partition != NULL, ("Failed allocating topic."));
+	{
+#else
 	if (topic != NULL) {
-		topic->dlt_offset = 0;
+#endif
+		tname = sbuf_new_auto();
+		sbuf_cpy(tname, topic_name);
+
 		SLIST_INIT(&topic->dlt_partitions);
 
-		partition = dl_partition_new(topic_name);
-		if (partition != NULL) {
+		if (dl_partition_new(&partition, tname) == 0) {
+
+			topic->dlt_offset = 0;
 			SLIST_INSERT_HEAD(&topic->dlt_partitions, partition,
 			    dlp_entries);
+
 		} else {
 			DLOGTR0(PRIO_HIGH,
 			    "Error instantiating default partition\n");

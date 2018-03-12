@@ -1,5 +1,4 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
  * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
@@ -89,10 +88,10 @@
 
 #include "dl_broker_segment.h"
 #include "dl_memory.h"
+#include "dl_primitive_types.h"
 #include "dl_utils.h"
 
 static int dl_alloc_big_file(int, long int, long int);
-static int dl_make_file(const char *, const char *);
 #ifdef HAVE_POSIX_FALLOCATE
 static int dl_call_posix_fallocate(int, Sint64, Sint64);
 #endif
@@ -181,53 +180,48 @@ dl_call_posix_fallocate(int fd, Sint64 offset, Sint64 length)
 }
 #endif /* HAVE_POSIX_FALLOCATE */
 
-static int
-dl_make_file(const char* partition_name, const char* filename)
+struct dl_segment *
+dl_segment_new_default(struct sbuf *partition_name)
 {
-	char pathFile[128];
-
-	sprintf(pathFile, "%s/%s", partition_name, filename );
-
-	return open(pathFile, O_RDWR | O_APPEND | O_CREAT, 0666);
+	return dl_segment_new(0, 1024*1024, partition_name);
 }
 
-struct segment *
-dl_make_default_sized_segment(long int base_offset,
-    const char *partition_name)
+struct dl_segment *
+dl_segment_new_default_sized(long int base_offset,
+    struct sbuf *partition_name)
 {
-	return dl_make_segment(base_offset, 1024*1024, partition_name);
-}
-
-struct segment *
-dl_make_initial_default_sized_segment(const char *partition_name)
-{
-	return dl_make_segment(0, 1024*1024, partition_name);
+	return dl_segment_new(base_offset, 1024*1024, partition_name);
 }
 
 //Method used to create the segment with its log and index files
-struct segment *
-dl_make_segment(long int base_offset, long int length,
-	const char *partition_name)
+struct dl_segment * dl_segment_new(long int base_offset,
+    long int length, struct sbuf *partition_name)
 {
-	struct segment *seg;
+	struct dl_segment *seg;
 	int log_file, index_file;
-	char temp[128];
+	struct sbuf *log_name, *idx_name;
 
-	sprintf(temp, "%.*ld.log", sizeof(u_int64_t), base_offset);
-	log_file = dl_make_file(partition_name, temp);
+	log_name = sbuf_new_auto();
+	sbuf_printf(log_name, "%s/%.*ld.log",
+	    sbuf_data(partition_name), 20, base_offset);
+	log_file = open(sbuf_data(log_name), O_RDWR | O_APPEND | O_CREAT, 0666);
 	dl_alloc_big_file(log_file, 0, length);
+	sbuf_delete(log_name);
 
-	sprintf(temp, "%.*ld.index", sizeof(u_int64_t), base_offset);
-	index_file = dl_make_file(partition_name, temp);
+	idx_name = sbuf_new_auto();
+	sbuf_printf(idx_name, "%s/%.*ld.index",
+	    sbuf_data(partition_name), 20, base_offset);
+	index_file = open(sbuf_data(idx_name), O_RDWR | O_APPEND | O_CREAT, 0666);
 	dl_alloc_big_file(index_file, 0,  length);
+	sbuf_delete(idx_name);
 
 	/* Memory map the index file to perform efficient fecthing;
 	 * binary search based on requested offset.
 	 */
 	mmap(NULL, length, PROT_READ|PROT_WRITE, MAP_SHARED, index_file, 0);
 
-	seg = (struct segment *) dlog_alloc(sizeof(struct segment));
-
+	seg = (struct dl_segment *) dlog_alloc(sizeof(struct dl_segment));
+// TODO
 	seg->_log = log_file;
 	seg->_index = index_file;
 	seg->offset = base_offset;
@@ -242,29 +236,30 @@ dl_make_segment(long int base_offset, long int length,
 
 //Method invoked when a new message gets recieved into a segment
 int
-dl_insert_message(struct segment *as, char *message, int32_t message_size)
+dl_segment_insert_message(struct dl_segment *as, char *message, int32_t message_size)
 {
 	off_t index_position, log_position;
-	uint32_t relative_offset;
+	uint32_t offset, relative_offset;
 	struct iovec index_bufs[2], log_bufs[2];
 
 	DLOGTR1(PRIO_HIGH, "Inserting into the log: '%s'\n", message);
 
-	dl_lock_seg(as);
+	dl_segment_lock(as);
 	
 	/* Update the index file. */
-	relative_offset = (uint32_t) as->offset - as->base_offset;
+	relative_offset = htobe32((uint32_t) as->offset - as->base_offset);
 	index_bufs[0].iov_base = &relative_offset;
 	index_bufs[0].iov_len = sizeof(uint32_t);
 
-	log_position = lseek(as->_log, 0, SEEK_END);
+	log_position = htobe32(lseek(as->_log, 0, SEEK_END));
 	index_bufs[1].iov_base = &log_position;
 	index_bufs[1].iov_len = sizeof(uint32_t);
 
 	writev(as->_index, index_bufs, 2);	
 
 	/* Update the log file. */
-	log_bufs[0].iov_base = &as->offset;
+	offset = htobe32(as->offset); 
+	log_bufs[0].iov_base = &offset;
 	log_bufs[0].iov_len = sizeof(uint32_t);
 
 	log_bufs[1].iov_base = message;
@@ -275,14 +270,14 @@ dl_insert_message(struct segment *as, char *message, int32_t message_size)
 	/* Update the offset. */
 	as->offset++;
 
-	dl_unlock_seg(as);
+	dl_segment_unlock(as);
 
 	return 0;
 }
 
 /*
 int
-dl_get_message_by_offset(struct segment *as, int offset, void *saveto)
+dl_segment_get_message_by_offset(struct dl_segment *as, int offset, void *saveto)
 {
 	char buf[bytes_per_index_entry];
 	char *bp = buf;
@@ -319,20 +314,21 @@ dl_get_message_by_offset(struct segment *as, int offset, void *saveto)
 */
 
 void
-dl_close_segment(struct segment* s)
+dl_segment_close(struct dl_segment *seg)
 {
-	close(s->_log);
-	close(s->_index);
+	// kqueue event on close to fsync the files
+	close(seg->_log);
+	close(seg->_index);
 }
 
 void
-dl_lock_seg(struct segment *seg)
+dl_segment_lock(struct dl_segment *seg)
 {
 	pthread_mutex_lock(&seg->mtx);
 }
 
 void
-dl_unlock_seg(struct segment *seg)
+dl_segment_unlock(struct dl_segment *seg)
 {
 	pthread_mutex_unlock(&seg->mtx);
 }

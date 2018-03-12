@@ -37,18 +37,31 @@
 #ifndef _DL_BROKER_PARTITION_H
 #define _DL_BROKER_PARTITION_H
 
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
+
 #include <sys/queue.h>
 #include <sys/types.h>
 
 #include "dl_broker_segment.h"
+#include "dl_broker_topic.h"
+#include "dl_event_handler.h"
 
 struct dl_partition {
 	SLIST_ENTRY(dl_partition) dlp_entries;
 	u_int32_t dlp_offset; /* Current offset into the log. */
 	struct dl_segments dlp_segments;
-	struct segment *dlp_active_segment;
+	struct dl_segment *dlp_active_segment;
+	int _klog;
+	int _kindex;
+	struct dl_event_handler event_handler;
 };
 
-extern struct dl_partition * dl_partition_new(char *);
+static const int32_t DL_DEFAULT_PARTITION = 0;
+
+extern int dl_partition_new(struct dl_partition **, struct sbuf *);
 
 #endif

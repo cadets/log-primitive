@@ -34,29 +34,49 @@
  *
  */
 
-#include <sys/queue.h>
-
 #include <stddef.h>
 
+#include "dl_assert.h"
 #include "dl_broker_partition.h"
 #include "dl_memory.h"
+#include "dl_utils.h"
 
-struct dl_partition *
-dl_partition_new(char *topic_name)
+int
+dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 {
 	struct dl_partition *partition;
-	struct segement *segment;
+	struct dl_segement *segment;
 
-	partition = (struct partition *) dlog_alloc(
+	DL_ASSERT(topic_name != NULL, ("Topic name cannot be NULL."));
+
+	partition = (struct dl_partition *) dlog_alloc(
 	    sizeof(struct dl_partition));
+#ifdef KERNEL
+	DL_ASSERT(partition != NULL, ("Failed allocating partition."));
+	{
+#else
+	if (partition != NULL) {
+#endif
+		SLIST_INIT(&partition->dlp_segments);
 
-	SLIST_INIT(&partition->dlp_segments);
+		/* Create the specified partition;
+		 * deleting if already present. */
+		sbuf_printf(topic_name, "-%d", DL_DEFAULT_PARTITION);
+		DLOGTR1(PRIO_HIGH, "t/p = %s\n", sbuf_data(topic_name));
 
-	partition->dlp_active_segment = dl_make_initial_default_sized_segment(
-	    topic_name);
+		dl_del_folder(sbuf_data(topic_name));
+		dl_make_folder(sbuf_data(topic_name));
 
-	SLIST_INSERT_HEAD(&partition->dlp_segments,
-	    partition->dlp_active_segment, dls_entries);
+		partition->dlp_active_segment =
+		    dl_segment_new_default(topic_name);
+// TODO error check
+		SLIST_INSERT_HEAD(&partition->dlp_segments,
+		    partition->dlp_active_segment, dls_entries);
 
-	return partition;
+		*self = partition;
+		return 0;
+	}
+
+	DLOGTR0(PRIO_HIGH, "Failed allocating partition.\n");
+	return -1;
 }
