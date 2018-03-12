@@ -129,7 +129,7 @@ dl_resender_thread(void *vargp)
 				    "Current: %lu\n",
 				    request->dlrq_last_sent, now,
 				    resender->dlr_handle->dlh_config->resend_timeout, 
-				    request->dlrq_last_sent);
+				    now - request->dlrq_last_sent);
 
 				if ((now - request->dlrq_last_sent) >
 				    resender->dlr_handle->dlh_config->resend_timeout) {
@@ -138,8 +138,14 @@ dl_resender_thread(void *vargp)
 					RB_REMOVE(dlr_unackd_requests,
 					    &resender->dlr_unackd, request);
 
-					dlog_free(request);
-					DLOGTR0(PRIO_LOW, "Done.\n");
+					/* Resend the request. */
+					pthread_mutex_lock(&resender->dlr_handle->dlh_request_queue_mtx);
+					STAILQ_INSERT_TAIL(&resender->dlr_handle->dlh_request_queue, request,
+					dlrq_entries);
+					pthread_cond_signal(&resender->dlr_handle->dlh_request_queue_cond);
+					pthread_mutex_unlock(&resender->dlr_handle->dlh_request_queue_mtx);
+					
+					DLOGTR0(PRIO_LOW, "Resending request.\n");
 				}
 			}
 		}
@@ -168,6 +174,7 @@ dl_resender_new(struct dlog_handle *handle)
 	RB_INIT(&resender->dlr_unackd);
 	pthread_mutex_init(&resender->dlr_unackd_mtx, NULL);
 	pthread_cond_init(&resender->dlr_unackd_cond, NULL);
+	resender->dlr_handle = handle;
 	resender->dlr_sleep_ms = handle->dlh_config->resender_thread_sleep_length;
 
 	return resender;
