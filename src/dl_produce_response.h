@@ -45,7 +45,7 @@
 #include <sbuf.h>
 #endif
 
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_response.h"
 
 SLIST_HEAD(dl_produce_response_topics, dl_produce_response_topic);
@@ -69,9 +69,9 @@ struct dl_produce_response {
 	int32_t dlpr_throttle_time;
 };
 
-extern int dl_produce_response_decode(struct dl_response **, struct dl_buf *);
+extern int dl_produce_response_decode(struct dl_response **, struct dl_bbuf *);
 extern int32_t dl_produce_response_encode(struct dl_produce_response *,
-    struct dl_buf *);
+    struct dl_bbuf *);
 struct dl_produce_response * dl_produce_response_new(char *, int32_t, int64_t,
     int16_t);
 

@@ -60,15 +60,15 @@
 
 
 #include "dl_assert.h"
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 
 /* Functions for decoding primitive types (bytes and strings). */
-extern int dl_decode_string(struct dl_buf *, struct sbuf **);
-extern int dl_decode_bytes(char const * const, int *, struct dl_buf * const);
+extern int dl_decode_string(struct dl_bbuf *, struct sbuf **);
+extern int dl_decode_bytes(char const * const, int *, struct dl_bbuf * const);
 
 /* Functions for encoding primitive types (bytes and strings). */
-extern int32_t dl_encode_string(struct dl_buf *, struct sbuf *);
+extern int32_t dl_encode_string(struct dl_bbuf *, struct sbuf *);
 extern int dl_encode_bytes(char const * const, const int32_t,
-    struct dl_buf *);
+    struct dl_bbuf *);
 
 #endif

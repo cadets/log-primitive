@@ -47,8 +47,9 @@ struct dl_broker_client
 	struct dl_broker_event_notifier event_notifier;
 }; 
 
+extern struct dl_response * dlog_broker_handle(struct dl_request * const);
 extern struct dl_broker_client * dl_broker_client_new(dl_event_handler_handle,
     struct dl_broker_event_notifier *);
-extern void dl_broker_client_free(struct dl_broker_client *);
+extern void dl_broker_client_delete(struct dl_broker_client *);
 
 #endif

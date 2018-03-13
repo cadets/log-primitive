@@ -63,7 +63,7 @@ static const int32_t DL_BYTES_NULL = -1;
  * a value of -1 indicates a NULL string.
  */
 int
-dl_decode_string(struct dl_buf *source, struct sbuf **target)
+dl_decode_string(struct dl_bbuf *source, struct sbuf **target)
 {
 	int16_t slen;
 
@@ -73,15 +73,15 @@ dl_decode_string(struct dl_buf *source, struct sbuf **target)
 	/* Strings are NULLABLE.
 	 * Therefore first check whether there is a value to decode.
 	 */
-	if (dl_buf_get_int16(source, &slen) != 0)
+	if (dl_bbuf_get_int16(source, &slen) != 0)
 		return -1;
 	if (slen == DL_STRING_NULL) {
 		*target = NULL;
 	} else {
 		char * temp = (char *) dlog_alloc(sizeof(char) * slen);
-		/* TODO: Replace with bulk drain function in dl_buf */
+		/* TODO: Replace with bulk drain function in dl_bbuf */
 		for (int i = 0; i < slen; i++)
-			dl_buf_get_int8(source, &temp[i]);
+			dl_bbuf_get_int8(source, &temp[i]);
 		*target = sbuf_new(NULL, temp, slen, SBUF_FIXEDLEN);
 	}
 	return 0;
@@ -92,7 +92,7 @@ dl_decode_string(struct dl_buf *source, struct sbuf **target)
  * a value of -1 indicates a NULL string.
  */
 int
-dl_decode_bytes(char const * const target, int *target_len, struct dl_buf *source)
+dl_decode_bytes(char const * const target, int *target_len, struct dl_bbuf *source)
 {
 	int bytes_len, decoded_len = 0;
 	int32_t nbytes;
@@ -103,14 +103,14 @@ dl_decode_bytes(char const * const target, int *target_len, struct dl_buf *sourc
 	/* Bytes are NULLABLE.
 	 * therefore first check whether there is a value to decode.
 	 */
-	dl_buf_get_int32(source, nbytes);
+	dl_bbuf_get_int32(source, nbytes);
 	if (nbytes == DL_BYTES_NULL) {
 		*target_len = 0;
 		return 0;
 	} else {
 		*target_len = nbytes;
 		for (int i = 0; i < nbytes; i++) {
-			dl_buf_get_int8(source, target[i]);
+			dl_bbuf_get_int8(source, target[i]);
 		}
 	}
 	return decoded_len;
@@ -120,19 +120,19 @@ dl_decode_bytes(char const * const target, int *target_len, struct dl_buf *sourc
  * Encoded strings are prefixed with their length (int16).
  */
 int32_t
-dl_encode_string(struct dl_buf *target, struct sbuf *source)
+dl_encode_string(struct dl_bbuf *target, struct sbuf *source)
 {
 	char *sval;
 
 	if (source == NULL) {
-		dl_buf_put_int32(source, DL_BYTES_NULL);
+		dl_bbuf_put_int32(source, DL_BYTES_NULL);
 	} else {
 		/* Prepended a 16bit value indicating the length (in bytes). */
-		if (dl_buf_put_int16(target, sbuf_len(source)) == 0) {
+		if (dl_bbuf_put_int16(target, sbuf_len(source)) == 0) {
 
 			sval = sbuf_data(source);
 			for (int i = 0; i < sbuf_len(source); i++) {
-				dl_buf_put_int8(target, sval[i]);
+				dl_bbuf_put_int8(target, sval[i]);
 			}
 		} else {
 			return -1;
@@ -146,20 +146,20 @@ dl_encode_string(struct dl_buf *target, struct sbuf *source)
  */
 int
 dl_encode_bytes(char const * const source, const int32_t source_len,
-    struct dl_buf * target)
+    struct dl_bbuf * target)
 {
 	int32_t encoded_len_bytes = 0;
 
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 
 	if (source == NULL) 
-		dl_buf_put_int32(target, DL_BYTES_NULL);
+		dl_bbuf_put_int32(target, DL_BYTES_NULL);
 	else {
 		/* Prepend a 32bit value indicating the length (in bytes). */
-		dl_buf_put_int32(target, source_len);
+		dl_bbuf_put_int32(target, source_len);
 
 		/* Copy source_len bytes into the target buffer. */
-		dl_buf_bcat(target, source, source_len);
+		dl_bbuf_bcat(target, source, source_len);
 	}
 	return 0;
 }

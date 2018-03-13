@@ -46,7 +46,7 @@
 #include <string.h>
 
 #include "dl_assert.h"
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_produce_response.h"
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
@@ -87,12 +87,12 @@ dl_produce_response_new(char * topic_name, int32_t throttle_time,
 			    DL_MAX_TOPIC_NAME_LEN, SBUF_FIXEDLEN);
 			response_topic->dlprt_npartitions = 1;
 			
-			response_topic->dlprt_partitions[0].dlprp_offset =
-			    offset;
-			response_topic->dlprt_partitions[0].dlprp_partition =
-			    0;
-			response_topic->dlprt_partitions[0].dlprp_error_code =
-			    error_code;
+			response_topic->dlprt_partitions[0]
+			    .dlprp_offset = offset;
+			response_topic->dlprt_partitions[0]
+			    .dlprp_partition = 0;
+			response_topic->dlprt_partitions[0]
+			    .dlprp_error_code = error_code;
 		} else {
 			DLOGTR0(PRIO_HIGH,
 			    "Failed allocating ProduceResponse topic_data");
@@ -105,19 +105,22 @@ dl_produce_response_new(char * topic_name, int32_t throttle_time,
 
 int
 dl_produce_response_decode(struct dl_response **self,
-    struct dl_buf *source)
+    struct dl_bbuf *source)
 {
 	struct dl_produce_response *produce_response;
-	struct dl_produce_response_partition *partition_response;
+	struct dl_produce_response_partition *partitionresponses;
 	struct dl_produce_response_topic *topic_response;
 	struct dl_response *response;
 	struct sbuf *topic_name;
-	int32_t partition, response_it, n_responses, npartitions;
+	int32_t partition, response_it, nresponsess, npartitions;
 
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
+	DL_ASSERT(self != NULL, ("Response cannot be NULL."));
+	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL."));
 
 	/* Construct the Response. */
-	*self = response = (struct dl_response *) dlog_alloc(
+	//dl_response_new(&response, DL_PRODUCE_API_KEY);
+	//if
+	response = (struct dl_response *) dlog_alloc(
 	    sizeof(struct dl_response));
 #ifdef KERNEL
 	DL_ASSERT(response != NULL, ("Failed to allocate Response.\n"));
@@ -141,13 +144,10 @@ dl_produce_response_decode(struct dl_response **self,
 			SLIST_INIT(&produce_response->dlpr_topics);
 
 			/* Decode the number of responses in the response array. */
-			printf("pos= %d\n", dl_buf_pos(source));
-			dl_buf_get_int32(source,
+			dl_bbuf_get_int32(source,
 			    &produce_response->dlpr_ntopics);
 			// TODO: need to check this to verify message is well
 			// formed
-			printf("ntopics = %d\n", produce_response->dlpr_ntopics);
-			printf("pos= %d\n", dl_buf_pos(source));
 
 			DL_ASSERT(produce_response->dlpr_ntopics > 0,
 			    ("Non-primitive array types are not NULLABLE"));
@@ -159,18 +159,14 @@ dl_produce_response_decode(struct dl_response **self,
 
 				/* Decode the TopicName. */
 				DL_DECODE_TOPIC_NAME(source, &topic_name);
-				printf("pos= %d\n", dl_buf_pos(source));
 
 				/* Decode the partitions. */
-				dl_buf_get_int32(source, &npartitions);
-				printf("pos= %d\n", dl_buf_pos(source));
-				printf("npartitions = %d\n", npartitions); 
+				dl_bbuf_get_int32(source, &npartitions);
 			
 				/* Allocate, decode and enqueue each response. */
 				topic_response = (struct dl_produce_response_topic *)
 				    dlog_alloc(sizeof(struct dl_produce_response_topic) +
-					(topic_response->dlprt_npartitions-1 *
-					sizeof(struct dl_produce_response_partition)));
+					(npartitions-1 * sizeof(struct dl_produce_response_partition)));
 
 				topic_response->dlprt_topic_name = topic_name; 
 				topic_response->dlprt_npartitions = npartitions; 
@@ -179,20 +175,20 @@ dl_produce_response_decode(struct dl_response **self,
 				    partition < topic_response->dlprt_npartitions;
 				    partition++) {
 
-					partition_response =
+					partitionresponses =
 					    &topic_response->dlprt_partitions[partition];
 
 					/* Decode the Partition */
 					DL_DECODE_PARTITION(source,
-					    &partition_response->dlprp_partition);
+					    &partitionresponses->dlprp_partition);
 
 					/* Decode the ErrorCode */
 					DL_DECODE_ERROR_CODE(source,
-					    &partition_response->dlprp_error_code);
+					    &partitionresponses->dlprp_error_code);
 
 					/* Decode the Offset */
 					DL_DECODE_OFFSET(source,
-					    &partition_response->dlprp_offset);
+					    &partitionresponses->dlprp_offset);
 				}
 
 				SLIST_INSERT_HEAD(
@@ -207,18 +203,23 @@ dl_produce_response_decode(struct dl_response **self,
 			DLOGTR0(PRIO_HIGH,
 			    "Failed to allocate ProduceResponse,\n");
 			dlog_free(response);
-			response = NULL;
+			return -1;
 		}
+	} else {
+		return -1;
 	}
+
+	/* Return the successfully constructed ProduceResponse. */
+	*self = response;
 	return 0;
 }
 
 int32_t
 dl_produce_response_encode(struct dl_produce_response *response,
-    struct dl_buf *target)
+    struct dl_bbuf *target)
 {
 	struct dl_produce_response_topic *topic_response;
-	struct dl_produce_response_partition *partition_response;
+	struct dl_produce_response_partition *partitionresponses;
 	int32_t partition;
 
 	DL_ASSERT(response != NULL, ("ProduceResponse cannot be NULL\n."));
@@ -227,7 +228,7 @@ dl_produce_response_encode(struct dl_produce_response *response,
 	DL_ASSERT(target != NULL, ("Target buffer cannot be NULL.\n"));
 
 	/* Encode the number of responses in the response array. */
-	dl_buf_put_int32(target, response->dlpr_ntopics);
+	dl_bbuf_put_int32(target, response->dlpr_ntopics);
 
 	SLIST_FOREACH(topic_response, &response->dlpr_topics, dlprt_entries) {
 
@@ -238,24 +239,24 @@ dl_produce_response_encode(struct dl_produce_response *response,
 		DL_ENCODE_TOPIC_NAME(target, topic_response->dlprt_topic_name);
 
 		/* Encode the Topic partitions. */
-		dl_buf_put_int32(target, topic_response->dlprt_npartitions);
+		dl_bbuf_put_int32(target, topic_response->dlprt_npartitions);
 
 		for (partition = 0; topic_response->dlprt_npartitions;
 		    partition++) {
-			partition_response =
+			partitionresponses =
 			    &topic_response->dlprt_partitions[partition];
 
 			/* Encode the BaseOffset. */
 			DL_ENCODE_OFFSET(target,
-			    partition_response->dlprp_offset);
+			    partitionresponses->dlprp_offset);
 			
 			/* Encode the ErrorCode. */
 			DL_ENCODE_ERROR_CODE(target,
-			    partition_response->dlprp_partition);
+			    partitionresponses->dlprp_partition);
 
 			/* Encode the Partition. */
 			DL_ENCODE_PARTITION(target,
-			    partition_response->dlprp_error_code);
+			    partitionresponses->dlprp_error_code);
 		}
 	}
 	
@@ -264,4 +265,3 @@ dl_produce_response_encode(struct dl_produce_response *response,
 
 	return 0;
 }
-

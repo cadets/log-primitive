@@ -34,18 +34,67 @@
  *
  */
 
+#include <sys/types.h>
+#include <sys/event.h>
+#include <sys/time.h>
+
+#include <errno.h>
 #include <stddef.h>
 
 #include "dl_assert.h"
 #include "dl_broker_partition.h"
 #include "dl_memory.h"
+#include "dl_poll_reactor.h"
 #include "dl_utils.h"
+
+static const off_t DL_FSYNC_DEFAULT_CHARS = 1000;
+
+static dl_event_handler_handle dl_partition_get_kq(void *);
+static void dl_partition_handle_kq(void *);
+
+static dl_event_handler_handle
+dl_partition_get_kq(void* instance)
+{
+	const struct dl_partition *partition = instance;
+	return partition->_klog;
+}
+
+static void
+dl_partition_handle_kq(void *instance)
+{
+	struct dl_partition * const partition = instance;
+	struct dl_segment *segment = partition->dlp_active_segment;
+	struct kevent event;
+	off_t log_position;
+	int rc;
+
+	rc = kevent(partition->_klog, 0, 0, &event, 1, 0);
+	if (rc == -1)
+		DLOGTR2(PRIO_HIGH, "Error reading kqueue event %d %d\n.", rc, errno);
+	else {
+		dl_segment_lock(segment);
+		log_position = lseek(segment->_log, 0, SEEK_END);
+		DLOGTR2(PRIO_LOW, "log_position = %d, last_sync_pos = %d\n",
+		    log_position, segment->last_sync_pos);
+		if (log_position - segment->last_sync_pos > DL_FSYNC_DEFAULT_CHARS) {
+
+			DLOGTR0(PRIO_NORMAL, "Syncing the index and log...\n");
+
+			fsync(segment->_log);
+			fsync(segment->_index);
+			segment->last_sync_pos = log_position;
+		}
+		dl_segment_unlock(segment);
+	}
+}
 
 int
 dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 {
 	struct dl_partition *partition;
 	struct dl_segement *segment;
+	struct kevent event;
+	struct sbuf *partition_name;
 
 	DL_ASSERT(topic_name != NULL, ("Topic name cannot be NULL."));
 
@@ -59,22 +108,52 @@ dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 #endif
 		SLIST_INIT(&partition->dlp_segments);
 
-		/* Create the specified partition;
-		 * deleting if already present. */
-		sbuf_printf(topic_name, "-%d", DL_DEFAULT_PARTITION);
-		DLOGTR1(PRIO_HIGH, "t/p = %s\n", sbuf_data(topic_name));
+		/* Create the specified partition; deleting if already present. */
+		partition_name = sbuf_new_auto();
+		sbuf_printf(partition_name, "%s-%d", sbuf_data(topic_name),
+		    DL_DEFAULT_PARTITION);
 
-		dl_del_folder(sbuf_data(topic_name));
-		dl_make_folder(sbuf_data(topic_name));
+		dl_del_folder(sbuf_data(partition_name));
+		dl_make_folder(sbuf_data(partition_name));
 
 		partition->dlp_active_segment =
-		    dl_segment_new_default(topic_name);
-// TODO error check
-		SLIST_INSERT_HEAD(&partition->dlp_segments,
-		    partition->dlp_active_segment, dls_entries);
+		    dl_segment_new_default(partition_name);
+#ifdef KERNEL
+		DL_ASSERT(partition->dlp_active_segment != NULL,
+		    ("Failed allocating partition segment."));
+		{
+#else
+		if (partition->dlp_active_segment != NULL) {
+#endif
+			SLIST_INSERT_HEAD(&partition->dlp_segments,
+			    partition->dlp_active_segment, dls_entries);
 
-		*self = partition;
-		return 0;
+			/* Register kqueue event to monitor writes on the partition's
+			* active segment. fsync is called on the segment when writes
+			* exceed a per-topic configured limit.
+			*/
+			//topic_partition = SLIST_FIRST(&topic->dlt_partitions);
+			//active_segment = topic_partition->dlp_active_segment; 
+
+			partition->_klog = kqueue();
+// TODO error handling
+			EV_SET(&event, partition->dlp_active_segment->_log,
+			    EVFILT_VNODE, EV_ADD | EV_CLEAR, NOTE_WRITE, 0, NULL);
+			kevent(partition->_klog, &event, 1, NULL, 0, NULL); 
+// TODO error handling
+			partition->event_handler.dleh_instance = partition;
+			partition->event_handler.dleh_get_handle = dl_partition_get_kq;
+			partition->event_handler.dleh_handle_event = dl_partition_handle_kq;
+
+			/* Register the topic's active partition with the poll reactor. */
+			dl_poll_reactor_register(&partition->event_handler);
+// TODO error handling
+
+			*self = partition;
+			return 0;
+		}
+
+		dlog_free(partition);
 	}
 
 	DLOGTR0(PRIO_HIGH, "Failed allocating partition.\n");

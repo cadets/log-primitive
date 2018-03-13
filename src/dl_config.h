@@ -56,6 +56,7 @@ enum broker_confs {
 	BROKER_FSYNC_ALWAYS = 1 << 2,
 };
 
+// TODO: I don't think any of these are needed ATM
 struct broker_configuration {
 	int fsync_thread_sleep_length;
 	int processor_thread_sleep_length;

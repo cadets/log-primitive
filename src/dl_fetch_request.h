@@ -44,7 +44,7 @@
 #include <sbuf.h>
 #endif
 
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 
 struct dl_request;
 
@@ -74,7 +74,9 @@ struct dl_fetch_request {
 extern struct dl_request * dl_fetch_request_new(const int32_t, struct sbuf *,
     struct sbuf *, const int32_t, const int32_t,  const int64_t,
     const int32_t);
-extern struct dl_fetch_request * dl_fetch_request_decode(struct dl_buf *);
-extern int dl_fetch_request_encode(struct dl_fetch_request *, struct dl_buf *);
+extern void dl_fetch_request_delete(struct dl_fetch_request *);
+
+extern int dl_fetch_request_decode(struct dl_fetch_request **, struct dl_bbuf *);
+extern int dl_fetch_request_encode(struct dl_fetch_request *, struct dl_bbuf *);
 
 #endif

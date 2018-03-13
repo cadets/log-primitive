@@ -43,18 +43,20 @@
 #include "dl_protocol.h"
 #include "dl_broker_partition.h"
 
-// TODO: need to lookup segment in concurrent hashmap
-extern struct dl_broker_topic *topic;
-
 SLIST_HEAD(dl_partitions, dl_partition);
 
 struct dl_broker_topic {
+	LIST_ENTRY(dl_broker_topic) dlt_entries;
 	struct dl_partitions dlt_partitions;
 	u_int64_t dlt_offset; /* Current position in the log. */
-	//struct sbuf *dlbt_topic_name;
-	char dlt_topic_name[DL_MAX_TOPIC_NAME_LEN];
+	struct sbuf *dlbt_topic_name;
+	//int dlt_npartitions;
+	//struct dl_partition dlt_partitions[1];
 };
 
-extern struct dl_broker_topic * dl_topic_new(char *);
+extern struct dl_broker_topic * dl_topic_new(struct sbuf *);
+extern void * dl_topic_hashinit(int, unsigned long *);
+
+extern uint32_t hashlittle(const void *, size_t, uint32_t);
 
 #endif

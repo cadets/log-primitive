@@ -75,7 +75,7 @@ dlb_sigint_handler(int sig)
 	//free(line);
 
 	/* Finalise the distributed log client before finishing. */
-	//dlog_client_fini();
+	//dlog_broker_fini();
 
 	exit(EXIT_SUCCESS);
 }

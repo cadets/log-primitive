@@ -44,7 +44,7 @@
 #include <sbuf.h>
 #endif
 
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_protocol.h"
 
 SLIST_HEAD(dl_list_offset_response_topics, dl_list_offset_response_topic);
@@ -71,9 +71,9 @@ struct dl_list_offset_response {
 	int32_t dlor_ntopics;
 };
 
-extern struct dl_response * dl_list_offset_response_decode(struct dl_buf *);
+extern struct dl_response * dl_list_offset_response_decode(struct dl_bbuf *);
 extern int32_t dl_list_offset_response_encode(struct dl_list_offset_response *,
-    struct dl_buf *);
+    struct dl_bbuf *);
 extern struct dl_list_offset_response * dl_list_offset_response_new(char *,
     int16_t, int64_t, int64_t);
 

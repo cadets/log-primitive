@@ -44,7 +44,7 @@
 #include <sbuf.h>
 #endif
 
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 
 struct dl_request;
 
@@ -70,8 +70,11 @@ struct dl_list_offset_request {
 
 extern struct dl_request * dl_list_offset_request_new(int32_t, struct sbuf *,
     struct sbuf *, int64_t);
-extern struct dl_list_offset_request * dl_list_offset_request_decode(char *);
+extern void dl_list_offset_request_delete(struct dl_request *);
+
+extern int dl_list_offset_request_decode(struct dl_list_offset_request **, 
+    struct dl_bbuf *);
 extern int dl_list_offset_request_encode(struct dl_list_offset_request *,
-    struct dl_buf *);
+    struct dl_bbuf *);
 
 #endif

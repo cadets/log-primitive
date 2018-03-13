@@ -46,7 +46,7 @@
 #include <stddef.h>
 
 #include "dl_assert.h"
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_list_offset_response.h"
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
@@ -94,7 +94,7 @@ dl_list_offset_response_new(char *topic_name, int16_t error_code, int64_t time,
 }
 
 struct dl_response *
-dl_list_offset_response_decode(struct dl_buf *source)
+dl_list_offset_response_decode(struct dl_bbuf *source)
 {
 	struct dl_list_offset_response *offset_response;
 	struct dl_list_offset_response_partition *response_partition;
@@ -120,9 +120,9 @@ dl_list_offset_response_decode(struct dl_buf *source)
 	SLIST_INIT(&offset_response->dlor_topics);
 
         /* Decode the [topic_data] array. */
-	dl_buf_get_int32(source, &offset_response->dlor_ntopics);
+	dl_bbuf_get_int32(source, &offset_response->dlor_ntopics);
 	printf("ntopics = %d\n", offset_response->dlor_ntopics);
-	printf("pos = %d\n", dl_buf_pos(source));
+	printf("pos = %d\n", dl_bbuf_pos(source));
 
 	for (topic_it = 0; topic_it < offset_response->dlor_ntopics;
 	    topic_it++) {
@@ -135,7 +135,7 @@ dl_list_offset_response_decode(struct dl_buf *source)
 		DL_DECODE_TOPIC_NAME(source, &topic_name);
 	printf("api_key = %d\n", response->dlrs_api_key);
 		response_topic->dlort_topic_name = topic_name;
-		printf("pos = %d\n", dl_buf_pos(source));
+		printf("pos = %d\n", dl_bbuf_pos(source));
 		printf("topic_name = %p\n", topic_name);
 		printf("topic_name = %s\n", sbuf_data(topic_name));
 		printf("topic_name = %s\n", sbuf_data(response_topic->dlort_topic_name));
@@ -143,9 +143,9 @@ dl_list_offset_response_decode(struct dl_buf *source)
 		SLIST_INIT(&response_topic->dlort_partitions);
 
 		/* Decode the [data] array. */
-		dl_buf_get_int32(source, &response_topic->dlort_npartitions);
+		dl_bbuf_get_int32(source, &response_topic->dlort_npartitions);
 		printf("npartitions = %d\n", response_topic->dlort_npartitions);
-		printf("pos = %d\n", dl_buf_pos(source));
+		printf("pos = %d\n", dl_bbuf_pos(source));
 		
 		for (partition_it = 0;
 		    partition_it < response_topic->dlort_npartitions;
@@ -160,25 +160,25 @@ dl_list_offset_response_decode(struct dl_buf *source)
 			DL_DECODE_PARTITION(source,
 			    &response_partition->dlorp_partition);
 			printf("dlorp_partition = %d\n", response_partition->dlorp_partition);
-		printf("pos = %d\n", dl_buf_pos(source));
+		printf("pos = %d\n", dl_bbuf_pos(source));
 			
 			/* Decode the ErrorCode */
 			DL_DECODE_ERROR_CODE(source,
 			    &response_partition->dlorp_error_code);
 			printf("dlorp_error_code = %d\n", response_partition->dlorp_error_code);
-		printf("pos = %d\n", dl_buf_pos(source));
+		printf("pos = %d\n", dl_bbuf_pos(source));
 
 			/* Decode the Timestamp */
 			DL_DECODE_TIMESTAMP(source,
 			    &response_partition->dlorp_timestamp);
 			printf("dlorp_timestamp = %d\n", response_partition->dlorp_timestamp);
-		printf("pos = %d\n", dl_buf_pos(source));
+		printf("pos = %d\n", dl_bbuf_pos(source));
 			
 			/* Decode the Offset*/
 			int rc= DL_DECODE_OFFSET(source,
 			    &response_partition->dlorp_offset);
 			printf("dlorp_offset = %d\n", response_partition->dlorp_offset);
-		printf("rc = %d, pos = %d\n", rc, dl_buf_pos(source));
+		printf("rc = %d, pos = %d\n", rc, dl_bbuf_pos(source));
 		
 			SLIST_INSERT_HEAD(&response_topic->dlort_partitions,
 			    response_partition, dlorp_entries);
@@ -193,7 +193,7 @@ dl_list_offset_response_decode(struct dl_buf *source)
 
 int32_t
 dl_list_offset_response_encode(struct dl_list_offset_response *response,
-    struct dl_buf *target)
+    struct dl_bbuf *target)
 {
 	struct dl_list_offset_response_partition *response_partition;
 	struct dl_list_offset_response_topic *response_topic;
@@ -202,7 +202,7 @@ dl_list_offset_response_encode(struct dl_list_offset_response *response,
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
         
 	/* Encode the [topic_data] array. */
-	dl_buf_put_int32(target, response->dlor_ntopics);
+	dl_bbuf_put_int32(target, response->dlor_ntopics);
 
 	SLIST_FOREACH(response_topic, &response->dlor_topics, dlort_entries) {
 
@@ -210,7 +210,7 @@ dl_list_offset_response_encode(struct dl_list_offset_response *response,
 		DL_ENCODE_TOPIC_NAME(target, response_topic->dlort_topic_name);
 
 		/* Encode the [data] array. */
-		dl_buf_put_int32(target, response_topic->dlort_npartitions);
+		dl_bbuf_put_int32(target, response_topic->dlort_npartitions);
 
 		SLIST_FOREACH(response_partition,
 		    &response_topic->dlort_partitions, dlorp_entries) {

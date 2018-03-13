@@ -39,7 +39,7 @@
 
 #include <sys/types.h>
 
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_fetch_response.h"
 #include "dl_list_offset_response.h"
 #include "dl_produce_response.h"
@@ -66,7 +66,7 @@ struct dl_response {
 
 //extern int dl_decode_response(struct dl_response *, char *);
 extern int dl_response_header_decode(struct dl_response_header **,
-    struct dl_buf *);
-extern int32_t dl_response_encode(struct dl_response *, struct dl_buf *);
+    struct dl_bbuf *);
+extern int32_t dl_response_encode(struct dl_response *, struct dl_bbuf *);
 
 #endif

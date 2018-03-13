@@ -45,7 +45,7 @@
 #include <stddef.h>
 
 #include "dl_assert.h"
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_fetch_response.h"
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
@@ -80,7 +80,7 @@ dl_fetch_response_decode(char *buffer)
         /* Decode the responses */	
 	SLIST_INIT(&fetch_response->dlfr_topics);
 
-	dl_buf_get_int32(buffer, &fetch_response->dlfr_ntopics);
+	dl_bbuf_get_int32(buffer, &fetch_response->dlfr_ntopics);
 	DL_ASSERT(fetch_response->dlfr_ntopics > 0,
 	    "Response array is not NULLABLE");
 
@@ -98,7 +98,7 @@ dl_fetch_response_decode(char *buffer)
 		topic->dlfrt_topic_name = topic_name;
 
 		/* Decode the partition responses */	
-		dl_buf_get_int32(buffer, &topic->dlfrt_npartitions);
+		dl_bbuf_get_int32(buffer, &topic->dlfrt_npartitions);
 	
 		SLIST_INIT(&topic->dlfrt_partitions);
 
@@ -138,7 +138,7 @@ dl_fetch_response_decode(char *buffer)
 
 int
 dl_fetch_response_encode(struct dl_fetch_response *response,
-    struct dl_buf *target)
+    struct dl_bbuf *target)
 {
 	struct dl_fetch_response_partition *partition;
 	struct dl_fetch_response_topic *topic;
@@ -152,7 +152,7 @@ dl_fetch_response_encode(struct dl_fetch_response *response,
 
 	DL_ASSERT(response->dlfr_ntopics > 0,
 	    "Response array is not NULLABLE");
-	dl_buf_put_int32(target, response->dlfr_ntopics);
+	dl_bbuf_put_int32(target, response->dlfr_ntopics);
 
 	SLIST_INIT(&response->dlfr_topics);
 
@@ -166,7 +166,7 @@ dl_fetch_response_encode(struct dl_fetch_response *response,
 		DL_ENCODE_TOPIC_NAME(target, topic->dlfrt_topic_name);
 
 		/* Decode the partition responses */	
-		dl_buf_put_int32(target, topic->dlfrt_npartitions);
+		dl_bbuf_put_int32(target, topic->dlfrt_npartitions);
 	
 		SLIST_INIT(&topic->dlfrt_partitions);
 

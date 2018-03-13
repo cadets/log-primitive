@@ -39,7 +39,7 @@
 
 #include <sys/types.h>
 
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 
 struct dl_transport {
 #ifdef _KERNEL
@@ -50,12 +50,9 @@ struct dl_transport {
 
 extern int dl_transport_connect(struct dl_transport *,
     const char * const, const int);
-// TODO: Depreacted
-extern int dl_transport_read_msg(struct dl_transport *, struct dl_buf **);
-//extern int dl_transport_read_request(const dl_trasnport *, int, char *);
-//extern int dl_transport_read_response(const dl_transport *, int, char *);
+extern int dl_transport_read_msg(struct dl_transport *, struct dl_bbuf **);
 extern int dl_transport_send_request(struct dl_transport const *,
-    struct dl_buf const *);
+    struct dl_bbuf const *);
 extern int dl_transport_poll(struct dl_transport const *, int);
 extern int dl_transport_close();
 

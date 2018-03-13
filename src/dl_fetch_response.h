@@ -45,7 +45,7 @@
 #include <sbuf.h>
 #endif
 
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_message_set.h"
 
 SLIST_HEAD(dl_fetch_response_topics, dl_fetch_response_topic);
@@ -74,6 +74,6 @@ struct dl_fetch_response {
 
 extern struct dl_response * dl_fetch_response_decode(char *);
 extern int dl_fetch_response_encode(struct dl_fetch_response *,
-    struct dl_buf *);
+    struct dl_bbuf *);
 
 #endif

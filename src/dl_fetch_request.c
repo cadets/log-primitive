@@ -43,7 +43,8 @@
 #include <stddef.h>
 
 #include "dl_assert.h"
-#include "dl_buf.h"
+#include "dl_bbuf.h"
+#include "dl_broker_partition.h"
 #include "dl_fetch_request.h"
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
@@ -51,7 +52,6 @@
 #include "dl_request.h"
 #include "dl_utils.h"
 
-static const int32_t DL_DEFAULT_PARTITION = 0;
 static const int32_t DL_DEFAULT_REPLICA_ID = -1;
 
 struct dl_request *
@@ -64,21 +64,22 @@ dl_fetch_request_new(const int32_t correlation_id, struct sbuf *client_id,
 	struct dl_fetch_request *fetch_request;
 	struct dl_fetch_request_topic *request_topic;
 	struct dl_fetch_request_partition *request_partition;
+	int rc;
 
 	DL_ASSERT(topic_name, ("FetchRequest TopicName cannot be empty.\n"));
 
 	/* Construct the super class Request. */
-	request = dl_request_new(DL_FETCH_API_KEY, correlation_id,
+	rc = dl_request_new(&request, DL_FETCH_API_KEY, correlation_id,
 	    client_id);
 #ifdef KERNEL
-	DL_ASSERT(request != NULL, ("Failed allocating FetchRequest."));
+	DL_ASSERT(rc != 0, ("Failed allocating FetchRequest."));
 	{
 #else
-	if (request != NULL) {
+	if (rc != 0) {
 #endif
 		/* Construct the FetchRequest. */
-		fetch_request = request->dlrqm_message.dlrqmt_fetch_request =
-		(struct dl_fetch_request *) dlog_alloc(
+		fetch_request = request->dlrqm_fetch_request =
+		    (struct dl_fetch_request *) dlog_alloc(
 			sizeof(struct dl_fetch_request));
 #ifdef KERNEL
 		DL_ASSERT(fetch_request != NULL,
@@ -137,8 +138,8 @@ dl_fetch_request_new(const int32_t correlation_id, struct sbuf *client_id,
 	return request;
 }
 
-struct dl_fetch_request *
-dl_fetch_request_decode(struct dl_buf *source)
+int
+dl_fetch_request_decode(struct dl_fetch_request **self, struct dl_bbuf *source)
 {
 	struct dl_message_set *message_set;
 	struct dl_fetch_request *request;
@@ -168,7 +169,7 @@ dl_fetch_request_decode(struct dl_buf *source)
 		DL_DECODE_MIN_BYTES(source, &request->dlfr_min_bytes);
 
 		/* Decode the [topic_data] from the buffer. */
-		dl_buf_get_int32(source, &request->dlfr_ntopics);
+		dl_bbuf_get_int32(source, &request->dlfr_ntopics);
 
 		for (topic = 0; topic < request->dlfr_ntopics; topic++) {
 
@@ -176,7 +177,7 @@ dl_fetch_request_decode(struct dl_buf *source)
 			DL_DECODE_TOPIC_NAME(source, &topic_name);
 		
 			/* Decode the [data] array. */
-			dl_buf_get_int32(source, &npartitions);
+			dl_bbuf_get_int32(source, &npartitions);
 
 			/* Decode the [response_data] from the buffer. */	
 			request_topic = (struct dl_fetch_request_topic *)
@@ -202,15 +203,15 @@ dl_fetch_request_decode(struct dl_buf *source)
 					/* Decode the FetchRequest Partition from the
 					 * buffer.
 					 */
-					dl_buf_get_int32(source,
+					dl_bbuf_get_int32(source,
 					    &request_partition->dlfrp_partition);
 
 					/* Decode the FetchRequest Offset. */
-					dl_buf_get_int64(source,
+					dl_bbuf_get_int64(source,
 					    &request_partition->dlfrp_fetch_offset);
 
 					/* Decode the FetchRequest MaxBytes. */
-					dl_buf_get_int32(source,
+					dl_bbuf_get_int32(source,
 					&request_partition->dlfrp_max_bytes);
 				}
 			} else {
@@ -228,7 +229,7 @@ err:
 }
 
 int
-dl_fetch_request_encode(struct dl_fetch_request *self, struct dl_buf *target)
+dl_fetch_request_encode(struct dl_fetch_request *self, struct dl_bbuf *target)
 {
 	struct dl_fetch_request_partition *request_partition;
 	struct dl_fetch_request_topic *request_topic;
@@ -250,7 +251,7 @@ dl_fetch_request_encode(struct dl_fetch_request *self, struct dl_buf *target)
 		goto err;
 
 	/* Encode the [topic data] into the buffer. */
-	if (dl_buf_put_int32(target, self->dlfr_ntopics) != 0)
+	if (dl_bbuf_put_int32(target, self->dlfr_ntopics) != 0)
 		goto err;
 
 	/* Encode the FetchRequest ReplicaId into the buffer. */
@@ -262,7 +263,7 @@ dl_fetch_request_encode(struct dl_fetch_request *self, struct dl_buf *target)
 			goto err;
 
 		/* Encode the [partitions] into the buffer. */	
-		if (dl_buf_put_int32(target,
+		if (dl_bbuf_put_int32(target,
 		    request_topic->dlfrt_npartitions) != 0)
 			goto err;
 

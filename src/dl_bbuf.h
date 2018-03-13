@@ -34,42 +34,43 @@
  *
  */
 
-#ifndef _DL_BUF_H
-#define _DL_BUF_H
+#ifndef _DL_BBUF_H
+#define _DL_BBUF_H
 
 #include <sys/types.h>
 
-enum dl_buf_flags {
-	DL_BUF_AUTOEXTEND,
-	DL_BUF_FIXEDLEN,
-	DL_BUF_EXTERNBUF,
-	DL_BUF_BIGENDIAN,
-	DL_BUF_LITTLEENDIAN,
+enum dl_bbuf_flags {
+	DL_BBUF_AUTOEXTEND,
+	DL_BBUF_FIXEDLEN,
+	DL_BBUF_EXTERNBUF,
+	DL_BBUF_BIGENDIAN,
+	DL_BBUF_LITTLEENDIAN,
 };
-typedef enum dl_buf_flags dl_buf_flags;
+typedef enum dl_bbuf_flags dl_bbuf_flags;
 
-struct dl_buf;
+struct dl_bbuf;
 
-extern int dl_buf_new(struct dl_buf **, char *, int, int);
-extern int dl_buf_new_auto(struct dl_buf **);
-extern int dl_buf_bcat(struct dl_buf *, char *, int);
-extern void dl_buf_clear(struct dl_buf *);
-extern int dl_buf_concat(struct dl_buf *, struct dl_buf *);
-extern char * dl_buf_data(struct dl_buf *);
-extern int dl_buf_flip(struct dl_buf *);
-extern int dl_buf_get_int8(struct dl_buf *, u_int8_t *);
-extern int dl_buf_get_int16(struct dl_buf *, u_int16_t *);
-extern int dl_buf_get_int32(struct dl_buf *, u_int32_t *);
-extern int dl_buf_get_int64(struct dl_buf *, u_int64_t *);
-extern int dl_buf_len(struct dl_buf *);
-extern int dl_buf_pos(struct dl_buf *);
-extern int dl_buf_put_int8(struct dl_buf *, u_int8_t);
-extern int dl_buf_put_int8_at(struct dl_buf *, u_int8_t, int);
-extern int dl_buf_put_int16(struct dl_buf *, u_int16_t);
-extern int dl_buf_put_int16_at(struct dl_buf *, u_int16_t, int);
-extern int dl_buf_put_int32(struct dl_buf *, u_int32_t);
-extern int dl_buf_put_int32_at(struct dl_buf *, u_int32_t, int);
-extern int dl_buf_put_int64(struct dl_buf *, u_int64_t);
-extern int dl_buf_put_int64_at(struct dl_buf *, u_int64_t, int);
+extern int dl_bbuf_new(struct dl_bbuf **, char *, int, int);
+extern int dl_bbuf_new_auto(struct dl_bbuf **);
+extern int dl_bbuf_bcat(struct dl_bbuf *, char *, int);
+extern void dl_bbuf_clear(struct dl_bbuf *);
+extern int dl_bbuf_concat(struct dl_bbuf *, struct dl_bbuf *);
+extern char * dl_bbuf_data(struct dl_bbuf *);
+extern dl_bbuf_flags dl_bbuf_get_flags(struct dl_bbuf *);
+extern int dl_bbuf_flip(struct dl_bbuf *);
+extern int dl_bbuf_get_int8(struct dl_bbuf *, u_int8_t *);
+extern int dl_bbuf_get_int16(struct dl_bbuf *, u_int16_t *);
+extern int dl_bbuf_get_int32(struct dl_bbuf *, u_int32_t *);
+extern int dl_bbuf_get_int64(struct dl_bbuf *, u_int64_t *);
+extern int dl_bbuf_len(struct dl_bbuf *);
+extern int dl_bbuf_pos(struct dl_bbuf *);
+extern int dl_bbuf_put_int8(struct dl_bbuf *, u_int8_t);
+extern int dl_bbuf_put_int8_at(struct dl_bbuf *, u_int8_t, int);
+extern int dl_bbuf_put_int16(struct dl_bbuf *, u_int16_t);
+extern int dl_bbuf_put_int16_at(struct dl_bbuf *, u_int16_t, int);
+extern int dl_bbuf_put_int32(struct dl_bbuf *, u_int32_t);
+extern int dl_bbuf_put_int32_at(struct dl_bbuf *, u_int32_t, int);
+extern int dl_bbuf_put_int64(struct dl_bbuf *, u_int64_t);
+extern int dl_bbuf_put_int64_at(struct dl_bbuf *, u_int64_t, int);
 
 #endif

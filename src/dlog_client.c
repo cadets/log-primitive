@@ -57,10 +57,10 @@
 
 #include <stddef.h>
 
-#include "dlog_client.h"
-#include "dlog_client_impl.h"
 #include "dl_assert.h"
-#include "dl_buf.h"
+#include "dl_bbuf.h"
+#include "dl_broker_client.h"
+#include "dl_broker_topic.h"
 #include "dl_correlation_id.h"
 #include "dl_event_handler.h"
 #include "dl_memory.h"
@@ -71,8 +71,10 @@
 #include "dl_request_queue.h"
 #include "dl_transport.h"
 #include "dl_utils.h"
-
-#include "dl_primitive_types.h"
+//#include "dl_primitive_types.h"
+#include "dlog_broker.h"
+#include "dlog_client.h"
+#include "dlog_client_impl.h"
 
 // TODO: I don't think FreeBSD defines this
 // if not should it be 63 or 255?
@@ -80,7 +82,7 @@
 	
 //pthread_t dl_client_request_thread;
 	
-static int dl_enqueue_request(struct dlog_handle *, struct dl_buf*, int32_t, int16_t);
+static int dl_enqueue_request(struct dlog_handle *, struct dl_bbuf*, int32_t, int16_t);
 static void * dl_request_thread(void *);
 static void * dl_response_thread(void *);
 static void dl_start_response_thread(struct dlog_handle *,
@@ -100,21 +102,21 @@ dlog_client_handle_read_event(void *instance)
 	struct dl_request_element *request;	
 	struct dl_response *response = NULL;
 	struct dl_response_header *header;
-	struct dl_buf *buffer;
+	struct dl_bbuf *buffer;
 	int msg_size;
 
 	DLOGTR0(PRIO_LOW, "dlog_client_handle_read_event\n");
 
 	if (dl_transport_read_msg(handle->dlh_transport, &buffer) == 0) {
 
-		char *bufval = dl_buf_data(buffer);
-		for (int i = 0; i < dl_buf_len(buffer); i++) {
+		char *bufval = dl_bbuf_data(buffer);
+		for (int i = 0; i < dl_bbuf_len(buffer); i++) {
 			DLOGTR1(PRIO_LOW, "<0x%02hhX>", bufval[i]);
 		};
 		DLOGTR0(PRIO_LOW, "\n");
 
 		/* Flip the buffer as we are now reading values from it. */
-		dl_buf_flip(buffer);
+		dl_bbuf_flip(buffer);
 
 		/* Deserialise the response header. */
 		if (dl_response_header_decode(&header, buffer) == 0) {
@@ -158,6 +160,9 @@ dlog_client_handle_read_event(void *instance)
 				/* Invoke the client callback. */
 				if (response != NULL &&
 				    handle->dlh_config->dlcc_on_response != NULL) {
+					//handle->dlh_config->dlcc_on_response(
+			    		//header->dlrsh_correlation_id);
+					//response);
 					handle->dlh_config->dlcc_on_response(response);
 
 					dlog_free(response);
@@ -172,7 +177,7 @@ dlog_client_handle_read_event(void *instance)
 			    "Error decoding response header.\n");
 		}
 
-		// TODO: Free the dl_buf instance
+		// TODO: Free the dl_bbuf instance
 	} else {
 		/* Server disconnected. */
 		dl_poll_reactor_unregister(&handle->dlh_event_handler);
@@ -318,7 +323,7 @@ dl_response_thread(void *vargp)
 
 // TODO: This should be an API of the request queue class
 static int 
-dl_enqueue_request(struct dlog_handle *handle, struct dl_buf *buffer,
+dl_enqueue_request(struct dlog_handle *handle, struct dl_bbuf *buffer,
     int32_t correlation_id, int16_t api_key)
 {
 	struct dl_request_element *request;
@@ -410,6 +415,12 @@ dlog_client_open(struct sbuf *hostname,
 		dl_request_thread, handle)) {
 
 	}
+	// TODO: temp
+	struct broker_configuration *bc = (struct broker_configuration *)
+	    dlog_alloc(sizeof(struct broker_configuration));
+	bc->fsync_thread_sleep_length = 10;
+
+	dlog_broker_init("cadets-trace", bc);
 
 	dl_poll_reactor_register(&handle->dlh_event_handler);
 	dl_start_response_thread(handle, cc, transport);
@@ -443,7 +454,7 @@ dlog_fetch(struct dlog_handle *handle, struct sbuf *topic_name,
     int32_t min_bytes, int32_t max_wait_time, int64_t fetch_offset,
     int32_t max_bytes)
 {
-	struct dl_buf *buffer;
+	struct dl_bbuf *buffer;
 	struct dl_request *message;
 	int result = 0;
 
@@ -463,16 +474,16 @@ dlog_fetch(struct dlog_handle *handle, struct sbuf *topic_name,
 	/* Encode the request. */	
 	if (dl_request_encode(message, &buffer) == 0) {
 
-		char *bufval = dl_buf_data(buffer);
-		for (int i = 0; i < dl_buf_pos(buffer); i++) {
+		DLOGTR0(PRIO_LOW, "Encoded request message\n");
+
+		char *bufval = dl_bbuf_data(buffer);
+		for (int i = 0; i < dl_bbuf_pos(buffer); i++) {
 			DLOGTR1(PRIO_LOW, "<%02hhX>", bufval[i]);
 		};
 		DLOGTR0(PRIO_LOW, "\n");
 
-
 		// TODO: mesasge xtor
-
-		DLOGTR0(PRIO_LOW, "Encoded request message\n");
+		// dl_fetch_request_delete(message);
 
 		/* Enqueue the request for processing */
 		if (dl_enqueue_request(handle, buffer,
@@ -495,7 +506,7 @@ int
 dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
     int64_t time)
 {
-	struct dl_buf *buffer;
+	struct dl_bbuf *buffer;
 	struct dl_request *message;
 	int result = 0;
 
@@ -514,14 +525,14 @@ dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
 	/* Encode the request. */	
 	if (dl_request_encode(message, &buffer) == 0) {
 
-		char *bufval = dl_buf_data(buffer);
-		for (int i = 0; i < dl_buf_pos(buffer); i++) {
+		char *bufval = dl_bbuf_data(buffer);
+		for (int i = 0; i < dl_bbuf_pos(buffer); i++) {
 			DLOGTR1(PRIO_LOW, "<%02hhX>", bufval[i]);
 		};
 		DLOGTR0(PRIO_LOW, "\n");
 
-	
 		// TODO: mesasge xtor
+		// dl_list_offset_request_delete(message);
 
 		DLOGTR0(PRIO_LOW, "Encoded request message\n");
 
@@ -530,7 +541,7 @@ dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
 		    message->dlrqm_correlation_id,
 		    message->dlrqm_api_key) == 0) {
 			
-			DLOGTR0(PRIO_HIGH, "Enqued request\n");
+			DLOGTR0(PRIO_LOW, "Enqued request\n");
 
 			/* Increment the monotonic correlation id. */
 			dl_correlation_id_inc(handle->correlation_id);
@@ -548,52 +559,56 @@ int
 dlog_produce(struct dlog_handle *handle, struct sbuf *topic_name,
     char *key, int key_len, char *value, int value_len)
 {
-	struct dl_buf *buffer;
+	struct dl_bbuf *buffer;
 	struct dl_request *message;
 	struct dl_message_set *message_set;
 	int result = 0;
 
 	/* Instantiate a new MessageSet. */
-	//message_set = dl_message_set_new(key, key_len, value, value_len);
+	message_set = dl_message_set_new(key, key_len, value, value_len);
 
 	/* Instantiate a new ProduceRequest */
 	if (dl_produce_request_new(&message,
 	    dl_correlation_id_val(handle->correlation_id),
 	    handle->dlh_config->dlcc_client_id,
-	    topic_name, key, key_len, value, value_len) != 0)
+	    topic_name, message_set) != 0)
 		return -1;
 
 	DLOGTR1(PRIO_LOW, "Constructed request (id = %d)\n",
 	    message->dlrqm_correlation_id);
+		
+	dlog_broker_handle(message);
 
 	/* Encode the request. */	
 	if (dl_request_encode(message, &buffer) == 0) {
+		
+		DLOGTR0(PRIO_LOW, "Encoded request message\n");
 
-		char *bufval = dl_buf_data(buffer);
-		for (int i = 0; i < dl_buf_pos(buffer); i++) {
+		char *bufval = dl_bbuf_data(buffer);
+		for (int i = 0; i < dl_bbuf_pos(buffer); i++) {
 			DLOGTR1(PRIO_LOW, "<%02hhX>", bufval[i]);
 		};
 		DLOGTR0(PRIO_LOW, "\n");
 
-		/* TODO: mesasge xtor */
-		//dl_produce_request_delete(message);
-		
-		DLOGTR0(PRIO_LOW, "Encoded request message\n");
-
 		/* Enqueue the request for processing */
 		if (dl_enqueue_request(handle, buffer,
-			message->dlrqm_correlation_id,
-			message->dlrqm_api_key) == 0) {
+		    message->dlrqm_correlation_id,
+		    message->dlrqm_api_key) == 0) {
 			
+			DLOGTR0(PRIO_LOW, "Enqued request\n");
+
 			/* Increment the monotonic correlation id. */
 			dl_correlation_id_inc(handle->correlation_id);
 		} else {
 			DLOGTR0(PRIO_HIGH, "Error enqueing request\n");
-			result = -1;
 		}
-	} else {
-		DLOGTR0(PRIO_HIGH, "Error encoding ProduceRequest\n");
-		result = -1;
-	}
-	return result;
+
+		dl_produce_request_delete(message);
+		//dl_bbuf_delete(buffer);
+
+		return 0;
+	} 
+
+	DLOGTR0(PRIO_HIGH, "Error encoding ProduceRequest\n");
+	return -1;
 }

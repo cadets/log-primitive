@@ -39,7 +39,7 @@ SRCS= dlog_broker.c \
 	dl_broker_partition.c \
 	dl_broker_segment.c \
 	dl_broker_topic.c \
-	dl_buf.c \
+	dl_bbuf.c \
 	dl_config.c \
 	dl_correlation_id.c \
 	dl_resender.c \
@@ -56,6 +56,7 @@ SRCS= dlog_broker.c \
 	dl_produce_request.c \
 	dl_produce_response.c \
 	dl_request.c \
-	dl_response.c
+	dl_response.c \
+	lookup3.c
 
 .include <bsd.lib.mk>

@@ -38,6 +38,7 @@
 #include <string.h>
 
 #include "dl_assert.h"
+#include "dl_bbuf.h"
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
 #include "dl_protocol.h"
@@ -52,7 +53,7 @@ static int32_t dl_encode_response_size(char const *, const int32_t);
 
 int
 dl_response_header_decode(struct dl_response_header **header,
-    struct dl_buf *source)
+    struct dl_bbuf *source)
 {
 	struct dl_response_header *self;
 	int32_t response_size;
@@ -67,14 +68,14 @@ dl_response_header_decode(struct dl_response_header **header,
 	if (self != NULL) {
 #endif
 		/* Decode the CorrelationId */	
-		dl_buf_get_int32(source, &self->dlrsh_correlation_id);
+		dl_bbuf_get_int32(source, &self->dlrsh_correlation_id);
 		return 0;
 	}
 	return -1;
 }
 
 int32_t
-dl_response_encode(struct dl_response *response, struct dl_buf *target)
+dl_response_encode(struct dl_response *response, struct dl_bbuf *target)
 {
 
 	DL_ASSERT(response != NULL, "Response message cannot be NULL\n");

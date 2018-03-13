@@ -131,9 +131,7 @@ dl_alloc_big_file(int fd, long int offset, long int length)
 
 	dl_debug(PRIO_LOW, "Preallocating the file for mac ... ");
 	ret = fcntl(fd, F_PREALLOCATE, &fs);
-	printf("%d\n", ret);
-
-	if (-1 == ret) {
+	if (ret == -1) {
 		dl_debug(PRIO_NORMAL, "Failed to preallocate... Trying to allocate all...\n");
 		fs.fst_flags = F_ALLOCATEALL;
 		ret = fcntl(fd, F_PREALLOCATE, &fs);
@@ -141,7 +139,7 @@ dl_alloc_big_file(int fd, long int offset, long int length)
 
 #if defined HAVE_POSIX_FALLOCATE
 		/* Fallback to posix_fallocate if available. */
-		if (-1 == ret) {
+		if (ret == -1) {
 			ret = dl_call_posix_fallocate(fd, offset, length);
 		}
 #endif

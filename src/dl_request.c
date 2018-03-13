@@ -133,8 +133,6 @@ dl_request_encode(struct dl_request const *request, struct dl_bbuf **target)
 				    request->dlrqm_api_key);
 				return -1;
 			}
-
-			return 0;
 		} else {
 			DLOGTR0(PRIO_HIGH,
 			    "Failed encoding request header.\n");
@@ -165,8 +163,8 @@ dl_request_header_encode(struct dl_request const * const request,
 	DL_ASSERT(request!= NULL, ("Request cannot be NULL."));
 	DL_ASSERT(target != NULL,
 	    ("Target buffer for encoding cannot be NULL."));
-	DL_ASSERT(dl_bbuf_get_flags(target) & DL_BBUF_AUTOEXTEND,
-	    ("Buffer for encoding should be auto extending."));
+	//DL_ASSERT(dl_bbuf_get_flags(target) & DL_BBUF_AUTOEXTEND,
+	//    ("Buffer for encoding should be auto extending."));
 
 	/* Encode the Request APIKey into the buffer. */
 	rc = DL_ENCODE_API_KEY(target, request->dlrqm_api_key);
@@ -196,12 +194,12 @@ dl_request_decode(struct dl_request ** const self,
     struct dl_bbuf const * const source)
 {
 	struct dl_request *request;
+	int rc;
 
 	DL_ASSERT(self != NULL, ("Request buffer cannot be NULL"));
 	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
 
 	request = (struct dl_request *) dlog_alloc(sizeof(struct dl_request));
-
 #ifdef KERNEL
 	DL_ASSERT(request != NULL, "Allocation for Request failed"));
 	{
@@ -210,35 +208,39 @@ dl_request_decode(struct dl_request ** const self,
 #endif
 		/* Decode the Request Header into the buffer. */
 		if (dl_request_header_decode(request, source) == 0) {
-			
+		
 			/* Decode the Request Body into the buffer. */
 			switch (request->dlrqm_api_key) {
 			case DL_PRODUCE_API_KEY:
-				request->dlrqm_produce_request =
-				dl_produce_request_decode(source);
+				rc = dl_produce_request_decode(
+				    &request->dlrqm_produce_request, source);
 				break;
 			case DL_FETCH_API_KEY:
-				request->dlrqm_fetch_request  =
-				    dl_decode_fetch_request_decode(source);
+				    rc = dl_decode_fetch_request_decode(
+					&request->dlrqm_fetch_request, source);
 				break;
 			case DL_OFFSET_API_KEY:
-				request->dlrqm_offset_request =
-				    dl_list_offset_request_decode(source);
+				    rc = dl_list_offset_request_decode(
+					&request->dlrqm_offset_request,
+					source);
 				break;
 			default:
 				DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
 					request->dlrqm_api_key);
 				return -1;
 			}
-			*self = request;
-			return 0;
+			if (rc == 0) {
+				*self = request;
+				return 0;
+			}
 		} else {
-			DLOGTR0(PRIO_HIGH, "Failed decoding request header.\n");
-			return -1;
+			DLOGTR0(PRIO_HIGH, "Error decoding request header.\n");
 		}
 	}
 
-	DLOGTR0(PRIO_HIGH, "Allocation for Request failed\n");
+	DLOGTR0(PRIO_HIGH, "Instatiation of Request failed\n");
+	dlog_free(request);
+	*self = NULL;
 	return -1;
 }
 	

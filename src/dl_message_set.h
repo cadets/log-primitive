@@ -40,7 +40,7 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_protocol.h"
 
 STAILQ_HEAD(dl_messages, dl_message);
@@ -60,9 +60,9 @@ struct dl_message_set {
 	int32_t dlms_nmessages;
 };
 
-extern struct dl_message_set * dl_message_set_decode(struct dl_buf *);
+extern struct dl_message_set * dl_message_set_decode(struct dl_bbuf *);
 extern int dl_message_set_encode(struct dl_message_set const *,
-    struct dl_buf *);
+    struct dl_bbuf *);
 extern struct dl_message_set * dl_message_set_new(char *, int32_t, char *,
     int32_t);
 

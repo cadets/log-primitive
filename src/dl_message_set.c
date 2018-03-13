@@ -45,7 +45,7 @@
 #include <stddef.h>
 
 #include "dl_assert.h"
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_primitive_types.h"
 #include "dl_memory.h"
 #include "dl_message_set.h"
@@ -64,8 +64,8 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 #define DL_OFFSET_SIZE sizeof(int64_t)
 #define DL_TIMESTAMP_SIZE sizeof(int64_t)
 
-static int dl_message_decode(struct dl_message **, struct dl_buf *);
-static int dl_message_encode(struct dl_message const *, struct dl_buf *);
+static int dl_message_decode(struct dl_message **, struct dl_bbuf *);
+static int dl_message_encode(struct dl_message const *, struct dl_bbuf *);
 
 struct dl_message_set *
 dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
@@ -109,7 +109,7 @@ dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
 }
 
 struct dl_message_set *
-dl_message_set_decode(struct dl_buf *source)
+dl_message_set_decode(struct dl_bbuf *source)
 {
 	struct dl_message *message;
 	struct dl_message_set *message_set;
@@ -149,7 +149,7 @@ dl_message_set_decode(struct dl_buf *source)
 }
 		
 static int
-dl_message_decode(struct dl_message **message, struct dl_buf *source)
+dl_message_decode(struct dl_message **message, struct dl_bbuf *source)
 {
 	struct dl_message *self;
 	int32_t crc, msg_crc, size;
@@ -171,14 +171,14 @@ dl_message_decode(struct dl_message **message, struct dl_buf *source)
 
 		/* Decode the MessageSize. */
 		DL_DECODE_MESSAGE_SIZE(source, &size);
-		if (size > 0) { //  && size <= dl_buf_space(source)) {
+		if (size > 0) { //  && size <= dl_bbuf_space(source)) {
 			/* Decode and verify the CRC. */
 			DL_DECODE_CRC(source, &msg_crc);
 
 			/* Computed CRC value. */
 			crc = crc32(0L, Z_NULL, 0);
-			crc = crc32(crc, dl_buf_data(source),
-			    dl_buf_len(source));
+			crc = crc32(crc, dl_bbuf_data(source),
+			    dl_bbuf_len(source));
 			if (crc == msg_crc) {
 				/* Decode and verify the MagicByte */
 				DL_DECODE_MAGIC_BYTE(source, &magic_byte);
@@ -245,7 +245,7 @@ dl_message_decode(struct dl_message **message, struct dl_buf *source)
  */
 int
 dl_message_set_encode(struct dl_message_set const *message_set,
-    struct dl_buf *target)
+    struct dl_bbuf *target)
 {
 	struct dl_message const *message;
 	int size_pos, size_start_pos;
@@ -254,10 +254,10 @@ dl_message_set_encode(struct dl_message_set const *message_set,
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 
 	/* Placeholder for the MessageSetSize. */
-	size_pos = dl_buf_pos(target);
-	dl_buf_put_int32(target, -1);
+	size_pos = dl_bbuf_pos(target);
+	dl_bbuf_put_int32(target, -1);
 
-	size_start_pos = dl_buf_pos(target);
+	size_start_pos = dl_bbuf_pos(target);
 	STAILQ_FOREACH(message, &message_set->dlms_messages, dlm_entries) {
 	
 		/* Encode the Message. */
@@ -265,14 +265,14 @@ dl_message_set_encode(struct dl_message_set const *message_set,
 	}
 
 	/* Encode the MessageSetSize into the buffer. */
-	dl_buf_put_int32_at(target, dl_buf_pos(target)-size_start_pos,
+	dl_bbuf_put_int32_at(target, dl_bbuf_pos(target)-size_start_pos,
 	    size_pos);
 
 	return 0;
 }
 
 static int
-dl_message_encode(struct dl_message const *message, struct dl_buf *target)
+dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
 {
 	unsigned long crc_value, timestamp;
 	int32_t msg_size = 0;
@@ -286,15 +286,15 @@ dl_message_encode(struct dl_message const *message, struct dl_buf *target)
 		goto err;
 
 	/* Placeholder for the size of the encoded Message. */
-	size_pos = dl_buf_pos(target);
+	size_pos = dl_bbuf_pos(target);
 	if (DL_ENCODE_MESSAGE_SIZE(target, -1) != 0)
 		goto err;
 
 	/* Placeholder for the CRC computed over the encoded Message. */
-	crc_pos = dl_buf_pos(target);
+	crc_pos = dl_bbuf_pos(target);
 	if (DL_ENCODE_CRC(target, -1) != 0)
 		goto err;
-	crc_start_pos = dl_buf_pos(target);
+	crc_start_pos = dl_bbuf_pos(target);
 	
 	/* Encode the MagicByte */
 	if (DL_ENCODE_MAGIC_BYTE(target) != 0)
@@ -322,13 +322,13 @@ dl_message_encode(struct dl_message const *message, struct dl_buf *target)
 	dl_encode_bytes(message->dlm_value, message->dlm_value_len, target);
 
 	/* Encode the MessageSize. */
-	DL_ENCODE_MESSAGE_SIZE_AT(target, dl_buf_pos(target)-crc_pos,
+	DL_ENCODE_MESSAGE_SIZE_AT(target, dl_bbuf_pos(target)-crc_pos,
 		size_pos);
 	
 	/* Encode the CRC. */
-	char *crc_data = dl_buf_data(target) + crc_start_pos; 
+	char *crc_data = dl_bbuf_data(target) + crc_start_pos; 
 	crc_value = crc32(0L, Z_NULL, 0);
-	crc_value = crc32(crc_value, crc_data, dl_buf_pos(target)-crc_start_pos);
+	crc_value = crc32(crc_value, crc_data, dl_bbuf_pos(target)-crc_start_pos);
 	if (DL_ENCODE_CRC_AT(target, crc_value, crc_pos) != 0)
 		goto err;
 		

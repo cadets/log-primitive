@@ -34,48 +34,37 @@
  *
  */
 
-#include <sys/types.h>
-#ifdef KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sbuf.h>
-#include <time.h>
-#endif
-
 #include <stddef.h>
 
 #include "dl_assert.h"
-#include "dl_buf.h"
 #include "dl_memory.h"
-#include "dl_message_set.h"
 #include "dl_primitive_types.h"
 #include "dl_protocol.h"
 #include "dl_produce_request.h"
-#include "dl_request.h"
 #include "dl_utils.h"
+
+const int16_t DL_DEFAULT_TIMEOUT = 2000;
 
 int
 dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
-    struct sbuf *client_id, struct sbuf *topic_name, char * key, int key_len,
-    char *value, int value_len)
+    struct sbuf *client, struct sbuf *topic_name, struct dl_message_set * message_set)
 {
 	struct dl_message *message;
 	struct dl_produce_request *produce_request;
 	struct dl_produce_request_partition *req_partition;
 	struct dl_produce_request_topic *req_topic;
 	struct dl_request *request;
+	int rc;
 
 	/* Construct the ProduceRequest. */
-	*self = request = dl_request_new(DL_PRODUCE_API_KEY, correlation_id,
-	    client_id);
+	rc = dl_request_new(&request, DL_PRODUCE_API_KEY, correlation_id, client);
 #ifdef KERNEL
-	DL_ASSERT(request != NULL, ("Failed to allocate Request.\n"));
+	DL_ASSERT(rc != 0, ("Failed to allocate Request.\n"));
 	{
 #else
-	if (request != NULL) {
+	if (rc == 0) {
 #endif
-		produce_request =
-		    request->dlrqm_message.dlrqmt_produce_request =
+		produce_request = request->dlrqm_produce_request =
 		    (struct dl_produce_request *) dlog_alloc(
 			sizeof(struct dl_produce_request));
 #ifdef KERNEL
@@ -88,8 +77,8 @@ dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
 			// TODO: surely this comes from the client or the configuration
 			produce_request->dlpr_required_acks = 1;
 
-			// TODO: the time to await a response
-			produce_request->dlpr_timeout = 0;
+			//* The default time to await a response. */
+			produce_request->dlpr_timeout = DL_DEFAULT_TIMEOUT;
 
 			/* Construct a single Topic/Partition. */
 			produce_request->dlpr_ntopics = 1;
@@ -113,33 +102,40 @@ dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
 				req_partition->dlprp_partition = 0;
 
 				/* Construct the MessageSet. */
-				req_partition->dlprp_message_set =
-				    dl_message_set_new(key, key_len,
-					value, value_len);
+				req_partition->dlprp_message_set = message_set;
 				
 				SLIST_INSERT_HEAD(
 				    &produce_request->dlpr_topics, req_topic,
 				    dlprt_entries);
-			} else {
-				DLOGTR0(PRIO_HIGH,
-				    "Failed allocating ProduceRequest [topic_data].\n");
-				dlog_free(produce_request);
-				dlog_free(request);
-				request = NULL;
+
+				*self = request;
+				return 0;
 			}
-		} else {
-			DLOGTR0(PRIO_HIGH,
-			    "Failed allocating ProduceRequest.\n");
-			dlog_free(request);
-		}
-	} else {
-		DLOGTR0(PRIO_HIGH, "Failed allocating ProduceRequest.\n");
-	}
-	return 0;
+			dlog_free(produce_request);
+		} 
+		dlog_free(request);
+	} 
+	DLOGTR0(PRIO_HIGH, "Failed allocating ProduceRequest.\n");
+	*self = NULL;
+	return -1;
 }
 
-struct dl_produce_request *
-dl_produce_request_decode(struct dl_buf *source)
+int
+dl_produce_request_new_empty(struct dl_request **self, const int32_t correlation_id,
+    struct sbuf *client, struct sbuf *topic_name)
+{
+	return dl_produce_request_new(self, correlation_id, client, topic_name, NULL);
+}
+
+void
+dl_produce_request_delete(struct dl_request *request)
+{
+	// TODO
+}
+
+int
+dl_produce_request_decode(struct dl_produce_request **self,
+    struct dl_bbuf *source)
 {
 	struct dl_message_set *message_set;
 	struct dl_produce_request *request;
@@ -168,7 +164,7 @@ dl_produce_request_decode(struct dl_buf *source)
 		SLIST_INIT(&request->dlpr_topics);
 
 		/* Decode the [topic_data] array. */
-		dl_buf_get_int32(source, &request->dlpr_ntopics);
+		dl_bbuf_get_int32(source, &request->dlpr_ntopics);
 		
 		for (topic= 0; topic < request->dlpr_ntopics; topic++) {
 
@@ -176,16 +172,14 @@ dl_produce_request_decode(struct dl_buf *source)
 			DL_DECODE_TOPIC_NAME(source, &topic_name);
 		
 			/* Decode the [data] array. */
-			dl_buf_get_int32(source, &npartitions);
+			dl_bbuf_get_int32(source, &npartitions);
 			
 			/* Allocate the Topic/Partitions. */
 			req_topic = (struct dl_produce_request_topic *)
 			    dlog_alloc(
 				sizeof(struct dl_produce_request_topic) + 
-				(npartitions - 1) * sizeof(struct dl_produce_request_partition));
-
-			req_topic->dlprt_npartitions = npartitions;
-			req_topic->dlprt_topic_name = topic_name;
+				(npartitions - 1) *
+				sizeof(struct dl_produce_request_partition));
 #ifdef KERNEL
 			DL_ASSERT(req_topic != NULL,
 			    ("Failed to allocate Request.\n"));
@@ -225,7 +219,7 @@ dl_produce_request_decode(struct dl_buf *source)
 
 int
 dl_produce_request_encode(
-    struct dl_produce_request const * const self, struct dl_buf *target)
+    struct dl_produce_request const * const self, struct dl_bbuf *target)
 {
 	struct dl_produce_request_topic *req_topic;
 	struct dl_produce_request_partition *req_partition;
@@ -243,7 +237,7 @@ dl_produce_request_encode(
 		goto err;
 
 	/* Encode the [topic_data] array. */
-	if (dl_buf_put_int32(target, self->dlpr_ntopics) != 0)
+	if (dl_bbuf_put_int32(target, self->dlpr_ntopics) != 0)
 		goto err;
 
 	SLIST_FOREACH(req_topic, &self->dlpr_topics, dlprt_entries) {
@@ -254,7 +248,7 @@ dl_produce_request_encode(
 			goto err;
 	 
 		/* Encode the [data] array. */
-		dl_buf_put_int32(target,
+		dl_bbuf_put_int32(target,
 			req_topic->dlprt_npartitions);
 
 		for (partition = 0;
@@ -268,10 +262,12 @@ dl_produce_request_encode(
 			    req_partition->dlprp_partition) != 0)
 				goto err;
 
-			/* Encode the MessageSet */
-			if (dl_message_set_encode(
-			    req_partition->dlprp_message_set, target) != 0)
-				goto err;
+			if (req_partition->dlprp_message_set != NULL) {
+				/* Encode the MessageSet */
+				if (dl_message_set_encode(
+				req_partition->dlprp_message_set, target) != 0)
+					goto err;
+			}
 		}
 	}
 	return 0;

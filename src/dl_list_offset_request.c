@@ -43,7 +43,7 @@
 #include <stddef.h>
 
 #include "dl_assert.h"
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_list_offset_request.h"
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
@@ -61,18 +61,19 @@ dl_list_offset_request_new(int32_t correlation_id, struct sbuf *client_id,
 	struct dl_list_offset_request *list_offset_request;
 	struct dl_list_offset_request_topic *topic;
 	struct dl_list_offset_request_partition *partition;
+	int rc;
 
 	/* Construct the ListOffsetRequest. */
-	request = dl_request_new(DL_OFFSET_API_KEY, correlation_id,
+	rc = dl_request_new(&request, DL_OFFSET_API_KEY, correlation_id,
 	    client_id);
 #ifdef KERNEL
-	DL_ASSERT(request != NULL, ("Failed allocating FetchRequest."));
+	DL_ASSERT(rc != 0, ("Failed allocating FetchRequest."));
 	{
 #else
-	if (request != NULL) {
+	if (rc == 0) {
 #endif
-		list_offset_request = request->dlrqm_message.dlrqmt_offset_request =
-		(struct dl_list_offset_request *) dlog_alloc(
+		list_offset_request = request->dlrqm_offset_request =
+		    (struct dl_list_offset_request *) dlog_alloc(
 			sizeof(struct dl_list_offset_request));
 #ifdef KERNEL
 		DL_ASSERT(list_offfset_request != NULL,
@@ -134,8 +135,9 @@ dl_list_offset_request_new(int32_t correlation_id, struct sbuf *client_id,
  * Partition
  * Timestamp
  */
-struct dl_list_offset_request *
-dl_list_offset_request_decode(char *source)
+int
+dl_list_offset_request_decode(struct dl_list_offset_request **self,
+    struct dl_bbuf *source)
 {
 	struct dl_list_offset_request *request;
 	struct dl_list_offset_request_topic *request_topic;
@@ -153,7 +155,7 @@ dl_list_offset_request_decode(char *source)
 	DL_DECODE_REPLICA_ID(source, &request->dlor_replica_id);
 
 	/* Decode the [topic_data] array. */
-	dl_buf_get_int32(source, &request->dlor_ntopics);
+	dl_bbuf_get_int32(source, &request->dlor_ntopics);
 		
 	SLIST_INIT(&request->dlor_topics);
 
@@ -167,7 +169,7 @@ dl_list_offset_request_decode(char *source)
 		DL_DECODE_TOPIC_NAME(source, &topic_name);
 
 		/* Decode the [data] array. */
-		dl_buf_get_int32(source, &request_topic->dlort_npartitions);
+		dl_bbuf_get_int32(source, &request_topic->dlort_npartitions);
 			
 		for (partition_it = 0;
 		    partition_it < request_topic->dlort_npartitions;
@@ -205,7 +207,7 @@ dl_list_offset_request_decode(char *source)
  */
 int
 dl_list_offset_request_encode(struct dl_list_offset_request *self,
-    struct dl_buf *target)
+    struct dl_bbuf *target)
 {
 	struct dl_list_offset_request_partition *req_partition;
 	struct dl_list_offset_request_topic *req_topic;
@@ -219,7 +221,7 @@ dl_list_offset_request_encode(struct dl_list_offset_request *self,
 		goto err;
 
 	/* Encode the ListOffsetRequest Topics. */
-	if (dl_buf_put_int32(target, self->dlor_ntopics) != 0)
+	if (dl_bbuf_put_int32(target, self->dlor_ntopics) != 0)
 		goto err;
 
 	SLIST_FOREACH(req_topic, &self->dlor_topics, dlort_entries) {
@@ -230,7 +232,7 @@ dl_list_offset_request_encode(struct dl_list_offset_request *self,
 			goto err;
 
 		/* Encode the Partitions. */
-		if (dl_buf_put_int32(target,
+		if (dl_bbuf_put_int32(target,
 		    req_topic->dlort_npartitions) != 0)
 			goto err;
 

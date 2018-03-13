@@ -36,6 +36,12 @@
 #include <sys/socket.h>
 #include <sys/queue.h>
 
+#ifdef KERNEL
+#include <sys/libkern.h>
+#else
+#include <string.h>
+#endif
+
 #include <netinet/in.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -45,7 +51,6 @@
 #include "dl_broker_client.h"
 #include "dl_broker_partition.h"
 #include "dl_broker_topic.h"
-#include "dl_event_handler.h"
 #include "dl_memory.h"
 #include "dl_poll_reactor.h"
 #include "dl_produce_request.h"
@@ -56,12 +61,12 @@ static dl_event_handler_handle dl_accept_client_connection(const int);
 static dl_event_handler_handle dl_get_client_socket(void *instance);
 static void dl_handle_read_event(void *instance);
 
-static struct dl_response * dlog_broker_handle(struct dl_request * const,
-    struct broker_configuration const * const conf);
 static struct dl_response * dl_handle_fetch_request(struct dl_request *);
-static struct dl_response * dl_handle_produce_request(struct dl_request *,
-    struct broker_configuration const * const conf);
+static struct dl_response * dl_handle_produce_request(struct dl_request *);
 static struct dl_response * dl_handle_list_offset_request(struct dl_request *);
+
+extern unsigned long topic_hashmask;
+extern LIST_HEAD(dl_broker_topics, dl_broker_topic) *topic_hashmap;
 
 static
 dl_event_handler_handle dl_get_client_socket(void *instance)
@@ -83,6 +88,7 @@ dl_handle_read_event(void *instance)
 	int rc;
 	size_t bytes_read = 0, total = 0;
 	char *buffer = (char *) dlog_alloc(1024);
+	struct dl_bbuf *source;
 	int32_t msg_size, buffer_len = 0;
 
 	DL_ASSERT(instance != NULL, ("Broker client instance cannot be NULL"));
@@ -94,54 +100,49 @@ dl_handle_read_event(void *instance)
 	} else if (rc > 0) {
 
 		DLOGTR2(PRIO_LOW, "Read %d bytes (%p)...\n", rc, msg_size);
-		//req_or_res = dl_decode_request_or_response(buffer);
-		//if (NULL != req_or_res) {
-			DLOGTR1(PRIO_LOW, "\tNumber of bytes: %d\n",
-			    msg_size);
-			    //req_or_res->dlrx_size);
+		DLOGTR1(PRIO_LOW, "\tNumber of bytes: %d\n", msg_size);
 
-			total += sizeof(int32_t);
+		total += sizeof(int32_t);
 
-			while (bytes_read < msg_size) {
-				bytes_read = recv(client->client_socket,
-				    &buffer[total],
-				    msg_size-bytes_read, 0);
-				DLOGTR2(PRIO_LOW,
-				    "\tRead %d characters; expected %d\n",
-				    bytes_read, msg_size);
-				total += bytes_read;
-			}
+		while (bytes_read < msg_size) {
+			bytes_read = recv(client->client_socket,
+				&buffer[total],
+				msg_size-bytes_read, 0);
+			DLOGTR2(PRIO_LOW,
+				"\tRead %d characters; expected %d\n",
+				bytes_read, msg_size);
+			total += bytes_read;
+		}
 
-			for (int b = 0; b < msg_size; b++) {
-				DLOGTR1(PRIO_LOW, "<0x%02hX>", buffer[b]);
-			}
-			DLOGTR0(PRIO_LOW, "\n");
-	
-			/* Decode the request from the received buffer. */	
-			request = dl_request_decode(buffer);
-			if (request != NULL) {
-				/* If the request TODO */
-				response = dlog_broker_handle(request,
-				    client->event_notifier.dlben_conf);
-				if (response != NULL) {
+		for (int b = 0; b < msg_size; b++) {
+			DLOGTR1(PRIO_LOW, "<0x%02hX>", buffer[b]);
+		}
+		DLOGTR0(PRIO_LOW, "\n");
 
-					/* Encode and send the response. */
-					buffer_len = dl_response_encode(
-					    response, buffer);
-					if (buffer_len > 0) {
+		/* Decode the request from the received buffer. */	
+		//if (dl_request_decode(&request, source) == 0) {
+		dl_request_decode(&request, source);
+		if (request != NULL) {
+			/* If the request TODO */
+			response = dlog_broker_handle(request);
+			if (response != NULL) {
 
-						printf("Sending %d\n", buffer_len);
-						send(client->client_socket,
-						    buffer, buffer_len, 0);
-					}
-				} else {
-					DLOGTR0(PRIO_HIGH,
-					    "Error handling request\n");
+				/* Encode and send the response. */
+				buffer_len = dl_response_encode(
+					response, buffer);
+				if (buffer_len > 0) {
+
+					printf("Sending %d\n", buffer_len);
+					send(client->client_socket,
+						buffer, buffer_len, 0);
 				}
 			} else {
-				DLOGTR0(PRIO_HIGH, "Error decoding request\n");
+				DLOGTR0(PRIO_HIGH,
+					"Error handling request\n");
 			}
-		//}
+		} else {
+			DLOGTR0(PRIO_HIGH, "Error decoding request\n");
+		}
 	} else {
 		client->event_notifier.on_client_closed(
 		    client->event_notifier.server, client);
@@ -171,12 +172,10 @@ dl_accept_client_connection(const int server_handle)
 	return client_handle;
 }
 
-static struct dl_response *
-dlog_broker_handle(struct dl_request * const request,
-    struct broker_configuration const * const conf)
+struct dl_response *
+dlog_broker_handle(struct dl_request * const request)
 {
 	DL_ASSERT(request != NULL, "Request message cannot be NULL");
-	DL_ASSERT(conf != NULL, "Broker configuration cannot be NULL");
 
 	switch (request->dlrqm_api_key) {
 	case DL_FETCH_API_KEY:
@@ -192,7 +191,7 @@ dlog_broker_handle(struct dl_request * const request,
 		DLOGTR2(PRIO_LOW, "Processing ProduceRequest "
 		    "(client: %s, id: %d)\n", request->dlrqm_client_id,
 		    request->dlrqm_correlation_id);
-		return dl_handle_produce_request(request, conf);
+		return dl_handle_produce_request(request); //, conf);
 		break;
 	default:
 		DLOGTR1(PRIO_HIGH, "Unsupported Request %d\n",
@@ -204,6 +203,7 @@ dlog_broker_handle(struct dl_request * const request,
 struct dl_response *
 dl_handle_fetch_request(struct dl_request *request)
 {
+	struct dl_broker_topic *topic;
 	struct dl_fetch_request *fetch_request;
 	struct dl_fetch_request_partition *fetch_partition;
 	struct dl_fetch_request_topic *fetch_topic;
@@ -212,7 +212,7 @@ dl_handle_fetch_request(struct dl_request *request)
 
 	DL_ASSERT(request!= NULL, "FetchRequest cannot be NULL");
 	
-	fetch_request = request->dlrqm_message.dlrqmt_offset_request;
+	fetch_request = request->dlrqm_offset_request;
 	DL_ASSERT(fetch_request != NULL, "FetchRequest cannot be NULL");
 	
 	DLOGTR2(PRIO_LOW, "Processing FetchRequest (client: %s, id: %d)\n",
@@ -224,17 +224,29 @@ dl_handle_fetch_request(struct dl_request *request)
 		    "Fetch request for the topicname '%s'\n",
 		    fetch_topic->dlfrt_topic_name);
 
-		for (partition = 0; partition < fetch_topic->dlfrt_npartitions;
-		    partition++) {
+		/* Lookup the topic in the topic hashmap. */
+		u_long h = hashlittle(sbuf_data(fetch_topic->dlfrt_topic_name),
+		    sbuf_len(fetch_topic->dlfrt_topic_name), 0);
+		LIST_FOREACH(topic, &topic_hashmap[h & topic_hashmask], dlt_entries) {
+			if (strcmp(sbuf_data(fetch_topic->dlfrt_topic_name),
+			    sbuf_data(topic->dlbt_topic_name)) == 0) {
 
-			fetch_partition =
-			    &fetch_topic->dlfrt_partitions[partition];
+				printf("found topic\n");
 
-			struct dl_partition *partition =
-			    SLIST_FIRST(&topic->dlt_partitions);
-			//partition->dlp_active_segment, "Hello", 5);
+				for (partition = 0;
+				    partition < fetch_topic->dlfrt_npartitions;
+				    partition++) {
 
+					fetch_partition =
+					&fetch_topic->dlfrt_partitions[partition];
+
+					struct dl_partition *partition =
+					SLIST_FIRST(&topic->dlt_partitions);
+					//partition->dlp_active_segment, "Hello", 5);
+				};
+			}
 		};
+			
 	};
 
 	return fetch_response;
@@ -242,47 +254,59 @@ dl_handle_fetch_request(struct dl_request *request)
 
 // TODO: construct response
 static struct dl_response *
-dl_handle_produce_request(struct dl_request *request,
-    struct broker_configuration const * const conf)
+dl_handle_produce_request(struct dl_request *request)
 {
+	struct dl_broker_topic *topic;
 	struct dl_response *produce_response = NULL;
 	struct dl_produce_request *produce_request;
-	struct dl_produce_request_topic *produce_request_topic;
+	struct dl_produce_request_topic *produce_topic;
 	struct dl_produce_request_partition *produce_request_partition;
+	uint32_t h;
 	int partition;
 
 	DL_ASSERT(request != NULL, "ProduceRequest cannot be NULL");
 	
-	produce_request = request->dlrqm_message.dlrqmt_produce_request;
+	produce_request = request->dlrqm_produce_request;
 	DL_ASSERT(produce_request != NULL, "ProduceRequest cannot be NULL");
 
 	DLOGTR1(PRIO_LOW, "ProduceRequest id = %d\n",
 	    request->dlrqm_correlation_id);
 
-	SLIST_FOREACH(produce_request_topic, &produce_request->dlpr_topics,
+	SLIST_FOREACH(produce_topic, &produce_request->dlpr_topics,
 	    dlprt_entries) {
 
-		DLOGTR1(PRIO_NORMAL,
-		    "Inserting messages into the topicname '%s'\n",
-		    produce_request_topic->dlprt_topic_name);
+		DLOGTR2(PRIO_NORMAL,
+		    "Inserting messages into the topicname '%s' %d\n",
+		    sbuf_data(produce_topic->dlprt_topic_name),
+		    sbuf_len(produce_topic->dlprt_topic_name));
 
-		for (partition = 0;
-		    partition < produce_request_topic->dlprt_npartitions;
-		    partition++) { 
+		/* Lookup the topic in the topic hashmap. */
+		h = hashlittle(sbuf_data(produce_topic->dlprt_topic_name),
+		    sbuf_len(produce_topic->dlprt_topic_name), 0);
+		LIST_FOREACH(topic, &topic_hashmap[h & topic_hashmask], dlt_entries) {
+			if (strcmp(sbuf_data(produce_topic->dlprt_topic_name),
+			    sbuf_data(topic->dlbt_topic_name)) == 0) {
 
-			// Insert the message
-			struct dl_partition *partition =
-			    SLIST_FIRST(&topic->dlt_partitions);
-			dl_insert_message(partition->dlp_active_segment, "Hello", 5);
+				for (partition = 0;
+				    partition < produce_topic->dlprt_npartitions;
+				    partition++) { 
 
-			if (conf->val & BROKER_FSYNC_ALWAYS) {
-				/* Fsync the segment. */
-				dl_lock_seg(partition->dlp_active_segment);
-				fsync(partition->dlp_active_segment->_log);
-				fsync(partition->dlp_active_segment->_index);
-				dl_unlock_seg(partition->dlp_active_segment);
+					// Insert the message
+					struct dl_bbuf *temp;
+					dl_bbuf_new(&temp, NULL, DL_MTU,
+					    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN);
+					dl_message_set_encode(
+					    produce_topic->dlprt_partitions[partition].dlprp_message_set,
+					    temp);
+					
+					struct dl_partition *request_partition =
+					SLIST_FIRST(&topic->dlt_partitions);
+					dl_segment_insert_message(
+					    request_partition->dlp_active_segment,
+					    dl_bbuf_data(temp), dl_bbuf_pos(temp));
+				}
 			}
-		}
+		};
 	}
 	return produce_response;
 }
@@ -290,7 +314,8 @@ dl_handle_produce_request(struct dl_request *request,
 static struct dl_response *
 dl_handle_list_offset_request(struct dl_request *request)
 {
-	struct dl_list_offset_request *offset_request;
+	struct dl_broker_topic *topic;
+	struct dl_list_offset_request *offset_request = request->dlrqm_offset_request;
 	struct dl_list_offset_request_partition *request_partition;
 	struct dl_list_offset_request_topic *request_topic;
 	struct dl_response *response;
@@ -300,8 +325,6 @@ dl_handle_list_offset_request(struct dl_request *request)
 	int partition;
 
 	DL_ASSERT(request!= NULL, "ListOffsetRequest cannot be NULL");
-
-	offset_request = request->dlrqm_message.dlrqmt_offset_request;
 	DL_ASSERT(offset_request != NULL, "ListOffsetRequest cannot be NULL");
 
 	DLOGTR1(PRIO_LOW, "ListOffsetRequest id = %d\n",
@@ -315,8 +338,6 @@ dl_handle_list_offset_request(struct dl_request *request)
 	    (struct dl_list_offset_response *) dlog_alloc(
 		sizeof(struct dl_list_offset_response));
 	if (offset_response != NULL) {	
-
-		printf("ntopics = %d\n", offset_request->dlor_ntopics);
 
 		offset_response->dlor_ntopics = offset_request->dlor_ntopics;
 		SLIST_INIT(&offset_response->dlor_topics);
@@ -409,7 +430,7 @@ dl_broker_client_new(dl_event_handler_handle server_handle,
 }
 
 void
-dl_broker_client_free(struct dl_broker_client *client)
+dl_broker_client_delete(struct dl_broker_client *client)
 {
 
 	DL_ASSERT(client != NULL, ("Broker client instance cannot be NULL\n"));

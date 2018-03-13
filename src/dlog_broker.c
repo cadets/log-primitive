@@ -34,10 +34,17 @@
  * SUCH DAMAGE.
  */
 
+
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/event.h>
 #include <sys/queue.h>
+
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -78,13 +85,12 @@ struct dlog_broker_handle {
 };
 
 static void dl_siginfo_handler(int);
-static void dl_sigint_handler(int);
 static int dl_init_listening_socket(int);
 
-static dl_event_handler_handle dl_get_kq(void *);
-static void dl_handle_kq(void *);
-
 struct dlog_broker_statistics dlog_broker_stats;
+
+unsigned long topic_hashmask;
+LIST_HEAD(dl_broker_topics, dl_broker_topic) *topic_hashmap;
 
 static int
 dl_init_listening_socket(int portnumber)
@@ -121,16 +127,6 @@ dl_siginfo_handler(int dummy)
 	DLOGTR0(PRIO_HIGH, "Broker statistics:\n");
 	DLOGTR1(PRIO_HIGH, "bytes read = %ld\n",
 	    dlog_broker_stats.dlbs_bytes_read);
-}
-
-static void
-dl_sigint_handler(int dummy)
-{
-
-	DLOGTR0(PRIO_LOW, "DLog broker shutting down...\n");
-	dlog_broker_fini();
-
-	exit(EXIT_SUCCESS);
 }
 
 /**
@@ -182,16 +178,16 @@ static void
 dl_on_client_closed(void *server, void *closedClient)
 {
 	struct dlog_broker_handle *serverInstance = server;
-	struct dl_broker_client *clientInstance = closedClient;
+	struct dl_broker_client *client_instance = closedClient;
 	int clientSlot;
 	
 	clientSlot = dl_find_matching_client_slot(serverInstance,
-	    clientInstance);
+	    client_instance);
 	if (0 > clientSlot) {
 		printf("Phantom client detected");
 	}
 		       
-	dl_broker_client_free(clientInstance);
+	dl_broker_client_delete(client_instance);
 		          
 	serverInstance->clients[clientSlot] = NULL;
 }
@@ -211,6 +207,7 @@ dl_handle_read_event(void *instance)
 		 * server (for example a closed connection). */
 		event_notifier.server = server;
 		event_notifier.on_client_closed = dl_on_client_closed;
+		// TODO not sure that this is needed
 		event_notifier.dlben_conf = server->conf;
 				       
 		server->clients[free_slot] = dl_broker_client_new(
@@ -223,58 +220,18 @@ dl_handle_read_event(void *instance)
 	}
 }
 
-static dl_event_handler_handle
-dl_get_kq(void* instance)
-{
-	const struct dl_partition *partition = instance;
-	DLOGTR0(PRIO_HIGH, "Getting handle.\n");
-	return partition->_klog;
-}
-
-static void
-dl_handle_kq(void *instance)
-{
-	struct dl_partition * const partition = instance;
-	struct segment *segment = partition->dlp_active_segment;
-	struct kevent event;
-	off_t log_position;
-	int rc;
-
-	rc = kevent(partition->_klog, 0, 0, &event, 1, 0);
-	if (rc == -1)
-		DLOGTR2(PRIO_HIGH, "Error reading event %d %d\n.", rc, errno);
-	else {
-		DLOGTR1(PRIO_LOW, "Read of kqueue = %p.\n", event.data);
-
-		dl_lock_seg(segment);
-		log_position = lseek(segment->_log, 0, SEEK_END);
-		DLOGTR2(PRIO_HIGH, "log_position = %d, last_sync_pos = %d\n",
-		    log_position, segment->last_sync_pos);
-		if (log_position - segment->last_sync_pos > 100) {
-
-			DLOGTR0(PRIO_NORMAL, "Syncing the index and log...\n");
-
-			fsync(segment->_log);
-			fsync(segment->_index);
-			segment->last_sync_pos = log_position;
-		}
-		dl_unlock_seg(segment);
-	}
-}
-
 void
 dlog_broker_init(char const * const topic_name,
     struct broker_configuration const * const conf)
 {
 	struct kevent event;
 	struct dl_partition *topic_partition;
-	struct segment *active_segment;
+	struct dl_segment *active_segment;
+	struct dl_broker_topic *topic;
+	struct sbuf *tname;
 
 	DL_ASSERT(topic_name != NULL, "Partition name cannot be NULL");
 	DL_ASSERT(conf != NULL, "Broker configuration cannot be NULL");
-
-	/* Install signal handler to terminate broker cleanly. */	
-	signal(SIGINT, dl_sigint_handler);
 
 	/* Install signal handler to report broker statistics. */
 	signal(SIGINFO, dl_siginfo_handler);
@@ -282,25 +239,14 @@ dlog_broker_init(char const * const topic_name,
 	/* Create the hashmap to store the names of the topics managed by the
 	 * broker and their segments.
 	 */
-	//TODO
+	topic_hashmap = dl_topic_hashinit(10, &topic_hashmask);
 
-	/* Preallocate an initial segement file for the topic. */
-	topic = dl_topic_new(topic_name);
-
-	/* TODO: monitor writes on the partitions active segment. */
-	topic_partition = SLIST_FIRST(&topic->dlt_partitions);
-	active_segment = topic_partition->dlp_active_segment; 
-
-	topic_partition->_klog = kqueue();
-	EV_SET(&event, active_segment->_log, EVFILT_VNODE, EV_ADD | EV_CLEAR,
-	    NOTE_WRITE, 0, NULL);
-       	kevent(topic_partition->_klog, &event, 1, NULL, 0, NULL); 
-        topic_partition->event_handler.dleh_instance = topic_partition;
-	topic_partition->event_handler.dleh_get_handle = dl_get_kq;
-	topic_partition->event_handler.dleh_handle_event = dl_handle_kq;
-
-	/* Register the topics active partition with the poll reactor. */
-	dl_poll_reactor_register(&topic_partition->event_handler);
+	/* Preallocate an initial segement file for the topic and add to the hashmap. */
+	tname = sbuf_new_auto();
+	sbuf_cpy(tname, topic_name);
+	topic = dl_topic_new(tname);
+	uint32_t h = hashlittle(sbuf_data(tname), sbuf_len(tname), 0);
+	LIST_INSERT_HEAD(&topic_hashmap[h & topic_hashmask], topic, dlt_entries); 
 }
 
 /* TODO allow specifying which network interface to bind to */
@@ -319,18 +265,19 @@ dlog_broker_create_server(const int portnumber,
 		 * event handler with the poll reactor.
 		 */
 		socket = dl_init_listening_socket(portnumber);
-		//if (socket ) {
-		// TODO: error handling
-		handle->socket = socket;
-		handle->conf = conf;
-        	handle->event_handler.dleh_instance = handle;
-	        handle->event_handler.dleh_get_handle = dl_get_server_socket;
-		handle->event_handler.dleh_handle_event = dl_handle_read_event;
+		if (socket > 0) {
+			// TODO: error handling
+			handle->socket = socket;
+			handle->conf = conf;
+			handle->event_handler.dleh_instance = handle;
+			handle->event_handler.dleh_get_handle = dl_get_server_socket;
+			handle->event_handler.dleh_handle_event = dl_handle_read_event;
 
-		dl_poll_reactor_register(&handle->event_handler);
-		// } else {
-		//     dlog_free(handle);
-		// }
+			dl_poll_reactor_register(&handle->event_handler);
+		} else {
+			DLOGTR0(PRIO_HIGH, "Error initialising server socket.\n");
+			dlog_free(handle);
+		}
 	}
 	return handle;
 }
@@ -338,5 +285,10 @@ dlog_broker_create_server(const int portnumber,
 void
 dlog_broker_fini()
 {
+	struct dl_partition *topic_partition;
 	// unregister the handlers?
+
+	/* Register the topics active partition with the poll reactor. */
+	//topic_partition = SLIST_FIRST(&topic->dlt_partitions);
+	//dl_poll_reactor_unregister(&topic_partition->event_handler);
 }

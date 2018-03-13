@@ -48,7 +48,7 @@
 #endif
 
 #include "dl_assert.h"
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_primitive_types.h"
 #include "dl_memory.h"
 #include "dl_transport.h"
@@ -91,7 +91,7 @@ dl_transport_connect(struct dl_transport *self,
 }
 
 int
-dl_transport_read_msg(struct dl_transport *self, struct dl_buf **target)
+dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 {
 	struct dl_request_or_response *req_or_res;
 	int ret, total = 0;
@@ -111,32 +111,28 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_buf **target)
 	if (ret == 0) {
 		/* Peer has closed connection */
 	} else if (ret > 0) {
-		//req_or_res = dl_decode_request_or_response(&msg_size);
-		//if (NULL != req_or_res) {
-			DLOGTR1(PRIO_LOW, "\tNumber of bytes: %d\n", msg_size);
-			    //req_or_res->dlrx_size);
+		DLOGTR1(PRIO_LOW, "\tNumber of bytes: %d\n", msg_size);
 
-			char *buffer = dlog_alloc(sizeof(char) * msg_size);
-			dl_buf_new(target, NULL, msg_size,
-			    DL_BUF_FIXEDLEN | DL_BUF_BIGENDIAN);
+		char *buffer = dlog_alloc(sizeof(char) * msg_size);
+		dl_bbuf_new(target, NULL, msg_size,
+			DL_BBUF_FIXEDLEN | DL_BBUF_BIGENDIAN);
 
-			while (total < msg_size) {
-				total += ret = recv(self->dlt_sock, buffer,
-				    msg_size-total, 0);
-				DLOGTR2(PRIO_LOW,
-				    "\tRead %d characters; expected %d\n",
-				    ret, msg_size);
-				dl_buf_bcat(*target, buffer, ret);
-			}
-			dlog_free(buffer);
+		while (total < msg_size) {
+			total += ret = recv(self->dlt_sock, buffer,
+				msg_size-total, 0);
+			DLOGTR2(PRIO_LOW,
+				"\tRead %d characters; expected %d\n",
+				ret, msg_size);
+			dl_bbuf_bcat(*target, buffer, ret);
+		}
+		dlog_free(buffer);
 
-			for (int b = 0; b < msg_size; b++) {
-				DLOGTR1(PRIO_LOW, "<0x%02hhX>", buffer[b]);
-			}
-			DLOGTR0(PRIO_LOW, "\n");
+		for (int b = 0; b < msg_size; b++) {
+			DLOGTR1(PRIO_LOW, "<0x%02hhX>", buffer[b]);
+		}
+		DLOGTR0(PRIO_LOW, "\n");
 
-			return 0;
-		//}
+		return 0;
 	} else {
 		return -1;
 	}
@@ -145,7 +141,7 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_buf **target)
 
 int
 dl_transport_send_request(const struct dl_transport *self,
-    const struct dl_buf *buffer)
+    const struct dl_bbuf *buffer)
 {
 	struct iovec iov[2];
 	int32_t buflen;
@@ -158,13 +154,13 @@ dl_transport_send_request(const struct dl_transport *self,
 	// 	 struct	mbuf *top, struct mbuf *control, int flags,
 	// 	 	 struct	thread *td);
 #else
-	buflen = htobe32(dl_buf_pos(buffer));
+	buflen = htobe32(dl_bbuf_pos(buffer));
 
 	iov[0].iov_base = &buflen;
 	iov[0].iov_len = sizeof(int32_t);
 
-	iov[1].iov_base = dl_buf_data(buffer);
-	iov[1].iov_len = dl_buf_pos(buffer);
+	iov[1].iov_base = dl_bbuf_data(buffer);
+	iov[1].iov_len = dl_bbuf_pos(buffer);
 
 	return writev(self->dlt_sock, iov, 2);
 #endif

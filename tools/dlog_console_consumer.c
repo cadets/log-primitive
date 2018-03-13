@@ -249,6 +249,7 @@ main(int argc, char **argv)
 	/* Configure and initialise the distributed log client. */
 	cc.dlcc_on_response = dlc_on_response;
 	cc.dlcc_client_id = client_id;
+	cc.to_resend = true;
 	cc.resend_timeout = 40;
 	cc.resender_thread_sleep_length = 10;
 	cc.request_notifier_thread_sleep_length = 3;

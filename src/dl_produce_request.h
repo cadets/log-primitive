@@ -45,7 +45,7 @@
 #include <sbuf.h>
 #endif
 
-#include "dl_buf.h"
+#include "dl_bbuf.h"
 #include "dl_message_set.h"
 #include "dl_request.h"
 
@@ -70,10 +70,15 @@ struct dl_produce_request {
 	int16_t dlpr_required_acks;
 };
 
-extern struct dl_produce_request * dl_produce_request_decode(struct dl_buf *);
-extern int dl_produce_request_encode(struct dl_produce_request const * const,
-    struct dl_buf *);
 extern int dl_produce_request_new(struct dl_request **, const int32_t,
-    struct sbuf *, struct sbuf *, char*, int, char *, int);
+    struct sbuf *, struct sbuf *, struct dl_message_set *);
+extern int dl_produce_request_new_empty(struct dl_request **, const int32_t,
+    struct sbuf *, struct sbuf *);
+extern void dl_produce_request_delete(struct dl_request *);
+
+extern int dl_produce_request_decode(struct dl_produce_request **,
+    struct dl_bbuf *);
+extern int dl_produce_request_encode(struct dl_produce_request const * const,
+    struct dl_bbuf *);
 
 #endif
