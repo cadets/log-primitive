@@ -35,83 +35,45 @@
  *
  */
 
-// The utilities used
-#if defined(HAVE_POSIX_FALLOCATE) && !defined(__sun) && !defined(__sun__)
-#define _XOPEN_SOURCE 600
-#endif
-#if !defined(_GNU_SOURCE) && defined(HAVE_LINUX_FALLOC_H)
-#define _GNU_SOURCE
-#endif
-#include <utime.h>
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-#ifdef HAVE_SYS_UIO_H
 #include <sys/types.h>
-#include <sys/uio.h>
-#endif
-#if defined(HAVE_SENDFILE) && (defined(__linux__) || (defined(__sun) && defined(__SVR4)))
-#include <sys/sendfile.h>
-#endif
+#include <sys/stat.h>
 
-#if defined(__APPLE__) && defined(__MACH__) && !defined(__DARWIN__)
-#define DARWIN 1
+#ifdef KERNEL
+#include <sys/libkern.h>
+#else
+#include <string.h>
 #endif
 
-#if defined(DARWIN) || defined(HAVE_LINUX_FALLOC_H) || defined(HAVE_POSIX_FALLOCATE)
-#include <fcntl.h>
-#endif
-
-#ifdef HAVE_LINUX_FALLOC_H
-#include <linux/falloc.h>
-#endif
-
-#include <sys/mman.h>
-
+#include <dirent.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
-#include <sys/socket.h>
-#include <resolv.h>
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <strings.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/dir.h>
-#include <math.h>
-#include <string.h>
-#include <stdarg.h>
 
-#include "dl_broker_segment.h"
-#include "dl_memory.h"
 #include "dl_utils.h"
 
-static int dl_remove_directory(const char *);
+static int dl_remove_directory(struct sbuf *);
 
 extern unsigned short PRIO_LOG;
 
 // Method used to create a partition folder
 int
-dl_make_folder(const char *partition_name)
+dl_make_folder(struct sbuf *partition_name)
 {
 	struct stat st;
-
-	if (stat(partition_name, &st) == -1) {
-		return mkdir(partition_name, 0777);
+	
+	if (stat(sbuf_data(partition_name), &st) == -1) {
+		return mkdir(sbuf_data(partition_name), 0777);
 	}
 
 	return -1;
 }
 
 int
-dl_del_folder(const char *partition_name)
+dl_del_folder(struct sbuf *partition_name)
 {
 	struct stat st;
 
-	if (stat(partition_name, &st) != -1) {
+	if (stat(sbuf_data(partition_name), &st) != -1) {
 		return dl_remove_directory(partition_name);
 	}
 
@@ -120,46 +82,39 @@ dl_del_folder(const char *partition_name)
 
 // adapted from https://stackoverflow.com/questions/2256945/removing-a-non-empty-directory-programmatically-in-c-or-c
 static int
-dl_remove_directory(const char *path)
+dl_remove_directory(struct sbuf *path)
 {
-	DIR *d = opendir(path);
-	size_t path_len = strlen(path);
+	DIR *d;
 	int r = -1;
 
+	d = opendir(sbuf_data(path));
 	if (d) {
 		struct dirent *p;
+		struct sbuf *filename;
 
+		filename = sbuf_new_auto();
 		r = 0;
-
 		while (!r && (p=readdir(d))) {
+			struct stat statbuf;
 			int r2 = -1;
-			char *buf;
-			size_t len;
 
 			/* Skip the names "." and ".." as we don't want to recurse on them. */
 			if (!strcmp(p->d_name, ".") || !strcmp(p->d_name, "..")) {
 				continue;
 			}
 
-			len = path_len + strlen(p->d_name) + 2;
-			buf = (char*) malloc(len);
-
-			if (buf) {
-				struct stat statbuf;
-				
-				snprintf(buf, len, "%s/%s", path, p->d_name);
-
-				if (!stat(buf, &statbuf)) {
-					if (S_ISDIR(statbuf.st_mode)) {
-						r2 = dl_remove_directory(buf);
-					} else {
-						r2 = unlink(buf);
-					}
+			sbuf_printf(filename, "%s/%s", sbuf_data(path), p->d_name);
+			if (!stat(sbuf_data(filename), &statbuf)) {
+				if (S_ISDIR(statbuf.st_mode)) {
+					r2 = dl_remove_directory(filename);
+				} else {
+					r2 = unlink(sbuf_data(filename));
 				}
-				free(buf);
 			}
+			sbuf_clear(filename);
 			r = r2;
 		}
+		sbuf_delete(filename);
 		closedir(d);
 	}
 
@@ -169,6 +124,7 @@ dl_remove_directory(const char *path)
 	return r;
 }
 
+#ifndef KERNEL
 void
 dl_debug(int priority, const char* format, ...)
 {
@@ -181,3 +137,4 @@ dl_debug(int priority, const char* format, ...)
 
 	va_end(args);
 }
+#endif
