@@ -41,7 +41,7 @@
 #include <sys/event.h>
 #include <sys/queue.h>
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
 #include <sbuf.h>
@@ -92,6 +92,17 @@ struct dlog_broker_statistics dlog_broker_stats;
 unsigned long topic_hashmask;
 LIST_HEAD(dl_broker_topics, dl_broker_topic) *topic_hashmap;
 
+#ifdef _KERNEL
+static int
+dl_init_listening_socket(int portnumber)
+{
+	// TODO: socreate
+	// sobind
+	// solisten
+	return -1;
+
+}
+#else /* !KERNEL */
 static int
 dl_init_listening_socket(int portnumber)
 {
@@ -118,6 +129,7 @@ dl_init_listening_socket(int portnumber)
 
 	return sockfd;
 }
+#endif /* KERNEL */
 
 static void
 dl_siginfo_handler(int dummy)
