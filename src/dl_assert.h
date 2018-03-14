@@ -39,7 +39,7 @@
 
 #undef ASSERT
 
-#if KERNEL
+#if _KERNEL
 #include <sys/types.h>
 #include <sys/param.h>
 #include <sys/systm.h>

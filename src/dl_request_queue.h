@@ -34,71 +34,37 @@
  *
  */
 
-#ifdef __APPLE__
-#include <stdatomic.h>
-#else
-#include <sys/cdefs.h>
+#ifndef _DL_REQUEST_QUEUE_H
+#define _DL_REQUEST_QUEUE_H
+
+#include <pthread.h>
+
+#include <sys/queue.h>
+#include <sys/tree.h>
 #include <sys/types.h>
-#include <machine/atomic.h>
-#endif
 
-#include <stdint.h>
+STAILQ_HEAD(dl_request_queue, dl_request_element);
 
-#include "dl_assert.h"
-#include "dl_correlation_id.h"
-#include "dl_memory.h"
+// TODO: Forward definition of dl_request_q
+// struct dl_request_q
 
-struct dl_correlation_id
-{
-#ifdef __APPLE__
-	atomic_int_least32_t val;
-#else
-	int32_t val;
-#endif
+struct dl_request_q {
+	struct dl_request_queue dlrq_requests;
+	pthread_mutex_t dlrq_mtx;
+	pthread_cond_t dlrq_cond;
 };
 
-struct dl_correlation_id *
-dl_correlation_id_new()
-{
-	struct dl_correlation_id *cid = (struct dl_correlation_id *)
-	    dlog_alloc(sizeof(struct dl_correlation_id));
-#ifdef __APPLE__
-	atomic_init(&cid->val, 0);
-#else
-	cid->val = 0;
+struct dl_request_element {
+	//union {
+	//dl_request_element *dlrq_next;
+	//STAILQ_ENTRY(dl_request_element) dlrq_entries;
+	STAILQ_ENTRY(dl_request_element) dlrq_entries;
+	//};
+	RB_ENTRY(dl_request_element) dlrq_linkage;
+	struct dl_buffer *dlrq_buffer;
+	time_t dlrq_last_sent;
+	int32_t dlrq_correlation_id;
+	int16_t dlrq_api_key;
+};
+
 #endif
-	return cid;
-}
-
-int32_t
-dl_correlation_id_inc(struct dl_correlation_id * self)
-{
-	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
-
-#ifdef __APPLE__
-	return atomic_fetch_add(&self->val, 1);
-#else
-	atomic_add_32(&self->val, 1);
-	return 0;
-#endif
-}
-
-int32_t
-dl_correlation_id_val(struct dl_correlation_id *self)
-{
-	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
-
-#ifdef __APPLE__
-	return atomic_load(&self->val);
-#else
-	return atomic_load_32(&self->val);
-#endif
-}
-
-void
-dl_correlation_id_fini(struct dl_correlation_id *self)
-{
-	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
-
-	dlog_free(self);
-}

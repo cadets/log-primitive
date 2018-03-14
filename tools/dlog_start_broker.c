@@ -60,10 +60,16 @@ static const int DLB_DEFAULT_PORT = 9092;
 static void dlb_siginfo_handler(int);
 static void dlb_sigint_handler(int);
 
+extern struct dlog_broker_statistics dlog_broker_stats;
+
 static void
 dlb_siginfo_handler(int sig)
 {
-	dl_debug(PRIO_LOW, "Caught SIGIFO[%d]\n", sig);
+
+	/* Report the broker statistics. */
+	DLOGTR0(PRIO_HIGH, "Broker statistics:\n");
+	DLOGTR1(PRIO_HIGH, "bytes read = %ld\n",
+	    dlog_broker_stats.dlbs_bytes_read);
 }
 
 static void

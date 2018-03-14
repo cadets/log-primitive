@@ -38,13 +38,14 @@
 #ifndef _DL_UTILS_H
 #define _DL_UTILS_H
 
-#ifdef KERNEL
+#ifdef _KERNEL
+#include <sys/ktr.h>
 #include <sys/sbuf.h>
 #else
 #include <sbuf.h>
 #endif
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #define DLOGTR0(event_mask, format) \
 	CTR0(event_mask, format)
 #define DLOGTR1(event_mask, format, p1) \
@@ -83,7 +84,7 @@
 extern int dl_make_folders(struct sbuf *);
 extern int dl_del_folder(struct sbuf *);
 
-#ifndef KERNEL
+#ifndef _KERNEL
 extern void dl_debug(int, const char *, ...);
 #endif
 

@@ -65,7 +65,7 @@ dl_fetch_request_new(const int32_t correlation_id, struct sbuf *client_id,
 	/* Construct the super class Request. */
 	rc = dl_request_new(&request, DL_FETCH_API_KEY, correlation_id,
 	    client_id);
-#ifdef KERNEL
+#ifdef _KERNEL
 	DL_ASSERT(rc != 0, ("Failed allocating FetchRequest."));
 	{
 #else
@@ -75,7 +75,7 @@ dl_fetch_request_new(const int32_t correlation_id, struct sbuf *client_id,
 		fetch_request = request->dlrqm_fetch_request =
 		    (struct dl_fetch_request *) dlog_alloc(
 			sizeof(struct dl_fetch_request));
-#ifdef KERNEL
+#ifdef _KERNEL
 		DL_ASSERT(fetch_request != NULL,
 		    ("Failed allocating FetchRequest."));
 		{
@@ -91,7 +91,7 @@ dl_fetch_request_new(const int32_t correlation_id, struct sbuf *client_id,
 
 			request_topic = (struct dl_fetch_request_topic *)
 			    dlog_alloc(sizeof(struct dl_fetch_request_topic));
-#ifdef KERNEL
+#ifdef _KERNEL
 			DL_ASSERT(request_topic != NULL,
 			    ("Failed allocating FetchRequest [topic_data]."));
 			{
@@ -113,23 +113,21 @@ dl_fetch_request_new(const int32_t correlation_id, struct sbuf *client_id,
 				
 				SLIST_INSERT_HEAD(&fetch_request->dlfr_topics,
 				    request_topic, dlfrt_entries);
-			} else {
-				DLOGTR0(PRIO_HIGH,
-				    "Failed allocating FetchRequest [topic_data].\n");
-				dlog_free(fetch_request);
-				dlog_free(request);
-				request = NULL;
-			}
-		} else {
+
+				return request;
+			} 
 			DLOGTR0(PRIO_HIGH,
-			    "Failed allocating FetchRequest.\n");
+				"Failed allocating FetchRequest [topic_data].\n");
+			dlog_free(fetch_request);
 			dlog_free(request);
 			request = NULL;
 		}
-	} else {
 		DLOGTR0(PRIO_HIGH, "Failed allocating FetchRequest.\n");
-	}
-	return request;
+		dlog_free(request);
+		request = NULL;
+	} 
+	DLOGTR0(PRIO_HIGH, "Failed allocating FetchRequest.\n");
+	return NULL;
 }
 
 int
@@ -147,7 +145,7 @@ dl_fetch_request_decode(struct dl_fetch_request **self, struct dl_bbuf *source)
 	/* Construct the FetchRequest. */
 	request = (struct dl_fetch_request *) dlog_alloc(
 		sizeof(struct dl_fetch_request));
-#ifdef KERNEL
+#ifdef _KERNEL
 	DL_ASSERT(request != NULL, ("Failed allocating FetchRequest."));
 	{
 #else
@@ -177,7 +175,7 @@ dl_fetch_request_decode(struct dl_fetch_request **self, struct dl_bbuf *source)
 			request_topic = (struct dl_fetch_request_topic *)
 			    dlog_alloc(sizeof(struct dl_fetch_request_topic) +
 				(npartitions - 1) * sizeof(struct dl_fetch_request_partition));
-#ifdef KERNEL
+#ifdef _KERNEL
 			DL_ASSERT(request_topic != NULL,
 			    ("Failed allocating FetchRequest [data]."));
 			{

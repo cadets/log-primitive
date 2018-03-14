@@ -175,21 +175,21 @@ dl_get_server_socket(void* instance)
 }
 
 static void
-dl_on_client_closed(void *server, void *closedClient)
+dl_on_client_closed(void *server, void *closed_client)
 {
-	struct dlog_broker_handle *serverInstance = server;
-	struct dl_broker_client *client_instance = closedClient;
-	int clientSlot;
+	struct dlog_broker_handle *server_instance = server;
+	struct dl_broker_client *client_instance = closed_client;
+	int client_slot;
 	
-	clientSlot = dl_find_matching_client_slot(serverInstance,
+	client_slot = dl_find_matching_client_slot(server_instance,
 	    client_instance);
-	if (0 > clientSlot) {
-		printf("Phantom client detected");
+	if (client_slot >= 0) {
+		dl_broker_client_delete(client_instance);
+				
+		server_instance->clients[client_slot] = NULL;
+	} else {
+		DLOGTR0(PRIO_LOW, "Phantom client detected");
 	}
-		       
-	dl_broker_client_delete(client_instance);
-		          
-	serverInstance->clients[clientSlot] = NULL;
 }
 
 static void
