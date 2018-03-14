@@ -70,7 +70,7 @@ dl_list_offset_request_new(int32_t correlation_id, struct sbuf *client_id,
 		    (struct dl_list_offset_request *) dlog_alloc(
 			sizeof(struct dl_list_offset_request));
 #ifdef KERNEL
-		DL_ASSERT(list_offfset_request != NULL,
+		DL_ASSERT(list_offset_request != NULL,
 		("Failed allocating ListOffsetequest."));
 		{
 #else
@@ -100,23 +100,22 @@ dl_list_offset_request_new(int32_t correlation_id, struct sbuf *client_id,
 				SLIST_INSERT_HEAD(
 				    &list_offset_request->dlor_topics, topic,
 				    dlort_entries);
-			} else {
-				DLOGTR0(PRIO_HIGH,
-				    "Failed allocating ListOffsetRequest [topic_data].\n");
-				dlog_free(list_offset_request);
-				dlog_free(request);
-				request = NULL;
+
+				return request;
 			}
-		} else {
 			DLOGTR0(PRIO_HIGH,
-			    "Failed allocating ListOffsetRequest.\n");
+				"Failed allocating ListOffsetRequest [topic_data].\n");
+			dlog_free(list_offset_request);
 			dlog_free(request);
 			request = NULL;
 		}
-	} else {
-		DLOGTR0(PRIO_HIGH, "Failed allocating ListOffsetRequest.\n");
+		DLOGTR0(PRIO_HIGH,
+			"Failed allocating ListOffsetRequest.\n");
+		dlog_free(request);
+		request = NULL;
 	}
-	return request;
+	DLOGTR0(PRIO_HIGH, "Failed allocating ListOffsetRequest.\n");
+	return NULL;
 }
 
 /**

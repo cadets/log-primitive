@@ -35,7 +35,7 @@
  */
 
 #include <sys/time.h>
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/libkern.h>
 #else
 #include <zlib.h>
@@ -63,6 +63,13 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 #define DL_OFFSET_SIZE sizeof(int64_t)
 #define DL_TIMESTAMP_SIZE sizeof(int64_t)
 
+#ifdef _KERNEL
+#define Z_NULL NULL
+#define CRC32(val, data, len) crc32_calculate(val, data, len)
+#else
+#define CRC32(val, data, len) crc32(val, data, len)
+#endif
+
 static int dl_message_decode(struct dl_message **, struct dl_bbuf *);
 static int dl_message_encode(struct dl_message const *, struct dl_bbuf *);
 
@@ -74,7 +81,7 @@ dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
 
 	message_set = (struct dl_message_set *) dlog_alloc(
 	    sizeof(struct dl_message_set));
-#ifdef KERNEL
+#ifdef _KERNEL
 	DL_ASSERT(message_set != NULL, ("Failed allocating message set.\n"));
 	{
 #else
@@ -85,7 +92,7 @@ dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
 
 		message = (struct dl_message *) dlog_alloc(
 		    sizeof(struct dl_message));
-#ifdef KERNEL
+#ifdef _KERNEL
 		DL_ASSERT(message != NULL, ("Failed allocating message.\n"));
 		{
 #else
@@ -98,13 +105,14 @@ dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
 
 			STAILQ_INSERT_HEAD(&message_set->dlms_messages,
 			    message, dlm_entries);
-		} else {
-			DLOGTR0(PRIO_HIGH, "Failed allocating message.\n");
-			dlog_free(message_set);
-			message_set = NULL;
+
+			return message_set;
 		}
+		DLOGTR0(PRIO_HIGH, "Failed allocating message.\n");
+		dlog_free(message_set);
+		message_set = NULL;
 	}
-	return message_set;
+	return NULL;
 }
 
 struct dl_message_set *
@@ -121,7 +129,7 @@ dl_message_set_decode(struct dl_bbuf *source)
 
 	message_set = (struct dl_message_set *) dlog_alloc(
 	    sizeof(struct dl_message_set));
-#ifdef KERNEL
+#ifdef _KERNEL
 	DL_ASSERT(message_set != NULL, ("Failed allocating MessageSet."));
 	{
 #else
@@ -159,7 +167,7 @@ dl_message_decode(struct dl_message **message, struct dl_bbuf *source)
 
 	self = *message = (struct dl_message *) dlog_alloc(
 	    sizeof(struct dl_message));
-#ifdef KERNEL
+#ifdef _KERNEL
 	DL_ASSERT(message != NULL, ("Allocation of dl_message failed\n"));
 	{
 #else
@@ -175,9 +183,8 @@ dl_message_decode(struct dl_message **message, struct dl_bbuf *source)
 			DL_DECODE_CRC(source, &msg_crc);
 
 			/* Computed CRC value. */
-			//calculate_crc32
-			crc = crc32(0L, Z_NULL, 0);
-			crc = crc32(crc, dl_bbuf_data(source),
+			crc = CRC32(0L, Z_NULL, 0);
+			crc = CRC32(crc, dl_bbuf_data(source),
 			    dl_bbuf_len(source));
 			if (crc == msg_crc) {
 				/* Decode and verify the MagicByte */
@@ -305,7 +312,7 @@ dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
 		goto err;
 	
 	/* Encode the Timestamp */
-#ifdef KERNEL
+#ifdef _KERNEL
 	// TODO: In-kernel timestamp ms since epoch?
 #else
 	timestamp = time(NULL);

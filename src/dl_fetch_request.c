@@ -209,11 +209,10 @@ dl_fetch_request_decode(struct dl_fetch_request **self, struct dl_bbuf *source)
 
 				*self = request;
 				return 0;
-			} else {
-				// TODO
-				DLOGTR0(PRIO_HIGH,
-				    "Failed allocating FetchRequest [topic_data].\n");
 			}
+			// TODO
+			DLOGTR0(PRIO_HIGH,
+			    "Failed allocating FetchRequest [topic_data].\n");
 		}
 	}
 
