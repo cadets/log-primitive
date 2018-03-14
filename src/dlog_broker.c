@@ -50,7 +50,6 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <resolv.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -84,7 +83,6 @@ struct dlog_broker_handle {
 	dl_event_handler_handle socket;
 };
 
-static void dl_siginfo_handler(int);
 static int dl_init_listening_socket(int);
 
 struct dlog_broker_statistics dlog_broker_stats;
@@ -130,16 +128,6 @@ dl_init_listening_socket(int portnumber)
 	return sockfd;
 }
 #endif /* KERNEL */
-
-static void
-dl_siginfo_handler(int dummy)
-{
-
-	/* Report the broker statistics. */
-	DLOGTR0(PRIO_HIGH, "Broker statistics:\n");
-	DLOGTR1(PRIO_HIGH, "bytes read = %ld\n",
-	    dlog_broker_stats.dlbs_bytes_read);
-}
 
 /**
  * Returns the index where a client matching the given pointer is found.
@@ -244,9 +232,6 @@ dlog_broker_init(char const * const topic_name,
 
 	DL_ASSERT(topic_name != NULL, "Partition name cannot be NULL");
 	DL_ASSERT(conf != NULL, "Broker configuration cannot be NULL");
-
-	/* Install signal handler to report broker statistics. */
-	signal(SIGINFO, dl_siginfo_handler);
 
 	/* Create the hashmap to store the names of the topics managed by the
 	 * broker and their segments.
