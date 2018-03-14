@@ -1,12 +1,12 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
  * Computer Laboratory, and Memorial University under DARPA/AFRL contract
  * FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent Computing
  * (TC) research program.
- *
+ * 
  * This software was developed by SRI International and the University of
  * Cambridge Computer Laboratory under DARPA/AFRL contract FA8750-10-C-0237
  * ("CTSRD"), as part of the DARPA CRASH research programme.
@@ -31,24 +31,26 @@
  * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
- *
  */
 
-#ifndef _DL_ASSERT_H
-#define _DL_ASSERT_H
+#include <atf-c.h>
 
-#undef ASSERT
+#include "dl_fetch_request.h"
 
-#if KERNEL
-#include <sys/types.h>
-#include <sys/param.h>
-#include <sys/systm.h>
+ATF_TC(test1);
+ATF_TC_HEAD(test1, tc)
+{
+	atf_tc_set_md_var(tc, "desc", "This is test 1");
+}
 
-#define DL_ASSERT(exp, msg)	KASSERT(exp, msg)
-#else
-#include <assert.h>
+ATF_TC_BODY(test1, tc)
+{
+	ATF_REQUIRE(1);
+}
 
-#define DL_ASSERT(exp, msg)	assert(exp)
-#endif
+ATF_TP_ADD_TCS(tp)
+{
+	ATF_TP_ADD_TC(tp, test1);
 
-#endif
+	return atf_no_error();
+}

@@ -1,0 +1,3 @@
+syntax(2)
+test_suite('log-primitive')
+atf_test_program{name='atf_dlog_test'}

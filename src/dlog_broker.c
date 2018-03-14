@@ -35,6 +35,7 @@
  */
 
 
+#include <sys/types.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/event.h>
@@ -44,8 +45,6 @@
 #include <sys/sbuf.h>
 #else
 #include <sbuf.h>
-#endif
-
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -58,6 +57,7 @@
 #include <strings.h>
 #include <unistd.h>
 #include <search.h>
+#endif
 
 #include "dlog_broker.h"
 
