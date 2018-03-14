@@ -34,17 +34,6 @@
  *
  */
 
-#include <sys/types.h>
-
-#ifdef KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sbuf.h>
-#endif
-
-#include <stdarg.h>
-#include <string.h>
-
 #include "dl_assert.h"
 #include "dl_bbuf.h"
 #include "dl_produce_response.h"

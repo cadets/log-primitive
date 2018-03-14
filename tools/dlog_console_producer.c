@@ -93,7 +93,6 @@ dlp_on_response(struct dl_response const * const response)
 	struct dl_produce_response_topic *produce_topic;
 	int partition;
 
-	dl_debug(PRIO_LOW, "response size = %d\n", response->dlrs_size);
 	dl_debug(PRIO_LOW, "correlation id = %d\n", response->dlrs_correlation_id);
 	dl_debug(PRIO_LOW, "api key= %d\n", response->dlrs_api_key);
 

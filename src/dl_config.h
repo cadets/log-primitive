@@ -44,9 +44,7 @@
 #include <sbuf.h>
 #endif
 
-#include "dl_protocol.h" 
 #include "dl_response.h" 
-#include "dl_request.h" 
 
 typedef void (* dl_ack_function) (const int32_t );
 typedef void (* dl_response_function) (struct dl_response const * const);

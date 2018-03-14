@@ -34,14 +34,7 @@
  *
  */
 
-#include <sys/types.h>
 #ifdef KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sbuf.h>
-#endif
-
-#ifdef _KERNEL
 #include <sys/libkern.h>
 #else
 #include <string.h>
@@ -103,7 +96,7 @@ dl_decode_bytes(char const * const target, int *target_len, struct dl_bbuf *sour
 	/* Bytes are NULLABLE.
 	 * therefore first check whether there is a value to decode.
 	 */
-	dl_bbuf_get_int32(source, nbytes);
+	dl_bbuf_get_int32(source, &nbytes);
 	if (nbytes == DL_BYTES_NULL) {
 		*target_len = 0;
 		return 0;
@@ -125,7 +118,7 @@ dl_encode_string(struct dl_bbuf *target, struct sbuf *source)
 	char *sval;
 
 	if (source == NULL) {
-		dl_bbuf_put_int32(source, DL_BYTES_NULL);
+		dl_bbuf_put_int32(target, DL_BYTES_NULL);
 	} else {
 		/* Prepended a 16bit value indicating the length (in bytes). */
 		if (dl_bbuf_put_int16(target, sbuf_len(source)) == 0) {
@@ -148,7 +141,6 @@ int
 dl_encode_bytes(char const * const source, const int32_t source_len,
     struct dl_bbuf * target)
 {
-	int32_t encoded_len_bytes = 0;
 
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 

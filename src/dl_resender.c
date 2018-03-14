@@ -36,7 +36,7 @@
 #include <sys/param.h>
 #include <sys/queue.h>
 #include <sys/tree.h>
-#ifdef _KERNEL
+#ifdef KERNEL
 #include <sys/types.h>
 #else
 #include <stdbool.h>

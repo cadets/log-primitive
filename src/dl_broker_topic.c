@@ -34,19 +34,15 @@
  *
  */
 
-#include <sys/queue.h>
-
 #ifdef KERNEL
 #include <sys/hash.h>
-#include <sys/sbuf.h>
-#else
-#include <sbuf.h>
 #endif
 
 #include <stddef.h>
 
-#include "dl_memory.h"
+#include "dl_assert.h"
 #include "dl_broker_topic.h"
+#include "dl_memory.h"
 #include "dl_utils.h"
 
 void *
@@ -88,7 +84,7 @@ dl_topic_new(struct sbuf *topic_name)
 	if (topic != NULL) {
 #endif
 		tname = sbuf_new_auto();
-		sbuf_cpy(tname, topic_name);
+		sbuf_cpy(tname, sbuf_data(topic_name));
 
 		SLIST_INIT(&topic->dlt_partitions);
 		topic->dlbt_topic_name = topic_name;

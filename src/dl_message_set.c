@@ -35,9 +35,8 @@
  */
 
 #include <sys/time.h>
-
 #ifdef KERNEL
-// TODO: crc32 in kernel libkern/crc32.c
+#include <sys/libkern.h>
 #else
 #include <zlib.h>
 #endif
@@ -167,7 +166,7 @@ dl_message_decode(struct dl_message **message, struct dl_bbuf *source)
 	if (self != NULL) {
 #endif
 		/* Decode the MessageSet Offset. */
-		DL_DECODE_OFFSET(source, self->dlm_offset);
+		DL_DECODE_OFFSET(source, &self->dlm_offset);
 
 		/* Decode the MessageSize. */
 		DL_DECODE_MESSAGE_SIZE(source, &size);
@@ -176,6 +175,7 @@ dl_message_decode(struct dl_message **message, struct dl_bbuf *source)
 			DL_DECODE_CRC(source, &msg_crc);
 
 			/* Computed CRC value. */
+			//calculate_crc32
 			crc = crc32(0L, Z_NULL, 0);
 			crc = crc32(crc, dl_bbuf_data(source),
 			    dl_bbuf_len(source));
@@ -236,7 +236,7 @@ dl_message_decode(struct dl_message **message, struct dl_bbuf *source)
 			message = NULL;
 		}
 	}
-	return message;
+	return -1;
 }
 
 /**
@@ -326,7 +326,7 @@ dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
 		size_pos);
 	
 	/* Encode the CRC. */
-	char *crc_data = dl_bbuf_data(target) + crc_start_pos; 
+	unsigned char *crc_data = dl_bbuf_data(target) + crc_start_pos; 
 	crc_value = crc32(0L, Z_NULL, 0);
 	crc_value = crc32(crc_value, crc_data, dl_bbuf_pos(target)-crc_start_pos);
 	if (DL_ENCODE_CRC_AT(target, crc_value, crc_pos) != 0)

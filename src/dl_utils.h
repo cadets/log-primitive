@@ -38,7 +38,13 @@
 #ifndef _DL_UTILS_H
 #define _DL_UTILS_H
 
-#ifdef _KERNEL
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
+
+#ifdef KERNEL
 #define DLOGTR0(event_mask, format) \
 	CTR0(event_mask, format)
 #define DLOGTR1(event_mask, format, p1) \
@@ -68,15 +74,17 @@
 	dl_debug(event_mask, format, p1, p2, p3, p4, p5)
 #define DLOGTR6(event_mask, format, p1, p2, p3, p4, p5, p6) \
 	dl_debug(event_mask, format, p1, p2, p3, p4, p5, p6)
-#endif
+#endif /* KERNEL */
 
 #define PRIO_HIGH   1 << 1
 #define PRIO_NORMAL 1 << 2
 #define PRIO_LOW    1 << 3
 
-extern int dl_make_folder(const char *);
-extern int dl_del_folder(const char *);
+extern int dl_make_folders(struct sbuf *);
+extern int dl_del_folder(struct sbuf *);
 
+#ifndef KERNEL
 extern void dl_debug(int, const char *, ...);
+#endif
 
 #endif

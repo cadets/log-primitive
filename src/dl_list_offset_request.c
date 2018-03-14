@@ -34,12 +34,6 @@
  *
  */
 
-#ifdef KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sbuf.h>
-#endif
-
 #include <stddef.h>
 
 #include "dl_assert.h"
@@ -192,7 +186,8 @@ dl_list_offset_request_decode(struct dl_list_offset_request **self,
 		SLIST_INSERT_HEAD(&request->dlor_topics, request_topic,
 		    dlort_entries);
 	}
-	return request;
+	*self = request;
+	return 0;
 }
 
 /**

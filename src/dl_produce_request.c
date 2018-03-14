@@ -202,19 +202,23 @@ dl_produce_request_decode(struct dl_produce_request **self,
 					    &req_partition->dlprp_partition);
 				
 					/* Decode the MessageSet. */
+					// TODO
 					dl_message_set_decode(source);
 				}
 
 				SLIST_INSERT_HEAD(&request->dlpr_topics,
 				    req_topic, dlprt_entries);
-			} else {
-				// TODO
+
+				/* ProduceRquest successfully constructed. */
+				*self = request;
+				return 0;
 			}
+			// TODO
+			// dlog_free();
 		}
-	} else {
-		DLOGTR0(PRIO_HIGH, "Failed to allocate ProduceRequest.\n");
-	}
-	return request;
+	} 
+	DLOGTR0(PRIO_HIGH, "Failed to allocate ProduceRequest.\n");
+	return -1;
 }
 
 int

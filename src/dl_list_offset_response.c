@@ -34,15 +34,6 @@
  *
  */
 
-#include <sys/queue.h>
-#ifdef KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sbuf.h>
-#endif
-
-// TODO: remove
-#include <string.h>
 #include <stddef.h>
 
 #include "dl_assert.h"
@@ -110,7 +101,6 @@ dl_list_offset_response_decode(struct dl_bbuf *source)
 		sizeof(struct dl_response));
 
 	response->dlrs_api_key = DL_OFFSET_API_KEY;
-	printf("api_key = %d\n", response->dlrs_api_key);
 
 	/* Construct the ListOffsetResponse. */
 	response->dlrs_message.dlrs_offset_message = offset_response =
@@ -121,31 +111,21 @@ dl_list_offset_response_decode(struct dl_bbuf *source)
 
         /* Decode the [topic_data] array. */
 	dl_bbuf_get_int32(source, &offset_response->dlor_ntopics);
-	printf("ntopics = %d\n", offset_response->dlor_ntopics);
-	printf("pos = %d\n", dl_bbuf_pos(source));
 
 	for (topic_it = 0; topic_it < offset_response->dlor_ntopics;
 	    topic_it++) {
 
 		response_topic = (struct dl_list_offset_response_topic *)
 		    dlog_alloc(sizeof(struct dl_list_offset_response_topic));
-	printf("api_key = %d\n", response->dlrs_api_key);
 		
 		/* Decode the TopicName */
 		DL_DECODE_TOPIC_NAME(source, &topic_name);
-	printf("api_key = %d\n", response->dlrs_api_key);
 		response_topic->dlort_topic_name = topic_name;
-		printf("pos = %d\n", dl_bbuf_pos(source));
-		printf("topic_name = %p\n", topic_name);
-		printf("topic_name = %s\n", sbuf_data(topic_name));
-		printf("topic_name = %s\n", sbuf_data(response_topic->dlort_topic_name));
 
 		SLIST_INIT(&response_topic->dlort_partitions);
 
 		/* Decode the [data] array. */
 		dl_bbuf_get_int32(source, &response_topic->dlort_npartitions);
-		printf("npartitions = %d\n", response_topic->dlort_npartitions);
-		printf("pos = %d\n", dl_bbuf_pos(source));
 		
 		for (partition_it = 0;
 		    partition_it < response_topic->dlort_npartitions;
@@ -159,26 +139,18 @@ dl_list_offset_response_decode(struct dl_bbuf *source)
 			/* Decode the Partition */
 			DL_DECODE_PARTITION(source,
 			    &response_partition->dlorp_partition);
-			printf("dlorp_partition = %d\n", response_partition->dlorp_partition);
-		printf("pos = %d\n", dl_bbuf_pos(source));
 			
 			/* Decode the ErrorCode */
 			DL_DECODE_ERROR_CODE(source,
 			    &response_partition->dlorp_error_code);
-			printf("dlorp_error_code = %d\n", response_partition->dlorp_error_code);
-		printf("pos = %d\n", dl_bbuf_pos(source));
 
 			/* Decode the Timestamp */
 			DL_DECODE_TIMESTAMP(source,
 			    &response_partition->dlorp_timestamp);
-			printf("dlorp_timestamp = %d\n", response_partition->dlorp_timestamp);
-		printf("pos = %d\n", dl_bbuf_pos(source));
 			
 			/* Decode the Offset*/
 			int rc= DL_DECODE_OFFSET(source,
 			    &response_partition->dlorp_offset);
-			printf("dlorp_offset = %d\n", response_partition->dlorp_offset);
-		printf("rc = %d, pos = %d\n", rc, dl_bbuf_pos(source));
 		
 			SLIST_INSERT_HEAD(&response_topic->dlort_partitions,
 			    response_partition, dlorp_entries);
@@ -187,7 +159,6 @@ dl_list_offset_response_decode(struct dl_bbuf *source)
 		SLIST_INSERT_HEAD(&offset_response->dlor_topics,
 		    response_topic, dlort_entries);
 	}
-	printf("api_key = %d\n", response->dlrs_api_key);
 	return response;
 }
 

@@ -35,135 +35,134 @@
 
 #include <sys/queue.h>
 
+#ifdef KERNEL
+#include <sys/libkern.h>
+#include <sys/socket.h>
+#include <sys/socketvar.h>
+#else
 #include <poll.h>
+#include <strings.h>
+#endif
+
 #include <stddef.h>
 
 #include "dl_assert.h"
-#include "dl_event_handler.h"
 #include "dl_memory.h"
 #include "dl_poll_reactor.h"
 #include "dl_utils.h"
 
-static STAILQ_HEAD(dl_handlers, dl_handler_registration) handlers =
-    STAILQ_HEAD_INITIALIZER(handlers);
-
-struct dl_handler_registration {
-	STAILQ_ENTRY(dl_handler_registration) entries;
-	struct dl_event_handler *handler;
-	struct pollfd fd;
+struct dl_handler_registry {
+	STAILQ_ENTRY(dl_handler_registry) dlh_entries;
+	struct dl_event_handler const *dlh_handler;
+	struct pollfd dlh_fd;
 };
 
+static void dl_add_to_registry(struct dl_event_handler const * const handler);
 static size_t dl_build_poll_array(struct pollfd *);
-static void dl_dispatch_signalled_handles(const struct pollfd *, size_t);
-static struct dl_event_handler * dl_find_handler(int fd);
-static void dl_add_to_registry(struct dl_event_handler *handler);
-static void dl_remove_from_registry(struct dl_event_handler *handler);
+static void dl_dispatch_signalled_handles(const struct pollfd *, const size_t);
+static struct dl_event_handler const * dl_find_handler(const int fd);
+static void dl_remove_from_registry(struct dl_event_handler const * const handler);
 
-// TODO: Limit number of hadles correctly
+// TODO: Limit number of handles correctly
 static const size_t MAX_NO_OF_HANDLES = 10;
+
+static STAILQ_HEAD(dl_handlers, dl_handler_registry) handlers =
+    STAILQ_HEAD_INITIALIZER(handlers);
 
 /* Add a copy of all registered handlers to the given array. */
 static size_t
 dl_build_poll_array(struct pollfd *fds)
 {
-	struct dl_handler_registration *registration;
+	struct dl_handler_registry *registry;
 	size_t nhandles = 0;
+	
+	DL_ASSERT(fds != NULL, ("File descriptor array cannot be NULL."));
 
-	STAILQ_FOREACH(registration, &handlers, entries) {
+	STAILQ_FOREACH(registry, &handlers, dlh_entries) {
 
-		fds->fd = registration->fd.fd;
-		fds->events = registration->fd.events;
+		fds->fd = registry->dlh_fd.fd;
+		fds->events = registry->dlh_fd.events;
 
 		fds++;
 		nhandles++;
 	}
-
 	return nhandles;
 }
 
 /**
  * Identify the event handler corresponding to the given descriptor in the
- * registeredHandlers.
+ * registered handlers.
  */
-static struct dl_event_handler *
-dl_find_handler(int fd)
+static struct dl_event_handler const *
+dl_find_handler(const int fd)
 {
-	struct dl_handler_registration *registration;
+	struct dl_handler_registry *registry;
+	
+	DL_ASSERT(fd > 0, ("File descriptor is invalid."));
 
-	STAILQ_FOREACH(registration, &handlers, entries) {
+	STAILQ_FOREACH(registry, &handlers, dlh_entries) {
 
-		if (registration->fd.fd == fd) {
-			return registration->handler;
-		}
+		if (registry->dlh_fd.fd == fd)
+			return registry->dlh_handler;
 	}
 	return NULL;
 }
 
-/* Add a copy of the given handler to the first free position in
-* registeredHandlers. */
+/** Add a copy of the given handler to the first free position in
+ * registeredHandlers.
+ */
 static void
-dl_add_to_registry(struct dl_event_handler *handler)
+dl_add_to_registry(struct dl_event_handler const * const handler)
 {
-	struct dl_handler_registration *registration;
+	struct dl_handler_registry *registry;
 
-	DL_ASSERT(NULL != handler, "dl_event_handlerr cannot be NULL\n");
+	DL_ASSERT(handler != NULL, ("dl_event_handler cannot be NULL."));
 
-	registration = (struct dl_handler_registration *) dlog_alloc(
-	    sizeof(struct dl_handler_registration));
-	if (registration != NULL ) {
-		registration->handler = handler;
-		registration->fd.fd = handler->dleh_get_handle(
+	registry = (struct dl_handler_registry *) dlog_alloc(
+	    sizeof(struct dl_handler_registry));
+#ifdef KERNEL
+	DL_ASSERT(registry != NULL,
+	    ("Failed allocating poll reactor registry.."));
+	{
+#else
+	if (registry != NULL ) {
+#endif
+		registry->dlh_handler = handler;
+		registry->dlh_fd.fd = handler->dleh_get_handle(
 		    handler->dleh_instance);
-		registration->fd.events = POLLRDNORM;
+		registry->dlh_fd.events = POLLRDNORM;
 
-		STAILQ_INSERT_TAIL(&handlers, registration, entries);
+		STAILQ_INSERT_TAIL(&handlers, registry, dlh_entries);
 	}
 }
 
 /* Identify the event handler in the registeredHandlers and remove it. */
 static void
-dl_remove_from_registry(struct dl_event_handler *handler)
+dl_remove_from_registry(struct dl_event_handler const * const handler)
 {
-	struct dl_handler_registration *registration;
+	struct dl_handler_registry *registry;
 
-	DL_ASSERT(NULL != handler, "dl_event_handlerr cannot be NULL\n");
+	DL_ASSERT(handler != NULL, ("dl_event_handler cannot be NULL."));
 	
-	STAILQ_FOREACH(registration, &handlers, entries) {
+	STAILQ_FOREACH(registry, &handlers, dlh_entries) {
 
-		if (registration->handler == handler) {
+		if (registry->dlh_handler == handler) {
 
-			STAILQ_REMOVE(&handlers, registration,
-			    dl_handler_registration, entries);
+			STAILQ_REMOVE(&handlers, registry,
+			    dl_handler_registry, dlh_entries);
 			break;
 		}
 	}
 }
 
-/* Implementation of the Reactor interface used for registrations. */
-
-void
-dl_poll_reactor_register(struct dl_event_handler *handler)
+static void
+dl_dispatch_signalled_handles(const struct pollfd *fds, const size_t nhandles)
 {
-
-	DL_ASSERT(NULL != handler, "dl_event_handlerr cannot be NULL\n");
-
-        dl_add_to_registry(handler);
-}
-
-void
-dl_poll_reactor_unregister(struct dl_event_handler *handler)
-{
-
-	DL_ASSERT(NULL != handler, "dl_event_handlerr cannot be NULL\n");
-	
-	dl_remove_from_registry(handler);
-}
-
-void
-dl_dispatch_signalled_handles(const struct pollfd *fds, size_t nhandles)
-{
-	struct dl_event_handler *signalled_handler;
+	struct dl_event_handler const *signalled_handler;
 	size_t handle;
+
+	DL_ASSERT(fds != NULL, ("File descriptor array cannot be NULL."));
+	DL_ASSERT(nhandles > 0, ("File descriptors return by poll."));
 
 	/**
 	 * Loop through all handles. Upon detection of a handle signalled by
@@ -185,16 +184,19 @@ dl_dispatch_signalled_handles(const struct pollfd *fds, size_t nhandles)
 	}
 }
 
+/* Implementation of the Reactor interface used for registrys. */
+
 void
 dl_poll_reactor_handle_events(void)
 {
-	struct pollfd fds[MAX_NO_OF_HANDLES] = {0};
+	struct pollfd fds[MAX_NO_OF_HANDLES];
 	size_t nhandles;
-       
+
+	bzero(fds, MAX_NO_OF_HANDLES * sizeof(struct pollfd));
 	nhandles = dl_build_poll_array(fds);
-        
+
 	/* Invoke the synchronous event demultiplexer. */
-	if (0 < poll(fds, nhandles, -1)){
+	if (0 < poll(fds, nhandles, -1)) {
 		/** 
 		 * Identify all signalled handles and invoke the event handler
 		 * associated with each one.
@@ -203,4 +205,21 @@ dl_poll_reactor_handle_events(void)
 	} else {
 		DLOGTR0(PRIO_LOW, "Poll failure");
 	}
+}
+void
+dl_poll_reactor_register(struct dl_event_handler const * const handler)
+{
+
+	DL_ASSERT(handler != NULL, "dl_event_handler cannot be NULL\n");
+
+        dl_add_to_registry(handler);
+}
+
+void
+dl_poll_reactor_unregister(struct dl_event_handler const * const handler)
+{
+
+	DL_ASSERT(handler != NULL, "dl_event_handler cannot be NULL\n");
+	
+	dl_remove_from_registry(handler);
 }

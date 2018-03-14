@@ -34,8 +34,7 @@
  *
  */
 
-#include <stdarg.h>
-#include <string.h>
+#include <stddef.h>
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
@@ -46,8 +45,7 @@
 #include "dl_utils.h"
 
 static int32_t dl_encode_response_header(struct dl_response const * const,
-    char * const);
-static int32_t dl_encode_response_size(char const *, const int32_t);
+    struct dl_bbuf * const);
 
 #define DL_ENCODE_SIZE(buffer, value) dl_encode_int32(buffer, value)
 
@@ -103,32 +101,10 @@ dl_response_encode(struct dl_response *response, struct dl_bbuf *target)
 			break;
 		}
 
-		/* Now that the size is known, encode this in the
-		 * Request Size. */ 
-		//response_size += dl_encode_response_size(target, response_size);
-
 		return 0;
 	} else {
 		return -1;
 	}
-}
-
-/**
- * Encode the Response Size.
- *
- * Size (int32): The number of bytes in the Response (that is the number
- * of bytes after the Size field)
- */
-static int32_t 
-//dl_encode_request_size(struct dl_buffer const *buffer, const int32_t size)
-dl_encode_response_size(char const *buffer, const int32_t size)
-{
-
-	DL_ASSERT(buffer != NULL, "Buffer for encoding cannot be NULL");
-	DL_ASSERT(size > 0, "Request size must be greater than zero");
-
-	/* Encode the Response Size. */
-	return DL_ENCODE_SIZE(buffer, size);
 }
 
 /**
@@ -139,10 +115,8 @@ dl_encode_response_size(char const *buffer, const int32_t size)
  * CorrelationId
  */
 static int32_t 
-//dl_encode_request_header(struct dl_request * const request,
-//    struct dl_buffer const *buffer)
 dl_encode_response_header(struct dl_response const * const response,
-    char * const target)
+    struct dl_bbuf * const target)
 {
 
 	DL_ASSERT(response != NULL, "Response cannot be NULL");

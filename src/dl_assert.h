@@ -39,9 +39,9 @@
 
 #undef ASSERT
 
-#if _KERNEL
+#if KERNEL
 #include <sys/param.h>
-#include <sys/system.h>
+#include <sys/systm.h>
 
 #define DL_ASSERT(exp, msg)	KASSERT(exp, msg)
 #else

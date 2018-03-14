@@ -37,9 +37,10 @@
 #ifdef __APPLE__
 #include <stdatomic.h>
 #else
-#include <sys/types.h>
 #include <machine/atomic.h>
 #endif
+
+#include <stdint.h>
 
 #include "dl_assert.h"
 #include "dl_correlation_id.h"

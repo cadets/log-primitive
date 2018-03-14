@@ -45,7 +45,7 @@
 static int dl_request_header_encode(struct dl_request const * const,
     struct dl_bbuf * const);
 static int dl_request_header_decode(struct dl_request * const,
-    struct dl_bbuf * const);
+    struct dl_bbuf const * const);
 
 /**
  * Request constructor.
@@ -216,7 +216,7 @@ dl_request_decode(struct dl_request ** const self,
 				    &request->dlrqm_produce_request, source);
 				break;
 			case DL_FETCH_API_KEY:
-				    rc = dl_decode_fetch_request_decode(
+				    rc = dl_fetch_request_decode(
 					&request->dlrqm_fetch_request, source);
 				break;
 			case DL_OFFSET_API_KEY:
@@ -246,7 +246,7 @@ dl_request_decode(struct dl_request ** const self,
 	
 static int
 dl_request_header_decode(struct dl_request * const request,
-    struct dl_bbuf * const source)
+    struct dl_bbuf const * const source)
 {
 	int16_t api_version;
 	int rc;

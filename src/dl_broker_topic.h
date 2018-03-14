@@ -40,6 +40,12 @@
 #include <sys/queue.h>
 #include <sys/types.h>
 
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
+
 #include "dl_protocol.h"
 #include "dl_broker_partition.h"
 

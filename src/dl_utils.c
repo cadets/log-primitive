@@ -35,57 +35,63 @@
  *
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-
 #ifdef KERNEL
 #include <sys/libkern.h>
 #else
-#include <string.h>
-#endif
+#include <sys/types.h>
+#include <sys/stat.h>
 
+#include <string.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#endif
 
+#include "dl_assert.h"
 #include "dl_utils.h"
 
 static int dl_remove_directory(struct sbuf *);
 
 extern unsigned short PRIO_LOG;
 
-// Method used to create a partition folder
-int
-dl_make_folder(struct sbuf *partition_name)
+#ifdef KERNEL
+static int
+dl_remove_directory(struct sbuf *path)
 {
-	struct stat st;
-	
-	if (stat(sbuf_data(partition_name), &st) == -1) {
-		return mkdir(sbuf_data(partition_name), 0777);
-	}
+	DL_ASSERT(path != NULL, ("File path to delete cannot be NULL."));
 
+	// TODO
 	return -1;
 }
 
 int
-dl_del_folder(struct sbuf *partition_name)
+dl_make_folder(struct sbuf *path)
 {
-	struct stat st;
-
-	if (stat(sbuf_data(partition_name), &st) != -1) {
-		return dl_remove_directory(partition_name);
-	}
-
+	DL_ASSERT(path != NULL, ("File path to create cannot be NULL."));
+	// TODO
 	return -1;
 }
 
+int
+dl_del_folder(struct sbuf *path)
+{
+	DL_ASSERT(path != NULL, ("File path to delete cannot be NULL."));
+
+	// TODO
+	return -1;
+}
+
+#else /* !KERNEL */
 // adapted from https://stackoverflow.com/questions/2256945/removing-a-non-empty-directory-programmatically-in-c-or-c
 static int
 dl_remove_directory(struct sbuf *path)
 {
 	DIR *d;
 	int r = -1;
+
+	DL_ASSERT(path != NULL, ("File path to delete cannot be NULL."));
 
 	d = opendir(sbuf_data(path));
 	if (d) {
@@ -119,14 +125,42 @@ dl_remove_directory(struct sbuf *path)
 	}
 
 	if (!r) {
-		r = rmdir(path);
+		r = rmdir(sbuf_data(path));
 	}
 	return r;
 }
 
-#ifndef KERNEL
+// Method used to create a partition folder
+int
+dl_make_folder(struct sbuf *path)
+{
+	struct stat st;
+	
+	DL_ASSERT(path != NULL, ("File path to create cannot be NULL."));
+
+	if (stat(sbuf_data(path), &st) == -1) {
+		return mkdir(sbuf_data(path), 0777);
+	}
+
+	return -1;
+}
+
+int
+dl_del_folder(struct sbuf *path)
+{
+	struct stat st;
+
+	DL_ASSERT(path != NULL, ("File path to delete cannot be NULL."));
+
+	if (stat(sbuf_data(path), &st) != -1) {
+		return dl_remove_directory(path);
+	}
+
+	return -1;
+}
+
 void
-dl_debug(int priority, const char* format, ...)
+dl_debug(int priority, const char *format, ...)
 {
 	va_list args;
 
@@ -137,4 +171,4 @@ dl_debug(int priority, const char* format, ...)
 
 	va_end(args);
 }
-#endif
+#endif /* KERNEL */

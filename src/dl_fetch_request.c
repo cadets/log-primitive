@@ -34,12 +34,6 @@
  *
  */
 
-#ifdef KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sbuf.h>
-#endif
-
 #include <stddef.h>
 
 #include "dl_assert.h"
@@ -214,18 +208,20 @@ dl_fetch_request_decode(struct dl_fetch_request **self, struct dl_bbuf *source)
 					dl_bbuf_get_int32(source,
 					&request_partition->dlfrp_max_bytes);
 				}
+
+				*self = request;
+				return 0;
 			} else {
 				// TODO
 				DLOGTR0(PRIO_HIGH,
 				    "Failed allocating FetchRequest [topic_data].\n");
 			}
 		}
-	} else {
-		DLOGTR0(PRIO_HIGH, "Failed allocating FetchRequest.\n");
 	}
-	return request;
-err:
-	return NULL;
+
+	DLOGTR0(PRIO_HIGH, "Failed allocating FetchRequest.\n");
+	*self = NULL;
+	return -1;
 }
 
 int

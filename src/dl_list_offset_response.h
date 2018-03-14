@@ -44,6 +44,8 @@
 #include <sbuf.h>
 #endif
 
+#include <stdint.h>
+
 #include "dl_bbuf.h"
 #include "dl_protocol.h"
 

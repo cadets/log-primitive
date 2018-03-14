@@ -113,8 +113,8 @@ dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 		sbuf_printf(partition_name, "%s-%d", sbuf_data(topic_name),
 		    DL_DEFAULT_PARTITION);
 
-		dl_del_folder(sbuf_data(partition_name));
-		dl_make_folder(sbuf_data(partition_name));
+		dl_del_folder(partition_name);
+		dl_make_folder(partition_name);
 
 		partition->dlp_active_segment =
 		    dl_segment_new_default(partition_name);

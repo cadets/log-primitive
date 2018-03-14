@@ -44,7 +44,7 @@
 #include <sys/types.h>
 #include <sys/types.h>
 
-#ifdef _KERNEL
+#ifdef KERNEL
 #include <sys/sbuf.h>
 #else
 #include <sbuf.h>

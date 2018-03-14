@@ -34,7 +34,7 @@
  *
  */
 
-#ifdef _KERNEL
+#ifdef KERNEL
 #include <sys/kthread.h>
 #else
 #include <pthread.h> 
@@ -45,7 +45,7 @@
 int
 dl_thread_create() //, ...)
 {
-#ifdef _KERNEL
+#ifdef KERNEL
 	//return kproc_create();
 #else
 	//return pthread_create();

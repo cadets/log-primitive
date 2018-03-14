@@ -37,13 +37,14 @@
 #ifndef _DL_FETCH_RESPONSE_H
 #define _DL_FETCH_RESPONSE_H
 
-#include <sys/types.h>
 #include <sys/queue.h>
 #ifdef KERNEL
 #include <sys/sbuf.h>
 #else
 #include <sbuf.h>
 #endif
+
+#include <stdint.h>
 
 #include "dl_bbuf.h"
 #include "dl_message_set.h"

@@ -42,7 +42,7 @@
 #include "dl_bbuf.h"
 
 struct dl_transport {
-#ifdef _KERNEL
+#ifdef KERNEL
 #else
 	int dlt_sock;
 #endif

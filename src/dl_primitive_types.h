@@ -37,13 +37,6 @@
 #ifndef _DL_PRIMITIVE_TYPES_H
 #define _DL_PRIMITIVE_TYPES_H
 
-#include <sys/types.h>
-#ifdef KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sbuf.h>
-#endif
-
 #ifdef __APPLE__
 #include <libkern/OSByteOrder.h>
 
@@ -58,8 +51,14 @@
 #include <sys/endian.h>
 #endif
 
+#ifdef KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sbuf.h>
+#endif
 
-#include "dl_assert.h"
+#include <stdint.h>
+
 #include "dl_bbuf.h"
 
 /* Functions for decoding primitive types (bytes and strings). */

@@ -39,6 +39,7 @@
 
 #include <sys/types.h>
 #include <sys/queue.h>
+
 #ifdef KERNEL
 #include <sys/sbuf.h>
 #else

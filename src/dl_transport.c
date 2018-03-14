@@ -39,8 +39,8 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 
-#ifdef _KERNEL
-#include <sys/sbu.h>
+#ifdef KERNEL
+#include <sys/sbuf.h>
 #else
 #include <arpa/inet.h>
 #include <netinet/ip.h>
@@ -63,7 +63,7 @@ dl_transport_connect(struct dl_transport *self,
 
 	DL_ASSERT(self != NULL, "Transport instance cannot be NULL\n");
 
-#ifdef _KERNEL
+#ifdef KERNEL
  	// socreate(int dom, struct socket **aso, int	type, int proto,
      	// struct	ucred *cred, struct thread *td);
 #else
@@ -79,7 +79,7 @@ dl_transport_connect(struct dl_transport *self,
 	if (inet_pton(AF_INET, hostname, &(dest.sin_addr)) == 0)
 		return -2;
 
-#ifdef _KERNEL
+#ifdef KERNEL
 	// socreate(int dom, struct socket **aso, int	type, int proto,
 	// 	 struct	ucred *cred, struct thread *td);
 #else
@@ -101,7 +101,7 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 	DL_ASSERT(self != NULL, "Target buffer  cannot be NULL");
 
 	/* Read the size of the request or response to process. */
-#ifdef _KERNEL
+#ifdef KERNEL
 	//soreceive
 #else
 	ret = recv(self->dlt_sock, &msg_size, sizeof(int32_t), 0);
@@ -149,7 +149,7 @@ dl_transport_send_request(const struct dl_transport *self,
 	DL_ASSERT(self != NULL, "Transport instance cannot be NULL");
 	DL_ASSERT(buffer != NULL, "Buffer to send cannot be NULL");
 
-#ifdef _KERNEL
+#ifdef KERNEL
 	// octets_sent = sosend(struct socket *so, struct sockaddr *addr, struct uio *uio,
 	// 	 struct	mbuf *top, struct mbuf *control, int flags,
 	// 	 	 struct	thread *td);
@@ -169,14 +169,14 @@ dl_transport_send_request(const struct dl_transport *self,
 int
 dl_transport_poll(const struct dl_transport *self, int timeout)
 {
-#ifdef _KERNEL
+#ifdef KERNEL
 #else
 	struct pollfd ufd;
 #endif
 
 	DL_ASSERT(self != NULL, "Transport instance cannot be NULL");
 
-#ifdef _KERNEL
+#ifdef KERNEL
 	//return sopoll(struct socket *so, int events, struct ucred
 	//*active_cred, structthread *td);
 #else

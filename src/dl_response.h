@@ -37,7 +37,7 @@
 #ifndef _DL_RESPONSE_H
 #define _DL_RESPONSE_H
 
-#include <sys/types.h>
+#include <stdint.h>
 
 #include "dl_bbuf.h"
 #include "dl_fetch_response.h"
@@ -51,15 +51,11 @@ union dl_response_message {
 };
 
 struct dl_response_header {
-	// TODO: don't think size if needed
-	int32_t dlrsh_size;
 	int32_t dlrsh_correlation_id;
 };
 
 struct dl_response {
 	union dl_response_message dlrs_message;
-	// TODO: don't think size if needed
-	int32_t dlrs_size;
 	int32_t dlrs_correlation_id;
 	int16_t dlrs_api_key;
 };
