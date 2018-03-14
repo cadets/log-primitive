@@ -59,8 +59,8 @@ dl_request_new(struct dl_request **self, const int16_t api_key,
 	DL_ASSERT(self != NULL, ("Request cannot be NULL."));
 
 	request = (struct dl_request *) dlog_alloc(sizeof(struct dl_request));
-#ifdef KERNEL
-	DL_ASSERT(request != NULL, "Allocation for Request failed"));
+#ifdef _KERNEL
+	DL_ASSERT(request != NULL, ("Allocation for Request failed"));
 	{
 #else
 	if (request != NULL) {
@@ -200,8 +200,8 @@ dl_request_decode(struct dl_request ** const self,
 	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
 
 	request = (struct dl_request *) dlog_alloc(sizeof(struct dl_request));
-#ifdef KERNEL
-	DL_ASSERT(request != NULL, "Allocation for Request failed"));
+#ifdef _KERNEL
+	DL_ASSERT(request != NULL, ("Allocation for Request failed"));
 	{
 #else
 	if (request != NULL) {

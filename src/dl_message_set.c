@@ -334,8 +334,8 @@ dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
 	
 	/* Encode the CRC. */
 	unsigned char *crc_data = dl_bbuf_data(target) + crc_start_pos; 
-	crc_value = crc32(0L, Z_NULL, 0);
-	crc_value = crc32(crc_value, crc_data, dl_bbuf_pos(target)-crc_start_pos);
+	crc_value = CRC32(0L, Z_NULL, 0);
+	crc_value = CRC32(crc_value, crc_data, dl_bbuf_pos(target)-crc_start_pos);
 	if (DL_ENCODE_CRC_AT(target, crc_value, crc_pos) != 0)
 		goto err;
 		

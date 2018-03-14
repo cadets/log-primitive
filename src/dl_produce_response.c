@@ -53,7 +53,7 @@ dl_produce_response_new(char * topic_name, int32_t throttle_time,
 	/* Construct the ProduceResponse. */
 	response = (struct dl_produce_response *) dlog_alloc(
 	    sizeof(struct dl_produce_response));
-#ifdef KERNEL
+#ifdef _KERNEL
 	DL_ASSERT(response != NULL, ("Failed allocating Response.\n"));
 	{
 #else
@@ -65,7 +65,7 @@ dl_produce_response_new(char * topic_name, int32_t throttle_time,
 
 		response_topic = (struct dl_produce_response_topic *)
 		    dlog_alloc(sizeof(struct dl_produce_response_topic));	    
-#ifdef KERNEL
+#ifdef _KERNEL
 		DL_ASSERT(response_topic != NULL,
 		    ("Failed allocating response topic.\n"));
 		{
@@ -82,14 +82,15 @@ dl_produce_response_new(char * topic_name, int32_t throttle_time,
 			    .dlprp_partition = 0;
 			response_topic->dlprt_partitions[0]
 			    .dlprp_error_code = error_code;
-		} else {
-			DLOGTR0(PRIO_HIGH,
-			    "Failed allocating ProduceResponse topic_data");
-			dlog_free(response);
-			response = NULL;
+
+			return response;
 		}
+		DLOGTR0(PRIO_HIGH,
+			"Failed allocating ProduceResponse topic_data");
+		dlog_free(response);
+		response = NULL;
 	}
-	return response;
+	return NULL;
 }
 
 int
@@ -111,7 +112,7 @@ dl_produce_response_decode(struct dl_response **self,
 	//if
 	response = (struct dl_response *) dlog_alloc(
 	    sizeof(struct dl_response));
-#ifdef KERNEL
+#ifdef _KERNEL
 	DL_ASSERT(response != NULL, ("Failed to allocate Response.\n"));
 	{
 #else
@@ -123,7 +124,7 @@ dl_produce_response_decode(struct dl_response **self,
 		response->dlrs_message.dlrs_produce_message =
 		    produce_response = (struct dl_produce_response *)
 		    dlog_alloc(sizeof(struct dl_produce_response));
-#ifdef KERNEL
+#ifdef _KERNEL
 		DL_ASSERT(produce_response != NULL,
 		    ("Failed to allocate ProduceResponse.\n"));
 		{
@@ -188,19 +189,18 @@ dl_produce_response_decode(struct dl_response **self,
 			/* Decode the ThrottleTime. */
 			DL_DECODE_THROTTLE_TIME(source,
 			    &produce_response->dlpr_throttle_time);
-		} else {
-			DLOGTR0(PRIO_HIGH,
-			    "Failed to allocate ProduceResponse,\n");
-			dlog_free(response);
-			return -1;
+
+			/* Return the successfully constructed ProduceResponse. */
+			*self = response;
+			return 0;
 		}
-	} else {
-		return -1;
+		DLOGTR0(PRIO_HIGH,
+			"Failed to allocate ProduceResponse,\n");
+		dlog_free(response);
 	}
 
-	/* Return the successfully constructed ProduceResponse. */
-	*self = response;
-	return 0;
+	*self = NULL;
+	return -1;
 }
 
 int32_t

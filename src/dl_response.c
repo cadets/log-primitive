@@ -62,6 +62,7 @@ dl_response_header_decode(struct dl_response_header **header,
 	    sizeof(struct dl_response_header));
 #ifdef KERNEL
 	DL_ASSERT(header != NULL, ("Failed allocateding Response header.\n"));
+	{
 #else
 	if (self != NULL) {
 #endif
