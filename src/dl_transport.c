@@ -39,7 +39,7 @@
 #include <sys/types.h>
 #include <sys/uio.h>
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
 #include <arpa/inet.h>
@@ -63,26 +63,27 @@ dl_transport_connect(struct dl_transport *self,
 
 	DL_ASSERT(self != NULL, "Transport instance cannot be NULL\n");
 
-#ifdef KERNEL
- 	// socreate(int dom, struct socket **aso, int	type, int proto,
-     	// struct	ucred *cred, struct thread *td);
-#else
-#endif
-	self->dlt_sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (self->dlt_sock == -1)
-		return -1;
-
 	bzero(&dest, sizeof(dest));
 	dest.sin_family = AF_INET;
 	dest.sin_port = htons(portnumber);
 
+#ifdef _KERNEL
+	struct thread *td = curthread;
+
+ 	socreate(AF_INET, &transport->dlt_sock, SOCK_STREAM, IPPROTO_TCP, td->td_ucred, td);
+	// TODO: error checking
+	
+	// soconnect(int dom, struct socket **aso, int	type, int proto,
+	// 	 struct	ucred *cred, struct thread *td);
+	// TODO: error checking
+#else
+	self->dlt_sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (self->dlt_sock == -1)
+		return -1;
+
 	if (inet_pton(AF_INET, hostname, &(dest.sin_addr)) == 0)
 		return -2;
 
-#ifdef KERNEL
-	// socreate(int dom, struct socket **aso, int	type, int proto,
-	// 	 struct	ucred *cred, struct thread *td);
-#else
 	if (connect(self->dlt_sock, (struct sockaddr *) &dest,
 	    sizeof(dest)) < 0)
 		return -3;
@@ -101,7 +102,7 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 	DL_ASSERT(self != NULL, "Target buffer  cannot be NULL");
 
 	/* Read the size of the request or response to process. */
-#ifdef KERNEL
+#ifdef _KERNEL
 	//soreceive
 #else
 	ret = recv(self->dlt_sock, &msg_size, sizeof(int32_t), 0);
@@ -149,11 +150,6 @@ dl_transport_send_request(const struct dl_transport *self,
 	DL_ASSERT(self != NULL, "Transport instance cannot be NULL");
 	DL_ASSERT(buffer != NULL, "Buffer to send cannot be NULL");
 
-#ifdef KERNEL
-	// octets_sent = sosend(struct socket *so, struct sockaddr *addr, struct uio *uio,
-	// 	 struct	mbuf *top, struct mbuf *control, int flags,
-	// 	 	 struct	thread *td);
-#else
 	buflen = htobe32(dl_bbuf_pos(buffer));
 
 	iov[0].iov_base = &buflen;
@@ -162,6 +158,21 @@ dl_transport_send_request(const struct dl_transport *self,
 	iov[1].iov_base = dl_bbuf_data(buffer);
 	iov[1].iov_len = dl_bbuf_pos(buffer);
 
+#ifdef _KERNEL
+	struct thread *td = curthread;
+	struct uio *u;
+
+	bzero(&u, sizeof(struct uio));
+	u.uio_iov = iov;
+	u.uio_iovcnt = 2;
+	u.uio_offset = 0;
+        u.uio_resid = iov[0].iov_len + iov[1].iov_len;
+        u.uio_segflg  = UIO_SYSSPACE;
+        u.uio_rw = UIO_WRITE;
+        u.uio_td = td;
+
+	return sosend(self->dlt_sock, NULL, u, NULL, NULL, 0, td);
+#else
 	return writev(self->dlt_sock, iov, 2);
 #endif
 }
@@ -169,14 +180,14 @@ dl_transport_send_request(const struct dl_transport *self,
 int
 dl_transport_poll(const struct dl_transport *self, int timeout)
 {
-#ifdef KERNEL
+#ifdef _KERNEL
 #else
 	struct pollfd ufd;
 #endif
 
 	DL_ASSERT(self != NULL, "Transport instance cannot be NULL");
 
-#ifdef KERNEL
+#ifdef _KERNEL
 	//return sopoll(struct socket *so, int events, struct ucred
 	//*active_cred, structthread *td);
 #else
@@ -186,4 +197,3 @@ dl_transport_poll(const struct dl_transport *self, int timeout)
 	return poll(&ufd, 1, timeout);
 #endif
 }
-

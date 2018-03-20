@@ -189,6 +189,8 @@ dl_dispatch_signalled_handles(const struct pollfd *fds, const size_t nhandles)
 void
 dl_poll_reactor_handle_events(void)
 {
+#ifdef _KERNEL
+#else
 	struct pollfd fds[MAX_NO_OF_HANDLES];
 	size_t nhandles;
 
@@ -205,7 +207,9 @@ dl_poll_reactor_handle_events(void)
 	} else {
 		DLOGTR0(PRIO_LOW, "Poll failure");
 	}
+#endif
 }
+
 void
 dl_poll_reactor_register(struct dl_event_handler const * const handler)
 {

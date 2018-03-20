@@ -42,14 +42,12 @@
 #include <sys/param.h>
 #include <sys/queue.h>
 #include <sys/types.h>
-#include <sys/types.h>
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
 #include <sbuf.h>
 #include <errno.h>
-#include <pthread.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <string.h>
@@ -71,7 +69,6 @@
 #include "dl_request_queue.h"
 #include "dl_transport.h"
 #include "dl_utils.h"
-//#include "dl_primitive_types.h"
 #include "dlog_broker.h"
 #include "dlog_client.h"
 #include "dlog_client_impl.h"
@@ -79,14 +76,16 @@
 // TODO: I don't think FreeBSD defines this
 // if not should it be 63 or 255?
 #define HOST_NAME_MAX 255
-	
-//pthread_t dl_client_request_thread;
-	
-static int dl_enqueue_request(struct dlog_handle *, struct dl_bbuf*, int32_t, int16_t);
+
 static void * dl_request_thread(void *);
 static void * dl_response_thread(void *);
 static void dl_start_response_thread(struct dlog_handle *,
     struct dl_client_configuration const *, struct dl_transport *);
+
+//dlog_client_init(()
+//pthread_t dlh_reader;
+//static struct dl_correlation_id *correlation_id;
+//correlation_id = dl_correlation_id_new();
 
 static dl_event_handler_handle
 dlog_client_get_handle(void *instance)
@@ -205,6 +204,8 @@ dl_request_thread(void *vargp)
 #endif
 
 	DL_ASSERT(vargp != NULL, "Request thread arguments cannot be NULL");
+	
+	DLOGTR0(PRIO_LOW, "Request thread started...\n");
 
 	/* Copy the thread arguements and free the memory. */
 	transport = handle->dlh_transport;
@@ -221,35 +222,7 @@ dl_request_thread(void *vargp)
 	STAILQ_INIT(&local_request_queue);
 
 	for (;;) {
-		pthread_mutex_lock(&handle->dlh_request_queue_mtx);		
-		while (STAILQ_EMPTY(&handle->dlh_request_queue) != 0 ) {
-			/* There are no elements in the reader's
-			 * queue check whether the thread has been
-			 * canceled.
-			 */
-			pthread_testcancel();
-		
-			/* Wait for elements to be added to the
-			 * reader's queue, whilst also periodically checking
-			 * the thread's cancellation state.
-			 */
-			// TODO: In-kernel timing
-			gettimeofday(&now, NULL);
-			ts.tv_sec = now.tv_sec + 2;
-			ts.tv_nsec = 0;
-			pthread_cond_timedwait(&handle->dlh_request_queue_cond,
-			    &handle->dlh_request_queue_mtx, &ts);
-		}
-
-		while (STAILQ_EMPTY(&handle->dlh_request_queue) == 0 ) {
-			request = STAILQ_FIRST(&handle->dlh_request_queue);
-			STAILQ_REMOVE_HEAD(&handle->dlh_request_queue,
-			    dlrq_entries);
-
-			STAILQ_INSERT_TAIL(&local_request_queue,
-				request, dlrq_entries);
-		}
-		pthread_mutex_unlock(&handle->dlh_request_queue_mtx);
+		dl_request_q_dequeue(handle->dlh_request_q, &local_request_queue);
 
 		STAILQ_FOREACH_SAFE(request, &local_request_queue, dlrq_entries,
 		    request_temp) {
@@ -273,7 +246,7 @@ dl_request_thread(void *vargp)
 				/* Successfuly send the request,
 				 * record the last send time.
 				 */
-#ifdef KERNEL
+#ifdef _KERNEL
 #ifdef __APPLE__
 				clock_get_calendar_microtime(&secs,
 					&msecs);
@@ -321,40 +294,6 @@ dl_response_thread(void *vargp)
 	pthread_exit(NULL);
 }
 
-// TODO: This should be an API of the request queue class
-static int 
-dl_enqueue_request(struct dlog_handle *handle, struct dl_bbuf *buffer,
-    int32_t correlation_id, int16_t api_key)
-{
-	struct dl_request_element *request;
-
-	/* Allocate a new request; this stores the encoded request
-	 * along with associate metadata allowing correlation of reuqets
-	 * and responses and specifying policy for resending requests.
-	 */
-	request = (struct dl_request_element *) dlog_alloc(
-	    sizeof(struct dl_request_element));
-	if (request) {
-		/* Construct the request */
-		request->dlrq_buffer = buffer;
-		request->dlrq_correlation_id = correlation_id;
-		request->dlrq_api_key = api_key;
-		
-		pthread_mutex_lock(&handle->dlh_request_queue_mtx);
-		STAILQ_INSERT_TAIL(&handle->dlh_request_queue, request,
-		    dlrq_entries);
-		pthread_cond_signal(&handle->dlh_request_queue_cond);
-		pthread_mutex_unlock(&handle->dlh_request_queue_mtx);
-		
-		DLOGTR0(PRIO_LOW, "Enqueued request message..\n ");
-		return 0;
-	} else {
-        	DLOGTR0(PRIO_HIGH,
-		    "Error borrowing the request to perform user send\n");
-		return -1;
-	}
-}
-
 static void
 dl_start_response_thread(struct dlog_handle *handle,
     struct dl_client_configuration const *cc, struct dl_transport *transport)
@@ -375,56 +314,57 @@ dlog_client_open(struct sbuf *hostname,
 	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
 	
 	handle = (struct dlog_handle *) dlog_alloc(sizeof(struct dlog_handle));
-#ifdef KERNEL
+#ifdef _KERNEL
+	DL_ASSERT(handle != NULL, ("Failed allocating DLog client handle."));
+	{
 #else
+	if (handle != NULL) {
 #endif	
-	/* Store the client configuration. */
-	handle->dlh_config = cc;
+		/* Store the client configuration. */
+		handle->dlh_config = cc;
 
-	/* Instatiate the client resender. */
-	handle->dlh_resender = dl_resender_new(handle);
+		/* Instatiate the client resender. */
+		handle->dlh_resender = dl_resender_new(handle);
 
-	/* Initialise the response queue (on which client requests are
-	 * enqueued).
-	 */
-	STAILQ_INIT(&handle->dlh_request_queue);
-	pthread_mutex_init(&handle->dlh_request_queue_mtx, NULL);
-	pthread_cond_init(&handle->dlh_request_queue_cond, NULL);
+		/* Initialise the response queue (on which client requests are
+		* enqueued).
+		*/
+		dl_request_q_new(&handle->dlh_request_q);
 
-	/* Instantiate a correlation id. */
-	handle->correlation_id = dl_correlation_id_new();
-	DL_ASSERT(handle->correlation_id != NULL,
-	    "Failed instatiating new correlation_id\n");
+		/* Instantiate a correlation id. */
+		handle->correlation_id = dl_correlation_id_new();
+		DL_ASSERT(handle->correlation_id != NULL,
+		"Failed instatiating new correlation_id\n");
 
-	DLOGTR0(PRIO_NORMAL, "Initialising the dlog client...\n");
+		DLOGTR0(PRIO_NORMAL, "Initialising the dlog client...\n");
 
-	/* Start the client threads. */
-	dl_resender_start(handle->dlh_resender);
-		
-	struct dl_transport *transport = (struct dl_transport *) dlog_alloc(
-	    sizeof(struct dl_transport));
-	dl_transport_connect(transport, sbuf_data(hostname), portnumber);
+		/* Start the client threads. */
+		dl_resender_start(handle->dlh_resender);
+			
+		struct dl_transport *transport = (struct dl_transport *) dlog_alloc(
+		sizeof(struct dl_transport));
+		dl_transport_connect(transport, sbuf_data(hostname), portnumber);
 
-	handle->dlh_transport = transport;
-	handle->dlh_event_handler.dleh_instance = handle;
-	handle->dlh_event_handler.dleh_get_handle = dlog_client_get_handle;
-	handle->dlh_event_handler.dleh_handle_event = dlog_client_handle_read_event;
+		handle->dlh_transport = transport;
+		handle->dlh_event_handler.dleh_instance = handle;
+		handle->dlh_event_handler.dleh_get_handle = dlog_client_get_handle;
+		handle->dlh_event_handler.dleh_handle_event = dlog_client_handle_read_event;
 
-	pthread_t request_thread;
-	if (0 == pthread_create(&request_thread, NULL,
-		dl_request_thread, handle)) {
+		pthread_t request_thread;
+		if (0 == pthread_create(&request_thread, NULL,
+			dl_request_thread, handle)) {
 
+		}
+		// TODO: temp
+		struct broker_configuration *bc = (struct broker_configuration *)
+		dlog_alloc(sizeof(struct broker_configuration));
+		bc->fsync_thread_sleep_length = 10;
+
+		dlog_broker_init("cadets-trace", bc);
+
+		dl_poll_reactor_register(&handle->dlh_event_handler);
+		dl_start_response_thread(handle, cc, transport);
 	}
-	// TODO: temp
-	struct broker_configuration *bc = (struct broker_configuration *)
-	    dlog_alloc(sizeof(struct broker_configuration));
-	bc->fsync_thread_sleep_length = 10;
-
-	dlog_broker_init("cadets-trace", bc);
-
-	dl_poll_reactor_register(&handle->dlh_event_handler);
-	dl_start_response_thread(handle, cc, transport);
-
 	return handle;
 }
 
@@ -486,7 +426,7 @@ dlog_fetch(struct dlog_handle *handle, struct sbuf *topic_name,
 		// dl_fetch_request_delete(message);
 
 		/* Enqueue the request for processing */
-		if (dl_enqueue_request(handle, buffer,
+		if (dl_request_q_enqueue_new(handle->dlh_request_q, buffer,
 		    message->dlrqm_correlation_id,
 		    message->dlrqm_api_key) == 0) {
 			
@@ -537,7 +477,7 @@ dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
 		DLOGTR0(PRIO_LOW, "Encoded request message\n");
 
 		/* Enqueue the request for processing */
-		if (dl_enqueue_request(handle, buffer,
+		if (dl_request_q_enqueue_new(handle->dlh_request_q, buffer,
 		    message->dlrqm_correlation_id,
 		    message->dlrqm_api_key) == 0) {
 			
@@ -591,7 +531,7 @@ dlog_produce(struct dlog_handle *handle, struct sbuf *topic_name,
 		DLOGTR0(PRIO_LOW, "\n");
 
 		/* Enqueue the request for processing */
-		if (dl_enqueue_request(handle, buffer,
+		if (dl_request_q_enqueue_new(handle->dlh_request_q, buffer,
 		    message->dlrqm_correlation_id,
 		    message->dlrqm_api_key) == 0) {
 			

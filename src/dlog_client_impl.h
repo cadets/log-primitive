@@ -1,6 +1,5 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -50,13 +49,11 @@
 struct dlog_handle {
 	struct dl_client_configuration const *dlh_config;
 	struct dl_resender *dlh_resender;
-	pthread_t dlh_reader;
-	struct dl_request_queue dlh_request_queue;
-	pthread_mutex_t dlh_request_queue_mtx;
-	pthread_cond_t dlh_request_queue_cond;
-	struct dl_correlation_id *correlation_id;
-	struct dl_event_handler dlh_event_handler;
+	pthread_t dlh_reader; // TODO: this doens't look right the poll reactor needs a single thread
+	struct dl_request_q *dlh_request_q;
+	struct dl_correlation_id *correlation_id; // TODO: this is also not right, correlation ids aren't per client
 	struct dl_transport *dlh_transport;
+	struct dl_event_handler dlh_event_handler;
 };
 
 #endif

@@ -37,12 +37,16 @@
 #ifndef _DL_TRANSPORT_H
 #define _DL_TRANSPORT_H
 
-#include <sys/types.h>
+#ifdef _KERNEL
+#include <sys/socket.h>
+#include <sys/socketvar.h>
+#endif
 
 #include "dl_bbuf.h"
 
 struct dl_transport {
-#ifdef KERNEL
+#ifdef _KERNEL
+	struct socket *dlt_sock;
 #else
 	int dlt_sock;
 #endif

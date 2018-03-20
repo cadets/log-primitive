@@ -139,11 +139,13 @@ dl_resender_thread(void *vargp)
 					    &resender->dlr_unackd, request);
 
 					/* Resend the request. */
-					pthread_mutex_lock(&resender->dlr_handle->dlh_request_queue_mtx);
-					STAILQ_INSERT_TAIL(&resender->dlr_handle->dlh_request_queue, request,
-					dlrq_entries);
-					pthread_cond_signal(&resender->dlr_handle->dlh_request_queue_cond);
-					pthread_mutex_unlock(&resender->dlr_handle->dlh_request_queue_mtx);
+					dl_request_q_enqueue(resender->dlr_handle->dlh_request_q,
+					    request);
+					//pthread_mutex_lock(&resender->dlr_handle->dlh_request_queue_mtx);
+					//STAILQ_INSERT_TAIL(&resender->dlr_handle->dlh_request_queue, request,
+					//dlrq_entries);
+					//pthread_cond_signal(&resender->dlr_handle->dlh_request_queue_cond);
+					//pthread_mutex_unlock(&resender->dlr_handle->dlh_request_queue_mtx);
 					
 					DLOGTR0(PRIO_LOW, "Resending request.\n");
 				}
