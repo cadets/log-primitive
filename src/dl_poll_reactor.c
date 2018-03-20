@@ -189,14 +189,14 @@ dl_dispatch_signalled_handles(const struct pollfd *fds, const size_t nhandles)
 void
 dl_poll_reactor_handle_events(void)
 {
-#ifdef _KERNEL
-#else
 	struct pollfd fds[MAX_NO_OF_HANDLES];
 	size_t nhandles;
 
 	bzero(fds, MAX_NO_OF_HANDLES * sizeof(struct pollfd));
 	nhandles = dl_build_poll_array(fds);
-
+#ifdef _KERNEL
+	//sopoll();
+#else
 	/* Invoke the synchronous event demultiplexer. */
 	if (0 < poll(fds, nhandles, -1)) {
 		/** 

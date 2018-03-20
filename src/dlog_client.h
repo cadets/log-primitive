@@ -74,6 +74,9 @@ struct dl_client_event_notifier {
 	struct broker_configuration *dlben_conf;
 };
 
+extern int dlog_client_init();
+extern int dlog_client_fini();
+
 extern struct dlog_handle * dlog_client_open(struct sbuf *,
     const int, struct dl_client_configuration const * const);
 extern int dlog_client_close(struct dlog_handle *);

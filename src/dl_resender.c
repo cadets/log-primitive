@@ -36,12 +36,10 @@
 #include <sys/param.h>
 #include <sys/queue.h>
 #include <sys/tree.h>
+
 #ifdef KERNEL
 #include <sys/types.h>
 #else
-#include <stdbool.h>
-#endif
-
 #include <errno.h>
 #include <pthread.h>
 #include <stdarg.h>
@@ -50,6 +48,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_config.h"
@@ -64,9 +63,15 @@ RB_HEAD(dlr_unackd_requests, dl_request_element);
 
 struct dl_resender {
 	struct dlr_unackd_requests dlr_unackd;
+#ifdef _KERNEL
+	//pthread_t dlr_tid;
+	struct mtx dlr_unackd_mtx;
+	struct cv dlr_unackd_cond;
+#else
 	pthread_t dlr_tid;
 	pthread_mutex_t dlr_unackd_mtx;
 	pthread_cond_t dlr_unackd_cond;
+#endif
 	struct dlog_handle *dlr_handle;
 	int dlr_sleep_ms;
 };
@@ -113,13 +118,24 @@ dl_resender_thread(void *vargp)
 	 * pthread_testcancel(). This ensures that thread isn't cancelled until
 	 * outstanding requests have been processed.
 	 */	
+#ifdef _KERNEL
+	// TODO
+#else
 	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
+#endif
 
 	for (;;) {
 		// TODO: should probably check that this is empty
+#ifdef _KERNEL
+#else
 		pthread_testcancel();
+#endif
 
+#ifdef _KERNEL
+		mtx_lock(&resender->dlr_unackd_mtx);
+#else
 		pthread_mutex_lock(&resender->dlr_unackd_mtx);
+#endif
 		RB_FOREACH_SAFE(request, dlr_unackd_requests,
 		    &resender->dlr_unackd, request_temp) {
 			if (resender->dlr_handle->dlh_config->to_resend) {
@@ -141,25 +157,31 @@ dl_resender_thread(void *vargp)
 					/* Resend the request. */
 					dl_request_q_enqueue(resender->dlr_handle->dlh_request_q,
 					    request);
-					//pthread_mutex_lock(&resender->dlr_handle->dlh_request_queue_mtx);
-					//STAILQ_INSERT_TAIL(&resender->dlr_handle->dlh_request_queue, request,
-					//dlrq_entries);
-					//pthread_cond_signal(&resender->dlr_handle->dlh_request_queue_cond);
-					//pthread_mutex_unlock(&resender->dlr_handle->dlh_request_queue_mtx);
 					
 					DLOGTR0(PRIO_LOW, "Resending request.\n");
 				}
 			}
 		}
+#ifdef _KERNEL
+		mtx_unlock(&resender->dlr_unackd_mtx);
+#else
 		pthread_mutex_unlock(&resender->dlr_unackd_mtx);
+#endif
 
 		DLOGTR1(PRIO_LOW,
 		    "Resender thread is going to sleep for %d seconds\n",
 		    resender->dlr_sleep_ms);
 
+#ifdef _KERNEL
+#else
 		sleep(resender->dlr_sleep_ms);
+#endif
 	}
+#ifdef _KERNEL
+	kproc_exit(0);
+#else
 	pthread_exit(NULL);
+#endif
 }
 
 struct dl_resender *
@@ -169,11 +191,20 @@ dl_resender_new(struct dlog_handle *handle)
 
 	resender = (struct dl_resender *) dlog_alloc(
 	    sizeof(struct dl_resender));
-
+#ifdef _KERNEL
+	// TODO
+#else
+	// TODO
+#endif
 	/* Initialise a red/black tree used to index the unacknowledge
 	 * responses.
 	 */
 	RB_INIT(&resender->dlr_unackd);
+#ifdef _KERNEL
+	// TODO
+	mtx_init(&resender->dlr_unackd_mtx, ? , , MTX_DEF);
+	cond_init(&resender->dlr_unackd_cond, ? , ?. MTX_DEF);
+#else
 	pthread_mutex_init(&resender->dlr_unackd_mtx, NULL);
 	pthread_cond_init(&resender->dlr_unackd_cond, NULL);
 	resender->dlr_handle = handle;
@@ -207,17 +238,28 @@ dl_resender_start(struct dl_resender *resender)
 int
 dl_resender_stop(struct dl_resender *resender)
 {
-
+#ifdef _KERNEL
+#else
 	return pthread_cancel(resender->dlr_tid);
+#endif
 }
 
 int
 dl_resender_unackd_request(struct dl_resender *resender,
     struct dl_request_element *request)
 {
+
+#ifdef _KERNEL
+	mtx_lock(&resender->dlr_unackd_mtx);
+#else
 	pthread_mutex_lock(&resender->dlr_unackd_mtx);
+#endif
 	RB_INSERT(dlr_unackd_requests, &resender->dlr_unackd, request);
+#ifdef _KERNEL
+	mtx_unlock(&resender->dlr_unackd_mtx);
+#else
 	pthread_mutex_unlock(&resender->dlr_unackd_mtx);
+#endif
 
 	return 0;
 }
@@ -232,7 +274,11 @@ dl_resender_ackd_request(struct dl_resender *resender, int correlation_id)
  	 */
 	find.dlrq_correlation_id = correlation_id;
 
+#ifdef _KERNEL
+	mtx_lock(&resender->dlr_unackd_mtx);
+#else
 	pthread_mutex_lock(&resender->dlr_unackd_mtx);
+#endif
 	request = RB_FIND(dlr_unackd_requests,
 	    &resender->dlr_unackd, &find);
 	if (request != NULL) {
@@ -245,7 +291,11 @@ dl_resender_ackd_request(struct dl_resender *resender, int correlation_id)
 		request = RB_REMOVE(dlr_unackd_requests,
 		    &resender->dlr_unackd, request);
 	}
+#ifdef _KERNEL
+	mtx_unlock(&resender->dlr_unackd_mtx);
+#else
 	pthread_mutex_unlock(&resender->dlr_unackd_mtx);
+#endif
 
 	return request;
 }

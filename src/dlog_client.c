@@ -211,10 +211,13 @@ dl_request_thread(void *vargp)
 	transport = handle->dlh_transport;
 
 	/* Defer cancellation of the thread until the cancellation point 
-	 * pthread_testcancel(). This ensures that thread isn't cancelled until
-	 * outstanding requests have been processed.
+	 * This ensures that thread isn't cancelled until outstanding requests
+	 * have been processed.
 	 */	
+#ifdef _KERNEL
+#else
 	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
+#endif
 
 	/* Initialize a local queue, used to enqueue requests from the
 	 * request queue prior to processing.
@@ -279,7 +282,11 @@ dl_request_thread(void *vargp)
 			}
 		}
 	}
+#ifdef _KERNEL
+	kproc_exit(0);
+#else
 	pthread_exit(NULL);
+#endif
 }
 
 static void *
@@ -291,7 +298,11 @@ dl_response_thread(void *vargp)
 	for (;;) {
 		dl_poll_reactor_handle_events();
 	}
+#ifdef _KERNEL
+	kproc_exit(0);
+#else
 	pthread_exit(NULL);
+#endif
 }
 
 static void
@@ -300,7 +311,11 @@ dl_start_response_thread(struct dlog_handle *handle,
 {
 	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
 
+#ifdef _KERNEL
+	kproc_kthread_add(dl_response_thread, NULL, dlog_client_proc, &handle->dlh_reader, 0, 0, NULL);
+#else
 	pthread_create(&handle->dlh_reader, NULL, dl_response_thread, NULL);
+#endif
 }
 
 struct dlog_handle *
@@ -341,8 +356,8 @@ dlog_client_open(struct sbuf *hostname,
 		/* Start the client threads. */
 		dl_resender_start(handle->dlh_resender);
 			
-		struct dl_transport *transport = (struct dl_transport *) dlog_alloc(
-		sizeof(struct dl_transport));
+		struct dl_transport *transport =
+		    (struct dl_transport *) dlog_alloc(sizeof(struct dl_transport));
 		dl_transport_connect(transport, sbuf_data(hostname), portnumber);
 
 		handle->dlh_transport = transport;
@@ -350,11 +365,17 @@ dlog_client_open(struct sbuf *hostname,
 		handle->dlh_event_handler.dleh_get_handle = dlog_client_get_handle;
 		handle->dlh_event_handler.dleh_handle_event = dlog_client_handle_read_event;
 
+#ifdef _KERNEL
+		kproc_kthread_add(request_thread, NULL, dlog_client_proc,
+		    &handle->dlh_request_tid, 0, 0, NULL);
+#else
 		pthread_t request_thread;
 		if (0 == pthread_create(&request_thread, NULL,
 			dl_request_thread, handle)) {
 
 		}
+#endif
+
 		// TODO: temp
 		struct broker_configuration *bc = (struct broker_configuration *)
 		dlog_alloc(sizeof(struct broker_configuration));
@@ -374,7 +395,10 @@ dlog_client_close(struct dlog_handle *handle)
 	int rc;
 
 	/* Cancel the reader threads */
+#ifdef _KERNEL
+#else
 	rc = pthread_cancel(handle->dlh_reader);
+#endif
 	if (rc != 0)
 		DLOGTR1(PRIO_HIGH, "Error stopping reader %d\n", rc);
 	

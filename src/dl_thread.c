@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,7 +34,7 @@
  *
  */
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/kthread.h>
 #else
 #include <pthread.h> 
@@ -43,9 +43,9 @@
 #include "dl_thread.h"
 
 int
-dl_thread_create() //, ...)
+dl_thread_create() //, , ,)  
 {
-#ifdef KERNEL
+#ifdef _KERNEL
 	//return kproc_create();
 #else
 	//return pthread_create();
