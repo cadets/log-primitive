@@ -37,8 +37,14 @@
 #include <sys/queue.h>
 #include <sys/tree.h>
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/types.h>
+#include <sys/param.h>
+#include <sys/proc.h>
+#include <sys/condvar.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
+#include <sys/kthread.h>
 #else
 #include <errno.h>
 #include <pthread.h>
@@ -89,6 +95,9 @@ RB_PROTOTYPE(dlr_unackd_requests, dl_request_element, dlrq_linkage,
 RB_GENERATE(dlr_unackd_requests, dl_request_element, dlrq_linkage,
     dl_request_element_cmp);
 
+static char *DL_RESENDER_TYPE = "dlog";
+static char *test = "resender";
+
 static int
 dl_request_element_cmp(struct dl_request_element *el1,
     struct dl_request_element *el2)
@@ -104,7 +113,9 @@ dl_resender_thread(void *vargp)
 	    (struct dl_resender_argument *) vargp;
 	struct dl_request_element *request, *request_temp;
 	time_t now;
+#ifndef _KERNEL
 	int old_cancel_state;
+#endif
 
 	DL_ASSERT(vargp != NULL, "Resender thread arguments cannot be NULL");
 
@@ -139,9 +150,13 @@ dl_resender_thread(void *vargp)
 		RB_FOREACH_SAFE(request, dlr_unackd_requests,
 		    &resender->dlr_unackd, request_temp) {
 			if (resender->dlr_handle->dlh_config->to_resend) {
+#ifdef _KERNEL
+				now = 0; // TODO
+#else
 				now = time(NULL);
+#endif
 				DLOGTR4(PRIO_LOW, "Was sent %lu now is %lu. "
-				    "Resend when the difference is %lu. "
+				    "Resend when the difference is %d. "
 				    "Current: %lu\n",
 				    request->dlrq_last_sent, now,
 				    resender->dlr_handle->dlh_config->resend_timeout, 
@@ -149,7 +164,10 @@ dl_resender_thread(void *vargp)
 
 				if ((now - request->dlrq_last_sent) >
 				    resender->dlr_handle->dlh_config->resend_timeout) {
+#ifdef _KERNEL
+#else
 					request->dlrq_last_sent = time(NULL);
+#endif
 
 					RB_REMOVE(dlr_unackd_requests,
 					    &resender->dlr_unackd, request);
@@ -192,29 +210,35 @@ dl_resender_new(struct dlog_handle *handle)
 	resender = (struct dl_resender *) dlog_alloc(
 	    sizeof(struct dl_resender));
 #ifdef _KERNEL
-	// TODO
+	DL_ASSERT(resender != NULL, ("Failed allocating resender."));	
+	{
 #else
-	// TODO
+	if (resender != NULL) {
 #endif
-	/* Initialise a red/black tree used to index the unacknowledge
-	 * responses.
-	 */
-	RB_INIT(&resender->dlr_unackd);
+		bzero(resender, sizeof(struct dl_resender));
+		/* Initialise a red/black tree used to index the unacknowledge
+		 * responses.
+		 */
+		RB_INIT(&resender->dlr_unackd);
 #ifdef _KERNEL
-	// TODO
-	mtx_init(&resender->dlr_unackd_mtx, ? , , MTX_DEF);
-	cond_init(&resender->dlr_unackd_cond, ? , ?. MTX_DEF);
+		// TODO
+		mtx_init(&resender->dlr_unackd_mtx, test, DL_RESENDER_TYPE, MTX_DEF);
+		cv_init(&resender->dlr_unackd_cond, DL_RESENDER_TYPE);
 #else
-	pthread_mutex_init(&resender->dlr_unackd_mtx, NULL);
-	pthread_cond_init(&resender->dlr_unackd_cond, NULL);
-	resender->dlr_handle = handle;
-	resender->dlr_sleep_ms = handle->dlh_config->resender_thread_sleep_length;
+		pthread_mutex_init(&resender->dlr_unackd_mtx, NULL);
+		pthread_cv_init(&resender->dlr_unackd_cond, NULL);
+#endif
+		resender->dlr_handle = handle;
+		resender->dlr_sleep_ms = handle->dlh_config->resender_thread_sleep_length;
+	}
 
 	return resender;
 }	
 int
-dl_resender_fini()
+dl_resender_delete(struct dl_resender *self)
 {
+
+	DL_ASSERT(self != NULL, ("Resender instance cannot be NULL."));
 	return 0;
 }
 
@@ -222,16 +246,25 @@ int
 dl_resender_start(struct dl_resender *resender)
 {
 	struct dl_resender_argument *resender_arg;
-	int ret;
 
 	DL_ASSERT(resender != NULL, "Resender instance cannot be NULL");
 
 	resender_arg = (struct dl_resender_argument *) dlog_alloc(
 	    sizeof(struct dl_resender_argument));
+#ifdef _KERNEL
+	DL_ASSERT(resender_arg != NULL, ("Failed allocating resender arguments."));
 	resender_arg->dlra_resender = resender;
-
-	return pthread_create(&resender->dlr_tid, NULL, dl_resender_thread,
+	// TODO
+	return 0;
+#else
+	if (resender_arg != NULL) {
+		resender_arg->dlra_resender = resender;
+		return pthread_create(&resender->dlr_tid, NULL, dl_resender_thread,
 	    resender_arg);
+	}
+	DLOGTR0(PRIO_HIGH, "Failed allocating resender arguments.\n");
+	return -1;
+#endif
 }
 
 /* Cancel the resender thread */
@@ -239,6 +272,8 @@ int
 dl_resender_stop(struct dl_resender *resender)
 {
 #ifdef _KERNEL
+	// TODO
+	return 0;
 #else
 	return pthread_cancel(resender->dlr_tid);
 #endif

@@ -35,12 +35,12 @@
 
 #include <atf-c.h>
 
-#include "dl_fetch_request.h"
+//#include "dl_fetch_request.h"
 
 ATF_TC(test1);
 ATF_TC_HEAD(test1, tc)
 {
-	atf_tc_set_md_var(tc, "desc", "This is test 1");
+	atf_tc_set_md_var(tc, "descr", "This is test 1");
 }
 
 ATF_TC_BODY(test1, tc)

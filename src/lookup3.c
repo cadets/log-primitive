@@ -35,9 +35,15 @@ on 1 byte), but shoehorning those bytes into integers efficiently is messy.
 */
 //#define SELF_TEST 1
 
+#ifdef SELF_TEST
 #include <stdio.h>      /* defines printf for tests */
 #include <time.h>       /* defines time_t for timings in the test */
+#endif
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
 #include <stdint.h>     /* defines uint32_t etc */
+#endif
 #include <sys/param.h>  /* attempt to define endianness */
 #ifdef linux
 # include <endian.h>    /* attempt to define endianness */
@@ -156,6 +162,12 @@ and these came close:
   b ^= a; b -= rot(a,14); \
   c ^= b; c -= rot(b,24); \
 }
+
+uint32_t hashword(const uint32_t *k, size_t length, uint32_t initval);
+void hashword2(const uint32_t *k, size_t length, uint32_t *pc, uint32_t *pb);
+uint32_t hashbig( const void *key, size_t length, uint32_t initval);
+void hashlittle2( const void *key, size_t length, uint32_t *pc, uint32_t *pb);
+uint32_t hashlittle( const void *key, size_t length, uint32_t initval);
 
 /*
 --------------------------------------------------------------------
@@ -290,7 +302,6 @@ uint32_t hashlittle( const void *key, size_t length, uint32_t initval)
   u.ptr = key;
   if (HASH_LITTLE_ENDIAN && ((u.i & 0x3) == 0)) {
     const uint32_t *k = (const uint32_t *)key;         /* read 32-bit chunks */
-    const uint8_t  *k8;
 
     /*------ all but last block: aligned reads and affect 32 bits of (a,b,c) */
     while (length > 12)
@@ -333,6 +344,7 @@ uint32_t hashlittle( const void *key, size_t length, uint32_t initval)
     }
 
 #else /* make valgrind happy */
+    const uint8_t  *k8;
 
     k8 = (const uint8_t *)k;
     switch(length)
@@ -475,7 +487,6 @@ void hashlittle2(
   u.ptr = key;
   if (HASH_LITTLE_ENDIAN && ((u.i & 0x3) == 0)) {
     const uint32_t *k = (const uint32_t *)key;         /* read 32-bit chunks */
-    const uint8_t  *k8;
 
     /*------ all but last block: aligned reads and affect 32 bits of (a,b,c) */
     while (length > 12)
@@ -519,6 +530,7 @@ void hashlittle2(
 
 #else /* make valgrind happy */
 
+    const uint8_t  *k8;
     k8 = (const uint8_t *)k;
     switch(length)
     {
@@ -652,7 +664,6 @@ uint32_t hashbig( const void *key, size_t length, uint32_t initval)
   u.ptr = key;
   if (HASH_BIG_ENDIAN && ((u.i & 0x3) == 0)) {
     const uint32_t *k = (const uint32_t *)key;         /* read 32-bit chunks */
-    const uint8_t  *k8;
 
     /*------ all but last block: aligned reads and affect 32 bits of (a,b,c) */
     while (length > 12)
@@ -696,6 +707,7 @@ uint32_t hashbig( const void *key, size_t length, uint32_t initval)
 
 #else  /* make valgrind happy */
 
+    const uint8_t  *k8;
     k8 = (const uint8_t *)k;
     switch(length)                   /* all the case statements fall through */
     {

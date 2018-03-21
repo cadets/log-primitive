@@ -36,12 +36,12 @@
 
 #include <sys/time.h>
 #ifdef _KERNEL
+#include <sys/types.h>
 #include <sys/libkern.h>
 #else
 #include <zlib.h>
-#endif
-
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
@@ -53,7 +53,7 @@
 static const int8_t DL_MESSAGE_MAGIC_BYTE_V0 = 0x00;
 static const int8_t DL_MESSAGE_MAGIC_BYTE_V1 = 0x01;
 static const int8_t DL_MESSAGE_MAGIC_BYTE = DL_MESSAGE_MAGIC_BYTE_V1;
-static const int8_t DL_MESSAGE_ATTRIBUTES = 0x00;
+//static const int8_t DL_MESSAGE_ATTRIBUTES = 0x00;
 static const int64_t DL_DEFAULT_OFFSET = 0;
 
 #define DL_ATTRIBUTES_SIZE sizeof(int8_t)
@@ -65,7 +65,7 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 
 #ifdef _KERNEL
 #define Z_NULL NULL
-#define CRC32(val, data, len) crc32_calculate(val, data, len)
+#define CRC32(val, data, len) 0 //crc32_calculate(val, data, len)
 #else
 #define CRC32(val, data, len) crc32(val, data, len)
 #endif
@@ -282,7 +282,6 @@ static int
 dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
 {
 	unsigned long crc_value, timestamp;
-	int32_t msg_size = 0;
 	int size_pos, crc_pos, crc_start_pos;
 
 	DL_ASSERT(message != NULL, "Message cannot be NULL");
@@ -314,6 +313,7 @@ dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
 	/* Encode the Timestamp */
 #ifdef _KERNEL
 	// TODO: In-kernel timestamp ms since epoch?
+	timestamp = 0;
 #else
 	timestamp = time(NULL);
 #endif
@@ -334,6 +334,7 @@ dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
 	
 	/* Encode the CRC. */
 	unsigned char *crc_data = dl_bbuf_data(target) + crc_start_pos; 
+	crc_data = 0; // TODO
 	crc_value = CRC32(0L, Z_NULL, 0);
 	crc_value = CRC32(crc_value, crc_data, dl_bbuf_pos(target)-crc_start_pos);
 	if (DL_ENCODE_CRC_AT(target, crc_value, crc_pos) != 0)

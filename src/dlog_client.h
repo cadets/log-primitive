@@ -40,11 +40,11 @@
 
 #include <sys/queue.h>
 #include <sys/tree.h>
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #include <sys/types.h>
 #else
-#include <sbuf.h>
+#include <sys/sbuf.h>
 #include <stdbool.h>
 #endif
 
@@ -73,9 +73,6 @@ struct dl_client_event_notifier {
 
 	struct broker_configuration *dlben_conf;
 };
-
-extern int dlog_client_init();
-extern int dlog_client_fini();
 
 extern struct dlog_handle * dlog_client_open(struct sbuf *,
     const int, struct dl_client_configuration const * const);

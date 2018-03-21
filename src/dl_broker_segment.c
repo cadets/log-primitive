@@ -41,7 +41,10 @@
 #if !defined(_GNU_SOURCE) && defined(HAVE_LINUX_FALLOC_H)
 #define _GNU_SOURCE
 #endif
+#ifndef _KERNEL
+// TODO what is all this mess
 #include <utime.h>
+#endif
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -65,14 +68,19 @@
 #include <linux/falloc.h>
 #endif
 
+
+#ifdef _KERNEL
+// TODO
+#define NULL 0
+#else
+
+#include <sys/types.h>
 #include <sys/mman.h>
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <errno.h>
 #include <sys/socket.h>
-#include <resolv.h>
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -83,8 +91,9 @@
 #include <math.h>
 #include <string.h>
 #include <stdarg.h>
-
 #include <pthread.h>
+#include <unistd.h>
+#endif
 
 #include "dl_broker_segment.h"
 #include "dl_memory.h"
@@ -202,32 +211,46 @@ struct dl_segment * dl_segment_new(long int base_offset,
 	log_name = sbuf_new_auto();
 	sbuf_printf(log_name, "%s/%.*ld.log",
 	    sbuf_data(partition_name), 20, base_offset);
+#ifdef _KERNEL
+#else
 	log_file = open(sbuf_data(log_name), O_RDWR | O_APPEND | O_CREAT, 0666);
 	dl_alloc_big_file(log_file, 0, length);
+#endif
 	sbuf_delete(log_name);
 
 	idx_name = sbuf_new_auto();
 	sbuf_printf(idx_name, "%s/%.*ld.index",
 	    sbuf_data(partition_name), 20, base_offset);
+#ifdef _KERNEL
+#else
 	index_file = open(sbuf_data(idx_name), O_RDWR | O_APPEND | O_CREAT, 0666);
 	dl_alloc_big_file(index_file, 0,  length);
+#endif
 	sbuf_delete(idx_name);
 
 	/* Memory map the index file to perform efficient fecthing;
 	 * binary search based on requested offset.
 	 */
+#ifdef _KERNEL
+#else
 	mmap(NULL, length, PROT_READ|PROT_WRITE, MAP_SHARED, index_file, 0);
+#endif
 
 	seg = (struct dl_segment *) dlog_alloc(sizeof(struct dl_segment));
 // TODO
+	log_file = 0; // TODO
 	seg->_log = log_file;
+	index_file = 0; // TODO
 	seg->_index = index_file;
 	seg->offset = base_offset;
 	seg->base_offset = base_offset;
 	seg->segment_size = length;
+#ifdef _KERNEL
+#else
 	if (pthread_mutex_init(&seg->mtx, NULL) != 0){
 		dl_debug(PRIO_HIGH, "Segment mutex init failed\n");
 	}
+#endif
 
 	return seg;
 }
@@ -236,6 +259,8 @@ struct dl_segment * dl_segment_new(long int base_offset,
 int
 dl_segment_insert_message(struct dl_segment *as, char *message, int32_t message_size)
 {
+#ifdef _KERNEL
+#else
 	off_t index_position, log_position;
 	uint32_t offset, relative_offset;
 	struct iovec index_bufs[2], log_bufs[2];
@@ -269,7 +294,7 @@ dl_segment_insert_message(struct dl_segment *as, char *message, int32_t message_
 	as->offset++;
 
 	dl_segment_unlock(as);
-
+#endif
 	return 0;
 }
 
@@ -314,19 +339,28 @@ dl_segment_get_message_by_offset(struct dl_segment *as, int offset, void *saveto
 void
 dl_segment_close(struct dl_segment *seg)
 {
+#ifdef _KERNEL
+#else
 	// kqueue event on close to fsync the files
 	close(seg->_log);
 	close(seg->_index);
+#endif
 }
 
 void
 dl_segment_lock(struct dl_segment *seg)
 {
+#ifdef _KERNEL
+#else
 	pthread_mutex_lock(&seg->mtx);
+#endif
 }
 
 void
 dl_segment_unlock(struct dl_segment *seg)
 {
+#ifdef _KERNEL
+#else
 	pthread_mutex_unlock(&seg->mtx);
+#endif
 }

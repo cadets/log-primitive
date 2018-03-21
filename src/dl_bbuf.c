@@ -40,13 +40,13 @@
 #include <sys/param.h>
 #endif
 
-#ifdef KERNEL
+#ifdef _KERNEL
+#include <sys/types.h>
 #include <sys/libkern.h>
 #else
+#include <stddef.h>
 #include <strings.h>
 #endif
-
-#include <stddef.h>
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
@@ -171,7 +171,7 @@ dl_bbuf_new_auto(struct dl_bbuf **buffer)
 }
 
 int
-dl_bbuf_bcat(struct dl_bbuf *self, char * const source, int length)
+dl_bbuf_bcat(struct dl_bbuf *self, char const * const source, int length)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
@@ -264,7 +264,7 @@ dl_bbuf_pos(struct dl_bbuf *self)
 }
 
 int
-dl_bbuf_get_int8(struct dl_bbuf *self, int8_t *value)
+dl_bbuf_get_int8(struct dl_bbuf *self, int8_t * const value)
 {
 	struct dl_bbuf_hdr *hdr = &self->dlb_hdr;
 
@@ -398,7 +398,6 @@ int
 dl_bbuf_put_int8(struct dl_bbuf *self, int8_t value)
 {
 	struct dl_bbuf_hdr *hdr = &self->dlb_hdr;
-	int add_len;
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (dl_bbuf_put_int8_at(self, value, hdr->dlbh_pos) == 0) {
@@ -444,7 +443,6 @@ int
 dl_bbuf_put_int16(struct dl_bbuf *self, int16_t value)
 {
 	struct dl_bbuf_hdr *hdr = &self->dlb_hdr;
-	int add_len;
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (dl_bbuf_put_int16_at(self, value, hdr->dlbh_pos) == 0) {
@@ -494,7 +492,6 @@ int
 dl_bbuf_put_int32(struct dl_bbuf *self, int32_t value)
 {
 	struct dl_bbuf_hdr *hdr = &self->dlb_hdr;
-	int add_len;
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (dl_bbuf_put_int32_at(self, value, hdr->dlbh_pos) == 0) {
@@ -552,7 +549,6 @@ int
 dl_bbuf_put_int64(struct dl_bbuf *self, int64_t value)
 {
 	struct dl_bbuf_hdr *hdr = &self->dlb_hdr;
-	int add_len;
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (dl_bbuf_put_int64_at(self, value, hdr->dlbh_pos) == 0) {

@@ -40,11 +40,26 @@
 #include <sys/uio.h>
 
 #ifdef _KERNEL
+#include <netinet/in.h>
+//#include <sys/kernel.h>
+#include <sys/param.h>
+#include <sys/lock.h>
+//#include <sys/module.h>
+#include <sys/mutex.h>
+#include <sys/socket.h>
+#include <sys/socketvar.h>
+#include <sys/systm.h>
+#include <sys/types.h>
+#include <sys/uio.h>
 #include <sys/sbuf.h>
+#include <sys/proc.h>
+#include <sys/kthread.h>
 #else
 #include <arpa/inet.h>
+#include <netinet/in.h>
 #include <netinet/ip.h>
 #include <strings.h>
+#include <stddef.h>
 #endif
 
 #include "dl_assert.h"
@@ -69,12 +84,16 @@ dl_transport_connect(struct dl_transport *self,
 
 #ifdef _KERNEL
 	struct thread *td = curthread;
+	int rc;
 
- 	socreate(AF_INET, &transport->dlt_sock, SOCK_STREAM, IPPROTO_TCP, td->td_ucred, td);
+ 	rc = socreate(AF_INET, &self->dlt_sock, SOCK_STREAM, IPPROTO_TCP, td->td_ucred, td);
+	DLOGTR1(PRIO_LOW, "socreate = %d\n", rc);
 	// TODO: error checking
-	
-	// soconnect(int dom, struct socket **aso, int	type, int proto,
-	// 	 struct	ucred *cred, struct thread *td);
+
+	dest.sin_len = sizeof(struct sockaddr_in);	
+	dest.sin_addr.s_addr = htonl((((((127 << 8) | 0) << 8) | 0) << 8) | 1);
+	rc = soconnect(self->dlt_sock, (struct sockaddr *) &dest, td);
+	DLOGTR1(PRIO_LOW, "soconnect = %d\n", rc);
 	// TODO: error checking
 #else
 	self->dlt_sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -94,7 +113,7 @@ dl_transport_connect(struct dl_transport *self,
 int
 dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 {
-	struct dl_request_or_response *req_or_res;
+	//struct dl_request_or_response *req_or_res;
 	int ret, total = 0;
 	int32_t msg_size;
 	
@@ -104,11 +123,13 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 	/* Read the size of the request or response to process. */
 #ifdef _KERNEL
 	//soreceive
+	ret = 0;
+	msg_size = 0;
 #else
 	ret = recv(self->dlt_sock, &msg_size, sizeof(int32_t), 0);
 	msg_size = be32toh(msg_size);
 #endif
-	DLOGTR2(PRIO_LOW, "Read %d bytes (%p)...\n", ret, msg_size);
+	DLOGTR2(PRIO_LOW, "Read %d bytes (%d)...\n", ret, msg_size);
 	if (ret == 0) {
 		/* Peer has closed connection */
 	} else if (ret > 0) {
@@ -119,8 +140,12 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 			DL_BBUF_FIXEDLEN | DL_BBUF_BIGENDIAN);
 
 		while (total < msg_size) {
+#ifdef _KERNEL
+	//soreceive
+#else
 			total += ret = recv(self->dlt_sock, buffer,
 				msg_size-total, 0);
+#endif
 			DLOGTR2(PRIO_LOW,
 				"\tRead %d characters; expected %d\n",
 				ret, msg_size);
@@ -160,7 +185,7 @@ dl_transport_send_request(const struct dl_transport *self,
 
 #ifdef _KERNEL
 	struct thread *td = curthread;
-	struct uio *u;
+	struct uio u;
 
 	bzero(&u, sizeof(struct uio));
 	u.uio_iov = iov;
@@ -171,7 +196,7 @@ dl_transport_send_request(const struct dl_transport *self,
         u.uio_rw = UIO_WRITE;
         u.uio_td = td;
 
-	return sosend(self->dlt_sock, NULL, u, NULL, NULL, 0, td);
+	return sosend(self->dlt_sock, NULL, &u, NULL, NULL, 0, td);
 #else
 	return writev(self->dlt_sock, iov, 2);
 #endif
@@ -190,6 +215,7 @@ dl_transport_poll(const struct dl_transport *self, int timeout)
 #ifdef _KERNEL
 	//return sopoll(struct socket *so, int events, struct ucred
 	//*active_cred, structthread *td);
+	return 0;
 #else
 	ufd.fd = self->dlt_sock;
 	ufd.events = POLLIN;

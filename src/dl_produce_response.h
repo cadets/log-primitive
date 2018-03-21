@@ -38,14 +38,15 @@
 #define _DL_PRODUCE_RESPONSE_H
 
 #include <sys/queue.h>
+#include <sys/types.h>
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
-#include <sbuf.h>
-#endif
-
+#include <sys/sbuf.h>
+#include <stddef.h>
 #include <stdint.h>
+#endif
 
 #include "dl_bbuf.h"
 #include "dl_response.h"

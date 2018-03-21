@@ -34,7 +34,11 @@
  *
  */
 
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
@@ -60,7 +64,7 @@ dl_list_offset_request_new(int32_t correlation_id, struct sbuf *client_id,
 	/* Construct the ListOffsetRequest. */
 	rc = dl_request_new(&request, DL_OFFSET_API_KEY, correlation_id,
 	    client_id);
-#ifdef KERNEL
+#ifdef _KERNEL
 	DL_ASSERT(rc != 0, ("Failed allocating FetchRequest."));
 	{
 #else
@@ -69,7 +73,7 @@ dl_list_offset_request_new(int32_t correlation_id, struct sbuf *client_id,
 		list_offset_request = request->dlrqm_offset_request =
 		    (struct dl_list_offset_request *) dlog_alloc(
 			sizeof(struct dl_list_offset_request));
-#ifdef KERNEL
+#ifdef _KERNEL
 		DL_ASSERT(list_offset_request != NULL,
 		("Failed allocating ListOffsetequest."));
 		{
@@ -83,7 +87,7 @@ dl_list_offset_request_new(int32_t correlation_id, struct sbuf *client_id,
 			/* Construct a single Topic/Partition. */
 			topic = (struct dl_list_offset_request_topic *)
 			    dlog_alloc(sizeof(struct dl_list_offset_request_topic));	    
-#ifdef KERNEL
+#ifdef _KERNEL
 			DL_ASSERT(topic != NULL,
 			    ("Failed allocating ListOffsetRequest [topic_data]."));
 			{

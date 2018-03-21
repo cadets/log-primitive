@@ -38,10 +38,10 @@
 #ifndef _DL_CONFIG_H
 #define _DL_CONFIG_H
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
-#include <sbuf.h>
+#include <sys/sbuf.h>
 #endif
 
 #include "dl_response.h" 

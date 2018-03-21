@@ -34,7 +34,12 @@
  *
  */
 
+
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
@@ -45,9 +50,9 @@
 #include "dl_response.h"
 
 struct dl_response *
-dl_fetch_response_decode(char *buffer)
+dl_fetch_response_decode(struct dl_bbuf *buffer)
 {
-	struct dl_message_set *message_set;
+	//struct dl_message_set *message_set;
 	struct dl_fetch_response *fetch_response;
 	struct dl_fetch_response_topic *topic;
 	struct dl_fetch_response_partition *partition;

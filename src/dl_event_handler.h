@@ -39,7 +39,12 @@
 
 #include "dl_config.h"
 
+#ifdef _KERNEL
+#include <sys/socketvar.h>
+typedef struct socket * dl_event_handler_handle;
+#else
 typedef int dl_event_handler_handle;
+#endif
 
 /**
  * All interaction from Reactor to an event handler goes through function

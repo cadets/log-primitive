@@ -37,7 +37,10 @@
 #ifndef _DLOG_CLIENT_IMPL_H
 #define _DLOG_CLIENT_IMPL_H
 
+#ifdef _KERNEL
+#else
 #include <pthread.h>
+#endif
 
 #include "dl_config.h"
 #include "dl_correlation_id.h"
@@ -49,7 +52,12 @@
 struct dlog_handle {
 	struct dl_client_configuration const *dlh_config;
 	struct dl_resender *dlh_resender;
-	pthread_t dlh_reader; // TODO: this doens't look right the poll reactor needs a single thread
+#ifdef _KERNEL
+	struct thread *dlh_response_tid; 
+	struct thread *dlh_request_tid; 
+#else
+	pthread_t dlh_response_tid;
+#endif
 	struct dl_request_q *dlh_request_q;
 	struct dl_correlation_id *correlation_id; // TODO: this is also not right, correlation ids aren't per client
 	struct dl_transport *dlh_transport;

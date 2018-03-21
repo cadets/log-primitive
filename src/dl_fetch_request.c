@@ -34,7 +34,11 @@
  *
  */
 
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
@@ -133,7 +137,7 @@ dl_fetch_request_new(const int32_t correlation_id, struct sbuf *client_id,
 int
 dl_fetch_request_decode(struct dl_fetch_request **self, struct dl_bbuf *source)
 {
-	struct dl_message_set *message_set;
+	//struct dl_message_set *message_set;
 	struct dl_fetch_request *request;
 	struct dl_fetch_request_topic *request_topic;
 	struct dl_fetch_request_partition *request_partition;

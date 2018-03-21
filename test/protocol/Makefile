@@ -29,38 +29,15 @@
 # SUCH DAMAGE.
 #
 
-.OBJDIR:= obj
-MK_AUTO_OBJ:= yes
+TESTSDIR= ${TESTBASE}/protocol
+
+ATF_TESTS_C+= atf_dl_fetch_request
+ATF_TESTS_C+= atf_dl_produce_request
 
 
-#dlog_broker.c \
-#	dl_broker_client.c \
+LDADD+= -lprivateatf-c
+LDADD+= -lsbuf
+LDADD+= -lz
+LDADD+= ${SRCTOP}/libdlog.a
 
-# dl_poll_reactor.c \
-
-LIB:= dlog
-SRCS= dlog_client.c \
-	dl_broker_partition.c \
-	dl_broker_segment.c \
-	dl_broker_topic.c \
-	dl_bbuf.c \
-	dl_config.c \
-	dl_correlation_id.c \
-	dl_resender.c \
-	dl_utils.c \
-	dl_thread.c \
-	dl_fetch_request.c \
-	dl_fetch_response.c \
-	dl_list_offset_request.c \
-	dl_list_offset_response.c \
-	dl_message_set.c \
-	dl_primitive_types.c \
-	dl_produce_request.c \
-	dl_produce_response.c \
-	dl_request.c \
-	dl_request_queue.c \
-	dl_response.c \
-	dl_transport.c \
-	lookup3.c
-
-.include <bsd.lib.mk>
+.include <bsd.test.mk>

@@ -34,19 +34,20 @@
  *
  */
 
+#include <sys/types.h>
 #ifdef _KERNEL
 #include <sys/param.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
 #include <sys/proc.h>
 #include <sys/condvar.h>
+#include <sys/kernel.h>
 #include <sys/sbuf.h>
 #else
 #include <pthread.h>
-#include <sbuf.h>
-#endif
-
+#include <sys/sbuf.h>
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_memory.h"
@@ -65,19 +66,22 @@ struct dl_request_q {
 	struct sbuf *dlrq_name;
 };
 
-static char *DL_REQUEST_Q_TYPE = "dlog";
+static char const * const DL_REQUEST_Q_TYPE = "dlog request_q lock";
 
 int 
 dl_request_q_dequeue(struct dl_request_q *self, struct dl_request_queue *local_request_queue)
 {
+#ifndef _KERNEL
 	struct timespec ts;
 	struct timeval now;
+#endif
 	struct dl_request_element *request;
 
-	//DL_ASSERT(self != NULL, ("TODO"));
-	//DL_ASSERT(self != NULL, ("TODO"));
+	DL_ASSERT(self != NULL, ("Request queue instance cannot be NULL."));
+	DL_ASSERT(local_request_queue != NULL, ("Target queue cannot be NULL."));
 
 #ifdef _KERNEL
+	//mtx_assert(&self->dlrq_mtx, MA_NOTOWNED);
 	mtx_lock(&self->dlrq_mtx);		
 #else
 	pthread_mutex_lock(&self->dlrq_mtx);		
@@ -87,21 +91,24 @@ dl_request_q_dequeue(struct dl_request_q *self, struct dl_request_queue *local_r
 		 * queue check whether the thread has been
 		 * canceled.
 		 */
+#ifdef _KERNEL
+		kthread_suspend_check();
+#else
 		pthread_testcancel();
-	
+#endif	
 		/* Wait for elements to be added to the
 		 * reader's queue, whilst also periodically checking
 		 * the thread's cancellation state.
 		 */
 #ifdef _KERNEL
 		// TODO: In-kernel timing
-		cv_timedwait(&self->dlrq_cond, 100);
+		mtx_assert(&self->dlrq_mtx, MA_OWNED);
+		cv_timedwait(&self->dlrq_cond, &self->dlrq_mtx, 10 * hz / 9);
 #else
 		gettimeofday(&now, NULL);
-		ts.tv_sec = now.tv_sec + 2;
+		ts.tv_sec = now.tv_sec + 1;
 		ts.tv_nsec = 0;
 
-		printf("waiing...\n");
 		pthread_cond_timedwait(&self->dlrq_cond, &self->dlrq_mtx, &ts);
 #endif
 	}
@@ -126,18 +133,16 @@ int
 dl_request_q_enqueue(struct dl_request_q *self, struct dl_request_element *request)
 {
 
-	DL_ASSERT(self != NULL, ("TODO"));
-	DL_ASSERT(request != NULL, ("TODO"));
+	DL_ASSERT(self != NULL, ("Request queue instance cannot be NULL."));
+	DL_ASSERT(request != NULL, ("Request instance cannot be NULL."));
 
 #ifdef _KERNEL
+	mtx_assert(&self->dlrq_mtx, MA_NOTOWNED);
 	mtx_lock(&self->dlrq_mtx);
 #else
 	pthread_mutex_lock(&self->dlrq_mtx);
 #endif
-	printf("here = %p\n", &self->dlrq_requests);
-	printf("here = %d\n", STAILQ_EMPTY(&self->dlrq_requests));
 	STAILQ_INSERT_TAIL(&self->dlrq_requests, request, dlrq_entries);
-	printf("here = %d\n", STAILQ_EMPTY(&self->dlrq_requests));
 #ifdef _KERNEL
 	cv_signal(&self->dlrq_cond);
 	mtx_unlock(&self->dlrq_mtx);
@@ -170,6 +175,7 @@ dl_request_q_enqueue_new(struct dl_request_q *self, struct dl_bbuf *buffer,
 	if (request != NULL) {
 #endif
 		/* Construct the request */
+		bzero(request, sizeof(struct dl_request_element));
 		request->dlrq_buffer = buffer;
 		request->dlrq_correlation_id = correlation_id;
 		request->dlrq_api_key = api_key;
@@ -194,19 +200,24 @@ dl_request_q_new(struct dl_request_q **self)
 	
 	DL_ASSERT(self != NULL, ("Request queue instance cannot be NULL."));
 
-	request_q = (struct dl_request_q *) dlog_alloc(sizeof(struct dl_request_q));
+	request_q = (struct dl_request_q *) dlog_alloc(
+		    	sizeof(struct dl_request_q));
 #ifdef _KERNEL
 	DL_ASSERT(request_q != NULL, ("Failed allocating request queue."));
 	{
 #else
 	if (request_q != NULL) {
 #endif
+		bzero(request_q, sizeof(struct dl_request_q));
+
 		STAILQ_INIT(&request_q->dlrq_requests);
 		request_q->dlrq_name = sbuf_new_auto();
 		sbuf_cat(request_q->dlrq_name, "request_q"); //%d", ?);
+		sbuf_finish(request_q->dlrq_name);
 #ifdef _KERNEL
-		mxt_init(&request_q->dlrq_mtx, sbuf_data(request_q->dlrq_name),
-		    DL_REQUEST_Q_TYPE, MTX_DEF);
+		// TODO MTX_RECURSE?
+		mtx_init(&request_q->dlrq_mtx,sbuf_data(request_q->dlrq_name),
+		    DL_REQUEST_Q_TYPE, MTX_DEF|MTX_RECURSE);
 		cv_init(&request_q->dlrq_cond, sbuf_data(request_q->dlrq_name));
 #else
 		pthread_mutex_init(&request_q->dlrq_mtx, NULL);
@@ -219,4 +230,22 @@ dl_request_q_new(struct dl_request_q **self)
 	DLOGTR0(PRIO_HIGH, "Failed allocating request queue.\n");
 	*self = NULL;
 	return -1;
+}
+
+void
+dl_request_q_delete(struct dl_request_q *self)
+{
+	DL_ASSERT(self != NULL, ("Request queue instance cannot be NULL."));
+	DL_ASSERT(STAILQ_EMPTY(&self->dlrq_requests) == 0,
+	    ("Rquest queue is not emprty!"));
+
+	sbuf_delete(self->dlrq_name);
+#ifdef _KERNEL
+	//mtx_destroy(&self->dlrq_mtx);
+	//cv_destroy(&self->dlrq_cond);
+#else
+	pthread_mutex_destory(&self->dlrq_mtx);
+	pthread_cond_destroy(&self->dlrq_cond);
+#endif
+	dlog_free(self);
 }

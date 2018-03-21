@@ -37,7 +37,10 @@
 #ifndef _DL_RESPONSE_H
 #define _DL_RESPONSE_H
 
+#ifdef _KERNEL
+#else
 #include <stdint.h>
+#endif
 
 #include "dl_bbuf.h"
 #include "dl_fetch_response.h"

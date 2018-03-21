@@ -37,10 +37,11 @@
 #ifndef _DL_BROKER_PARTITION_H
 #define _DL_BROKER_PARTITION_H
 
-#ifdef KERNEL
+#include <sys/types.h>
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
-#include <sbuf.h>
+#include <sys/sbuf.h>
 #endif
 
 #include <sys/queue.h>

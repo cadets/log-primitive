@@ -38,13 +38,12 @@
 #define _DL_FETCH_REQUEST_H
 
 #include <sys/queue.h>
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
-#include <sbuf.h>
-#endif
-
+#include <sys/sbuf.h>
 #include <stdint.h>
+#endif
 
 #include "dl_bbuf.h"
 

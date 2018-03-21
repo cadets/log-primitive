@@ -102,7 +102,7 @@ dl_produce_response_decode(struct dl_response **self,
 	struct dl_produce_response_topic *topic_response;
 	struct dl_response *response;
 	struct sbuf *topic_name;
-	int32_t partition, response_it, nresponsess, npartitions;
+	int32_t partition, response_it, npartitions;
 
 	DL_ASSERT(self != NULL, ("Response cannot be NULL."));
 	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL."));

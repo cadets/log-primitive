@@ -34,7 +34,12 @@
  *
  */
 
+#ifdef _KERNEL
+#include <sys/types.h>
+#include <sys/systm.h>
+#else
 #include <stdio.h>
+#endif
 
 #include "dl_config.h"
 

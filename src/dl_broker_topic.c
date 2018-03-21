@@ -34,11 +34,12 @@
  *
  */
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/hash.h>
-#endif
-
+#include <sys/types.h>
+#else
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_broker_topic.h"

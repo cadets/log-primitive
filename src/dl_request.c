@@ -34,7 +34,11 @@
  *
  */
 
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_memory.h"
@@ -262,7 +266,7 @@ dl_request_header_decode(struct dl_request * const request,
 	rc += DL_DECODE_API_VERSION(source, &api_version);
 	if (api_version != 0 || api_version != 1) {
 
-		DLOGTR1(PRIO_HIGH, "Unsupported API version\n", api_version);
+		DLOGTR1(PRIO_HIGH, "Unsupported API version %d\n", api_version);
 		return -1;
 	}
 

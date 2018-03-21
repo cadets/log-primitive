@@ -35,12 +35,11 @@
  *
  */
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/libkern.h>
 #else
 #include <sys/types.h>
 #include <sys/stat.h>
-
 #include <string.h>
 #include <dirent.h>
 #include <unistd.h>
@@ -56,7 +55,7 @@ static int dl_remove_directory(struct sbuf *);
 
 extern unsigned short PRIO_LOG;
 
-#ifdef KERNEL
+#ifdef _KERNEL
 static int
 dl_remove_directory(struct sbuf *path)
 {
@@ -171,4 +170,4 @@ dl_debug(int priority, const char *format, ...)
 
 	va_end(args);
 }
-#endif /* KERNEL */
+#endif /* _KERNEL */

@@ -52,4 +52,4 @@ LDADD+= ${SRCTOP}/obj/libdlog.a
 
 CFLAGS+= -I${SRCTOP}
 
-.include <progs.mk>
+.include <bsd.progs.mk>

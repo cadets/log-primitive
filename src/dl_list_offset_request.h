@@ -38,13 +38,13 @@
 #define _DL_LIST_OFFSET_REQUEST_H
 
 #include <sys/queue.h>
-#ifdef KERNEL
+#include <sys/types.h>
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
-#include <sbuf.h>
-#endif
-
+#include <sys/sbuf.h>
 #include <stdint.h>
+#endif
 
 #include "dl_bbuf.h"
 

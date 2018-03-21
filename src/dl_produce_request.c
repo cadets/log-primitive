@@ -34,7 +34,11 @@
  *
  */
 
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_memory.h"
@@ -49,7 +53,7 @@ int
 dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
     struct sbuf *client, struct sbuf *topic_name, struct dl_message_set * message_set)
 {
-	struct dl_message *message;
+	//struct dl_message *message;
 	struct dl_produce_request *produce_request;
 	struct dl_produce_request_partition *req_partition;
 	struct dl_produce_request_topic *req_topic;
@@ -58,7 +62,7 @@ dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
 
 	/* Construct the ProduceRequest. */
 	rc = dl_request_new(&request, DL_PRODUCE_API_KEY, correlation_id, client);
-#ifdef KERNEL
+#ifdef _KERNEL
 	DL_ASSERT(rc != 0, ("Failed to allocate Request.\n"));
 	{
 #else
@@ -67,7 +71,7 @@ dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
 		produce_request = request->dlrqm_produce_request =
 		    (struct dl_produce_request *) dlog_alloc(
 			sizeof(struct dl_produce_request));
-#ifdef KERNEL
+#ifdef _KERNEL
 		DL_ASSERT(produce_request != NULL,
 		    ("Failed to allocate ProduceRequest.\n"));
 		{
@@ -86,7 +90,7 @@ dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
 			
 			req_topic = (struct dl_produce_request_topic *)
 			    dlog_alloc(sizeof(struct dl_produce_request_topic));
-#ifdef KERNEL
+#ifdef _KERNEL
 			DL_ASSERT(req_topic != NULL,
 			    ("Failed to allocate ProduceRequest [topic_data].\n"));
 			{
@@ -128,16 +132,29 @@ dl_produce_request_new_empty(struct dl_request **self, const int32_t correlation
 }
 
 void
-dl_produce_request_delete(struct dl_request *request)
+dl_produce_request_delete(struct dl_request *self)
 {
-	// TODO
+	//struct dl_produce_request *produce_request = self->dlrqm_produce_request;
+	//struct dl_produce_request_topic *req_topic;
+
+	DL_ASSERT(self != NULL, ("ProduceRequest instance cannot be NULL."));
+
+	/*
+	SLIST_FOREACH(req_topic, &produce_request->dlpr_topics, dlprt_entries) {
+
+		dlog_free(req_topic);
+	};
+	
+	dlog_free(produce_request);
+	dlog_free(self);
+	*/
 }
 
 int
 dl_produce_request_decode(struct dl_produce_request **self,
     struct dl_bbuf *source)
 {
-	struct dl_message_set *message_set;
+	//struct dl_message_set *message_set;
 	struct dl_produce_request *request;
 	struct dl_produce_request_topic *req_topic;
 	struct dl_produce_request_partition *req_partition;
@@ -149,7 +166,7 @@ dl_produce_request_decode(struct dl_produce_request **self,
 	/* Construct the ProduceRequest. */
 	request = (struct dl_produce_request *) dlog_alloc(
 	    sizeof(struct dl_produce_request));
-#ifdef KERNEL
+#ifdef _KERNEL
 	DL_ASSERT(request != NULL, ("Failed to allocate ProduceRequest.\n"));
 	{
 #else
@@ -180,7 +197,7 @@ dl_produce_request_decode(struct dl_produce_request **self,
 				sizeof(struct dl_produce_request_topic) + 
 				(npartitions - 1) *
 				sizeof(struct dl_produce_request_partition));
-#ifdef KERNEL
+#ifdef _KERNEL
 			DL_ASSERT(req_topic != NULL,
 			    ("Failed to allocate Request.\n"));
 			{

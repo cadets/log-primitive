@@ -38,13 +38,13 @@
 #define _DL_FETCH_RESPONSE_H
 
 #include <sys/queue.h>
-#ifdef KERNEL
+#include <sys/types.h>
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
-#include <sbuf.h>
-#endif
-
+#include <sys/sbuf.h>
 #include <stdint.h>
+#endif
 
 #include "dl_bbuf.h"
 #include "dl_message_set.h"
@@ -73,7 +73,7 @@ struct dl_fetch_response {
 	int32_t dlfr_throttle_time;
 };
 
-extern struct dl_response * dl_fetch_response_decode(char *);
+extern struct dl_response * dl_fetch_response_decode(struct dl_bbuf *);
 extern int dl_fetch_response_encode(struct dl_fetch_response *,
     struct dl_bbuf *);
 

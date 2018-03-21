@@ -34,13 +34,17 @@
  *
  */
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/libkern.h>
 #else
 #include <string.h>
 #endif
 
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 // TODO: temporary
@@ -85,9 +89,8 @@ dl_decode_string(struct dl_bbuf *source, struct sbuf **target)
  * a value of -1 indicates a NULL string.
  */
 int
-dl_decode_bytes(char const * const target, int *target_len, struct dl_bbuf *source)
+dl_decode_bytes(char * const target, int *target_len, struct dl_bbuf *source)
 {
-	int bytes_len, decoded_len = 0;
 	int32_t nbytes;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
@@ -103,10 +106,10 @@ dl_decode_bytes(char const * const target, int *target_len, struct dl_bbuf *sour
 	} else {
 		*target_len = nbytes;
 		for (int i = 0; i < nbytes; i++) {
-			dl_bbuf_get_int8(source, target[i]);
+			dl_bbuf_get_int8(source, &target[i]);
 		}
 	}
-	return decoded_len;
+	return 0;
 }
 
 /**

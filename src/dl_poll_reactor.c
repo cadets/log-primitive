@@ -35,7 +35,7 @@
 
 #include <sys/queue.h>
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/libkern.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
@@ -196,6 +196,7 @@ dl_poll_reactor_handle_events(void)
 	nhandles = dl_build_poll_array(fds);
 #ifdef _KERNEL
 	//sopoll();
+	pause("test", 1);
 #else
 	/* Invoke the synchronous event demultiplexer. */
 	if (0 < poll(fds, nhandles, -1)) {

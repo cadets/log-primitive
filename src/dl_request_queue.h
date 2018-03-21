@@ -41,7 +41,10 @@
 #include <sys/tree.h>
 #include <sys/types.h>
 
+#ifdef _KERNEL
+#else
 #include <stdint.h>
+#endif
 
 #include "dl_bbuf.h"
 
@@ -52,7 +55,7 @@ STAILQ_HEAD(dl_request_queue, dl_request_element);
 struct dl_request_element {
 	STAILQ_ENTRY(dl_request_element) dlrq_entries;
 	RB_ENTRY(dl_request_element) dlrq_linkage;
-	struct dl_buffer *dlrq_buffer;
+	struct dl_bbuf *dlrq_buffer;
 	time_t dlrq_last_sent;
 	int32_t dlrq_correlation_id;
 	int16_t dlrq_api_key;
@@ -61,7 +64,8 @@ struct dl_request_element {
 extern int dl_request_q_dequeue(struct dl_request_q *, struct dl_request_queue *);
 extern int dl_request_q_enqueue(struct dl_request_q *, struct dl_request_element *);
 extern int dl_request_q_enqueue_new(struct dl_request_q *, struct dl_bbuf *, int32_t, int16_t);
-extern void dl_request_q_delete(struct dl_request_q **);
+
 extern int dl_request_q_new(struct dl_request_q **);
+extern void dl_request_q_delete(struct dl_request_q *);
 
 #endif

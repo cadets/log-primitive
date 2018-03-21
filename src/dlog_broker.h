@@ -71,6 +71,6 @@ extern struct dlog_broker_handle * dlog_broker_create_server(const int,
     struct broker_configuration const * const);
 extern void dlog_broker_init(char const * const,
     struct broker_configuration const * const);
-extern void dlog_broker_fini();
+extern void dlog_broker_fini(void);
 
 #endif

@@ -38,8 +38,12 @@
 #include <sys/event.h>
 #include <sys/time.h>
 
+#ifdef __KERNEL
+#else
 #include <errno.h>
 #include <stddef.h>
+#include <unistd.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_broker_partition.h"
@@ -47,6 +51,9 @@
 #include "dl_poll_reactor.h"
 #include "dl_utils.h"
 
+
+#ifdef __KERNEL
+#else
 static const off_t DL_FSYNC_DEFAULT_CHARS = 1000;
 
 static dl_event_handler_handle dl_partition_get_kq(void *);
@@ -87,20 +94,23 @@ dl_partition_handle_kq(void *instance)
 		dl_segment_unlock(segment);
 	}
 }
+#endif
 
 int
 dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 {
 	struct dl_partition *partition;
+#ifndef _KERNEL
 	struct dl_segement *segment;
 	struct kevent event;
+#endif
 	struct sbuf *partition_name;
 
 	DL_ASSERT(topic_name != NULL, ("Topic name cannot be NULL."));
 
 	partition = (struct dl_partition *) dlog_alloc(
 	    sizeof(struct dl_partition));
-#ifdef KERNEL
+#ifdef _KERNEL
 	DL_ASSERT(partition != NULL, ("Failed allocating partition."));
 	{
 #else
@@ -118,7 +128,7 @@ dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 
 		partition->dlp_active_segment =
 		    dl_segment_new_default(partition_name);
-#ifdef KERNEL
+#ifdef _KERNEL
 		DL_ASSERT(partition->dlp_active_segment != NULL,
 		    ("Failed allocating partition segment."));
 		{
@@ -135,6 +145,8 @@ dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 			//topic_partition = SLIST_FIRST(&topic->dlt_partitions);
 			//active_segment = topic_partition->dlp_active_segment; 
 
+#ifdef __KERNEL
+#else
 			partition->_klog = kqueue();
 // TODO error handling
 			EV_SET(&event, partition->dlp_active_segment->_log,
@@ -148,6 +160,7 @@ dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 			/* Register the topic's active partition with the poll reactor. */
 			dl_poll_reactor_register(&partition->event_handler);
 // TODO error handling
+#endif
 
 			*self = partition;
 			return 0;

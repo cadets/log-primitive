@@ -44,16 +44,17 @@
 #include <sys/types.h>
 
 #ifdef _KERNEL
+#include <sys/kthread.h>
 #include <sys/sbuf.h>
+#include <sys/kernel.h>
 #else
-#include <sbuf.h>
+#include <sys/sbuf.h>
 #include <errno.h>
 #include <pthread.h>
 #include <unistd.h>
 #include <string.h>
-#endif
-
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
@@ -77,15 +78,24 @@
 // if not should it be 63 or 255?
 #define HOST_NAME_MAX 255
 
+#ifdef _KERNEL
+static void dl_request_thread(void *);
+static void dl_response_thread(void *);
+#else
 static void * dl_request_thread(void *);
 static void * dl_response_thread(void *);
+#endif
 static void dl_start_response_thread(struct dlog_handle *,
     struct dl_client_configuration const *, struct dl_transport *);
 
 //dlog_client_init(()
-//pthread_t dlh_reader;
+//pthread_t dlh_response_tid;
 //static struct dl_correlation_id *correlation_id;
 //correlation_id = dl_correlation_id_new();
+
+#ifdef _KERNEL
+extern struct proc *dlog_client_proc;
+#endif
 
 static dl_event_handler_handle
 dlog_client_get_handle(void *instance)
@@ -102,7 +112,6 @@ dlog_client_handle_read_event(void *instance)
 	struct dl_response *response = NULL;
 	struct dl_response_header *header;
 	struct dl_bbuf *buffer;
-	int msg_size;
 
 	DLOGTR0(PRIO_LOW, "dlog_client_handle_read_event\n");
 
@@ -179,23 +188,29 @@ dlog_client_handle_read_event(void *instance)
 		// TODO: Free the dl_bbuf instance
 	} else {
 		/* Server disconnected. */
-		dl_poll_reactor_unregister(&handle->dlh_event_handler);
+		//dl_poll_reactor_unregister(&handle->dlh_event_handler);
 
 		/* Reconnect and register */
 		// TODO: What about the request?
 	}
 }
 
+#ifdef _KERNEL
+static void
+#else
 static void *
+#endif
 dl_request_thread(void *vargp)
 {
-	struct dlog_handle *handle = (struct dl_request_argument *) vargp;
+	struct dlog_handle *handle = (struct dlog_handle *) vargp;
 	struct dl_request_queue local_request_queue;
 	struct dl_request_element *request, *request_temp;
 	struct dl_transport *transport;
+#ifndef _KERNEL
 	struct timespec ts;
 	struct timeval now;
 	int rv, msg_size, old_cancel_state, port;
+#endif
 	ssize_t nbytes;
 #ifdef __APPLE__
 	int32_t secs, msecs;
@@ -207,15 +222,14 @@ dl_request_thread(void *vargp)
 	
 	DLOGTR0(PRIO_LOW, "Request thread started...\n");
 
-	/* Copy the thread arguements and free the memory. */
+	/* Copy the thread arguments and free the memory. */
 	transport = handle->dlh_transport;
 
 	/* Defer cancellation of the thread until the cancellation point 
 	 * This ensures that thread isn't cancelled until outstanding requests
 	 * have been processed.
 	 */	
-#ifdef _KERNEL
-#else
+#ifndef _KERNEL
 	pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, &old_cancel_state);
 #endif
 
@@ -225,60 +239,61 @@ dl_request_thread(void *vargp)
 	STAILQ_INIT(&local_request_queue);
 
 	for (;;) {
-		dl_request_q_dequeue(handle->dlh_request_q, &local_request_queue);
+		DLOGTR0(PRIO_LOW, "Dequeuing requests...\n");
+		if (dl_request_q_dequeue(handle->dlh_request_q, &local_request_queue) == 0) {
+			STAILQ_FOREACH_SAFE(request, &local_request_queue, dlrq_entries,
+			    request_temp) {
+				STAILQ_REMOVE_HEAD(&local_request_queue, dlrq_entries);
 
-		STAILQ_FOREACH_SAFE(request, &local_request_queue, dlrq_entries,
-		    request_temp) {
-			STAILQ_REMOVE_HEAD(&local_request_queue, dlrq_entries);
+				DLOGTR1(PRIO_LOW, "Dequeued request (id = %d)\n",
+				request->dlrq_correlation_id);
 
-			DLOGTR1(PRIO_LOW, "Dequeued request (id = %d)\n",
-			request->dlrq_correlation_id);
+				nbytes = dl_transport_send_request(transport,
+				    request->dlrq_buffer);
+				if (nbytes != -1) {
+					DLOGTR1(PRIO_LOW,
+					    "Successfully sent request (id = %d)\n",
+					    request->dlrq_correlation_id);
 
-			nbytes = dl_transport_send_request(transport,
-			    request->dlrq_buffer);
-			if (nbytes != -1) {
-				DLOGTR1(PRIO_LOW,
-				    "Successfully sent request (id = %d)\n",
-				    request->dlrq_correlation_id);
+					/* The request must be acknowledged, store
+					 * the request until an acknowledgment is
+					 * received from the broker.
+					 */
 
-				/* The request must be acknowledged, store
-				 * the request until an acknowledgment is
-				 * received from the broker.
-				 */
-
-				/* Successfuly send the request,
-				 * record the last send time.
-				 */
+					/* Successfuly send the request,
+					 * record the last send time.
+					 */
 #ifdef _KERNEL
 #ifdef __APPLE__
-				clock_get_calendar_microtime(&secs,
-					&msecs);
-				request->dlrq_last_sent =
-					(secs * 1000) + msecs;
+					clock_get_calendar_microtime(&secs,
+						&msecs);
+					request->dlrq_last_sent =
+						(secs * 1000) + msecs;
 #else
-				getmicrottime(&tv);
-				request->dlrq_last_sent =
-					(tv.tv_sec *1000) +
-					(tv.tv_usec/1000);
+					getmicrotime(&tv);
+					request->dlrq_last_sent =
+						(tv.tv_sec *1000) +
+						(tv.tv_usec/1000);
 #endif
 #else
-				request->dlrq_last_sent = time(NULL);
+					request->dlrq_last_sent = time(NULL);
 #endif
 
-				DLOGTR1(PRIO_LOW,
-				"Inserting into the tree with key %d\n",
-				request->dlrq_correlation_id);
+					DLOGTR1(PRIO_LOW,
+					"Inserting into the tree with key %d\n",
+					request->dlrq_correlation_id);
 
-				// TODO: Add error handling
-				dl_resender_unackd_request(
-					handle->dlh_resender, request);
-				DLOGTR1(PRIO_NORMAL,
-					"Processed request %d\n",
-				request->dlrq_correlation_id);
-			} else {
-				// TODO: proper errro handling is necessary
-				DLOGTR0(PRIO_NORMAL, "socket send error\n");
-				//singal cond var and break ?
+					// TODO: Add error handling
+					dl_resender_unackd_request(
+						handle->dlh_resender, request);
+					DLOGTR1(PRIO_NORMAL,
+						"Processed request %d\n",
+					request->dlrq_correlation_id);
+				} else {
+					// TODO: proper errro handling is necessary
+					DLOGTR0(PRIO_NORMAL, "socket send error\n");
+					//singal cond var and break ?
+				}
 			}
 		}
 	}
@@ -289,14 +304,18 @@ dl_request_thread(void *vargp)
 #endif
 }
 
+#ifdef _KERNEL
+static void
+#else
 static void *
+#endif
 dl_response_thread(void *vargp)
 {
 
 	DLOGTR0(PRIO_LOW, "Response thread started...\n");
 
 	for (;;) {
-		dl_poll_reactor_handle_events();
+		//dl_poll_reactor_handle_events();
 	}
 #ifdef _KERNEL
 	kproc_exit(0);
@@ -312,9 +331,9 @@ dl_start_response_thread(struct dlog_handle *handle,
 	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
 
 #ifdef _KERNEL
-	kproc_kthread_add(dl_response_thread, NULL, dlog_client_proc, &handle->dlh_reader, 0, 0, NULL);
+	kproc_kthread_add(dl_response_thread, NULL, &dlog_client_proc, &handle->dlh_response_tid, 0, 0, NULL, NULL);
 #else
-	pthread_create(&handle->dlh_reader, NULL, dl_response_thread, NULL);
+	pthread_create(&handle->dlh_response_tid, NULL, dl_response_thread, NULL);
 #endif
 }
 
@@ -323,7 +342,6 @@ dlog_client_open(struct sbuf *hostname,
     const int portnumber, struct dl_client_configuration const * const cc)
 {
 	struct dlog_handle *handle;
-	int ret;
 	
 	DL_ASSERT(hostname != NULL, "Hostname cannot be NULL");
 	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
@@ -347,7 +365,7 @@ dlog_client_open(struct sbuf *hostname,
 		dl_request_q_new(&handle->dlh_request_q);
 
 		/* Instantiate a correlation id. */
-		handle->correlation_id = dl_correlation_id_new();
+		dl_correlation_id_new(&handle->correlation_id);
 		DL_ASSERT(handle->correlation_id != NULL,
 		"Failed instatiating new correlation_id\n");
 
@@ -366,8 +384,8 @@ dlog_client_open(struct sbuf *hostname,
 		handle->dlh_event_handler.dleh_handle_event = dlog_client_handle_read_event;
 
 #ifdef _KERNEL
-		kproc_kthread_add(request_thread, NULL, dlog_client_proc,
-		    &handle->dlh_request_tid, 0, 0, NULL);
+		kproc_kthread_add(dl_request_thread, handle, &dlog_client_proc,
+		    &handle->dlh_request_tid, 0, 0, NULL, NULL);
 #else
 		pthread_t request_thread;
 		if (0 == pthread_create(&request_thread, NULL,
@@ -377,14 +395,14 @@ dlog_client_open(struct sbuf *hostname,
 #endif
 
 		// TODO: temp
-		struct broker_configuration *bc = (struct broker_configuration *)
-		dlog_alloc(sizeof(struct broker_configuration));
-		bc->fsync_thread_sleep_length = 10;
+		//struct broker_configuration *bc = (struct broker_configuration *)
+		//dlog_alloc(sizeof(struct broker_configuration));
+		// bc->fsync_thread_sleep_length = 10;
 
-		dlog_broker_init("cadets-trace", bc);
+		//dlog_broker_init("cadets-trace", bc);
 
-		dl_poll_reactor_register(&handle->dlh_event_handler);
-		dl_start_response_thread(handle, cc, transport);
+		//dl_poll_reactor_register(&handle->dlh_event_handler);
+		//dl_start_response_thread(handle, cc, transport);
 	}
 	return handle;
 }
@@ -394,21 +412,33 @@ dlog_client_close(struct dlog_handle *handle)
 {
 	int rc;
 
-	/* Cancel the reader threads */
+	/* Cancel the request thread. */
 #ifdef _KERNEL
+	rc = kthread_suspend(handle->dlh_request_tid, 2 * (10 * hz / 9));
 #else
-	rc = pthread_cancel(handle->dlh_reader);
+	rc = pthread_cancel(handle->dlh_response_tid);
 #endif
 	if (rc != 0)
 		DLOGTR1(PRIO_HIGH, "Error stopping reader %d\n", rc);
+	
+	/* Delete the request_q. */
+	dl_request_q_delete(handle->dlh_request_q);
 	
 	/* Cancel the resender */
 	rc = dl_resender_stop(handle->dlh_resender);
 	if (rc != 0)
 		DLOGTR1(PRIO_HIGH, "Failed stopping the resender %d\n", rc);
 
+	dl_resender_delete(handle->dlh_resender);
+
 	/* Free the correlation id. */	
-	dl_correlation_id_fini(handle->correlation_id);
+	dl_correlation_id_delete(handle->correlation_id);
+	
+	/* Free all the memory associated with the client. . */
+	dlog_free(handle->dlh_transport);
+	dlog_free(handle);	
+
+	DLOGTR0(PRIO_LOW, "DLog client finished\n");
 
 	return 0;
 }
@@ -526,7 +556,6 @@ dlog_produce(struct dlog_handle *handle, struct sbuf *topic_name,
 	struct dl_bbuf *buffer;
 	struct dl_request *message;
 	struct dl_message_set *message_set;
-	int result = 0;
 
 	/* Instantiate a new MessageSet. */
 	message_set = dl_message_set_new(key, key_len, value, value_len);
@@ -541,7 +570,7 @@ dlog_produce(struct dlog_handle *handle, struct sbuf *topic_name,
 	DLOGTR1(PRIO_LOW, "Constructed request (id = %d)\n",
 	    message->dlrqm_correlation_id);
 		
-	dlog_broker_handle(message);
+	//dlog_broker_handle(message);
 
 	/* Encode the request. */	
 	if (dl_request_encode(message, &buffer) == 0) {

@@ -58,6 +58,6 @@ extern int dl_transport_read_msg(struct dl_transport *, struct dl_bbuf **);
 extern int dl_transport_send_request(struct dl_transport const *,
     struct dl_bbuf const *);
 extern int dl_transport_poll(struct dl_transport const *, int);
-extern int dl_transport_close();
+extern int dl_transport_close(void);
 
 #endif

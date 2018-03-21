@@ -37,19 +37,18 @@
 #ifndef _DL_BROKER_SEGMENT_H
 #define _DL_BROKER_SEGMENT_H
 
-#ifdef KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sbuf.h>
-#endif
-
 #include <sys/types.h>
 #include <sys/queue.h>
+#ifdef _KERNEL
+#include <sys/sbuf.h>
+#else
+#include <sys/sbuf.h>
+#endif
 
 SLIST_HEAD(dl_segments, dl_segment);
 
 struct dl_segment {
-	SLIST_ENTRY(segment) dls_entries;
+	SLIST_ENTRY(dl_segment) dls_entries;
 	pthread_mutex_t mtx; /* Lock for segemnt whilst updating its log/index. */
 	u_int64_t base_offset; /* Start offset of the log. */
 	u_int32_t segment_size;

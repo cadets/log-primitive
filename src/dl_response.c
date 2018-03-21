@@ -34,7 +34,11 @@
  *
  */
 
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
@@ -54,7 +58,6 @@ dl_response_header_decode(struct dl_response_header **header,
     struct dl_bbuf *source)
 {
 	struct dl_response_header *self;
-	int32_t response_size;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL\n");
 

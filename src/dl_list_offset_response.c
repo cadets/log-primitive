@@ -34,7 +34,11 @@
  *
  */
 
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
@@ -61,8 +65,8 @@ dl_list_offset_response_new(char *topic_name, int16_t error_code, int64_t time,
 
 	response_topic = (struct dl_list_offset_response_topic *) dlog_alloc(
 	    sizeof(struct dl_list_offset_response_topic));	    
-	strlcpy(response_topic->dlort_topic_name, topic_name,
-	    DL_MAX_TOPIC_NAME_LEN);
+	//strlcpy(response_topic->dlort_topic_name, topic_name,
+	//    DL_MAX_TOPIC_NAME_LEN);
 	response_topic->dlort_npartitions = 1;
 	SLIST_INIT(&response_topic->dlort_partitions);
 
@@ -149,7 +153,7 @@ dl_list_offset_response_decode(struct dl_bbuf *source)
 			    &response_partition->dlorp_timestamp);
 			
 			/* Decode the Offset*/
-			int rc= DL_DECODE_OFFSET(source,
+			DL_DECODE_OFFSET(source,
 			    &response_partition->dlorp_offset);
 		
 			SLIST_INSERT_HEAD(&response_topic->dlort_partitions,
