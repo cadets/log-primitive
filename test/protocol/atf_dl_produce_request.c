@@ -54,13 +54,7 @@ const dlog_free_func dlog_free = free;
 /* Test 1
  * dl_produce_request_new_empty() - valid params. 
  */
-ATF_TC(test1);
-ATF_TC_HEAD(test1, tc)
-{
-	atf_tc_set_md_var(tc,
-	    "descr", "dl_produce_request_new_entry() valid params");
-}
-
+ATF_TC_WITHOUT_HEAD(test1);
 ATF_TC_BODY(test1, tc)
 {
 	struct dl_request *request;
@@ -85,15 +79,9 @@ ATF_TC_BODY(test1, tc)
 }
 
 /* Test 2
- * dl_produce_request_new_empty() - NULL client id. 
+ * dl_produce_request_new_empty() - valid params, NULL client id. 
  */
-ATF_TC(test2);
-ATF_TC_HEAD(test2, tc)
-{
-	atf_tc_set_md_var(tc,
-	    "descr", "dl_produce_request_new_empty() - NULL client id."); 
-}
-
+ATF_TC_WITHOUT_HEAD(test2);
 ATF_TC_BODY(test2, tc)
 {
 	struct dl_request *request;
@@ -111,14 +99,10 @@ ATF_TC_BODY(test2, tc)
 	sbuf_delete(topic);
 }
 
-/* Test 3 */
-
-ATF_TC(test3);
-ATF_TC_HEAD(test3, tc)
-{
-	atf_tc_set_md_var(tc, "descr", "ProduceRequest ctor");
-}
-
+/* Test 3 
+ * dl_produce_request_new() - valid params. 
+ */
+ATF_TC_WITHOUT_HEAD(test3);
 ATF_TC_BODY(test3, tc)
 {
 	struct dl_request *request;
@@ -149,15 +133,80 @@ ATF_TC_BODY(test3, tc)
 	sbuf_delete(topic);
 }
 
-/* Test 4 */
-
-ATF_TC(test4);
-ATF_TC_HEAD(test4, tc)
+/* Test 4 
+ * dl_produce_request_new() - invalid params - request NULL. 
+ */
+ATF_TC_WITHOUT_HEAD(test4);
+ATF_TC_BODY(test4, tc)
 {
-	atf_tc_set_md_var(tc, "descr", "ProduceRequest ctor NULL client_id");
+	struct dl_request *request;
+	struct dl_message_set *msg_set;
+	struct sbuf *client_id, *topic;
+	char *key = "key", *value = "value";
+	int key_len, value_len, rc;
+
+	client_id = sbuf_new_auto();
+	sbuf_cpy(client_id, "test-client");
+	sbuf_finish(client_id);
+
+	topic = sbuf_new_auto();
+	sbuf_cpy(topic, "test-topic");
+	sbuf_finish(topic);
+
+	key_len = strlen(key);
+	value_len = strlen(value);
+	msg_set = dl_message_set_new(key, key_len, value, value_len);
+	ATF_REQUIRE(msg_set != NULL);
+
+	atf_tc_expect_signal(6, "NULL value passed to request.");
+	rc = dl_produce_request_new(NULL, 0, client_id, topic, msg_set);
+
+	sbuf_delete(client_id);
+	sbuf_delete(topic);
 }
 
-ATF_TC_BODY(test4, tc)
+/* Test 5 
+ * dl_produce_request_new() - invalid params - topic name NULL. 
+ */
+ATF_TC_WITHOUT_HEAD(test5);
+ATF_TC_BODY(test5, tc)
+{
+	struct dl_request *request;
+	struct dl_message_set *msg_set;
+	struct sbuf *client_id;
+	char *key = "key", *value = "value";
+	int key_len, value_len, rc;
+
+	client_id = sbuf_new_auto();
+	sbuf_cpy(client_id, "test-client");
+	sbuf_finish(client_id);
+
+	key_len = strlen(key);
+	value_len = strlen(value);
+	msg_set = dl_message_set_new(key, key_len, value, value_len);
+	ATF_REQUIRE(msg_set != NULL);
+
+	atf_tc_expect_signal(6, "NULL value passed to topic name.");
+	rc = dl_produce_request_new(&request, 0, client_id, NULL, msg_set);
+
+	sbuf_delete(client_id);
+}
+
+/* Test 6 
+ * dl_produce_request_data() - invalid params - request NULL. 
+ */
+ATF_TC_WITHOUT_HEAD(test6);
+ATF_TC_BODY(test6, tc)
+{
+	atf_tc_expect_signal(6, "NULL value passed to request.");
+	dl_produce_request_delete(NULL);
+}
+
+/* Test 7 
+ * dl_produce_request_encode() - valid params. 
+ */
+ATF_TC_WITHOUT_HEAD(test7);
+ATF_TC_BODY(test7, tc)
 {
 	struct dl_request *request;
 	struct sbuf *client_id, *topic;
@@ -184,12 +233,102 @@ ATF_TC_BODY(test4, tc)
 	sbuf_delete(client_id);
 }
 
+/* Test 8 
+ * dl_produce_request_data() - invalid params - request NULL. 
+ */
+ATF_TC_WITHOUT_HEAD(test8);
+ATF_TC_BODY(test8, tc)
+{
+	struct dl_bbuf *buffer;
+	int rc;
+
+	rc = dl_bbuf_new_auto(&buffer);
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(buffer != NULL);
+
+	atf_tc_expect_signal(6, "NULL value passed to request.");
+	dl_produce_request_encode(NULL, buffer);
+}
+
+/* Test 9 
+ * dl_produce_request_data() - invalid params - buffer NULL. 
+ */
+ATF_TC_WITHOUT_HEAD(test9);
+ATF_TC_BODY(test9, tc)
+{
+	struct dl_request *request;
+	struct sbuf *client_id, *topic;
+	struct dl_bbuf *buffer;
+	int rc;
+
+	client_id = sbuf_new_auto();
+	sbuf_cpy(client_id, "test-client");
+	sbuf_finish(client_id);
+
+	topic = sbuf_new_auto();
+	sbuf_cpy(topic, "test-topic");
+	sbuf_finish(topic);
+
+	rc = dl_produce_request_new_empty(&request, 0, client_id, topic);
+	ATF_REQUIRE(rc == 0);
+
+	atf_tc_expect_signal(6, "NULL value passed to buffer.");
+	dl_request_encode(request, NULL);
+	
+	dl_produce_request_delete(request);
+	sbuf_delete(topic);
+	sbuf_delete(client_id);
+}
+
+/* Test 10 
+ * dl_produce_request_encode|decode() - valid params. 
+ */
+ATF_TC_WITHOUT_HEAD(test10);
+ATF_TC_BODY(test10, tc)
+{
+	struct dl_request *request, *decoded_request;
+	struct sbuf *client_id, *topic;
+	struct dl_bbuf *buffer;
+	int rc;
+
+	client_id = sbuf_new_auto();
+	sbuf_cpy(client_id, "test-client");
+	sbuf_finish(client_id);
+
+	topic = sbuf_new_auto();
+	sbuf_cpy(topic, "test-topic");
+	sbuf_finish(topic);
+
+	rc = dl_produce_request_new_empty(&request, 0, client_id, topic);
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_encode(request, &buffer);
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(buffer != NULL);
+
+	dl_bbuf_flip(buffer);	
+	rc = dl_request_decode(&decoded_request, buffer);
+	ATF_REQUIRE_MSG(rc == 0, "rc = %d\n", rc);
+	ATF_REQUIRE(decoded_request != NULL);
+
+	dl_produce_request_delete(request);
+	dl_produce_request_delete(decoded_request);
+	sbuf_delete(topic);
+	sbuf_delete(client_id);
+}
+
 ATF_TP_ADD_TCS(tp)
 {
 	ATF_TP_ADD_TC(tp, test1);
 	ATF_TP_ADD_TC(tp, test2);
 	ATF_TP_ADD_TC(tp, test3);
 	ATF_TP_ADD_TC(tp, test4);
+	ATF_TP_ADD_TC(tp, test5);
+	ATF_TP_ADD_TC(tp, test6);
+	ATF_TP_ADD_TC(tp, test7);
+	ATF_TP_ADD_TC(tp, test8);
+	ATF_TP_ADD_TC(tp, test9);
+	ATF_TP_ADD_TC(tp, test10);
 
 	return atf_no_error();
 }

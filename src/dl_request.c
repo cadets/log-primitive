@@ -239,6 +239,7 @@ dl_request_decode(struct dl_request ** const self,
 			}
 		} else {
 			DLOGTR0(PRIO_HIGH, "Error decoding request header.\n");
+			return -1;
 		}
 	}
 
@@ -261,10 +262,10 @@ dl_request_header_decode(struct dl_request * const request,
 
 	/* Decode the Request APIKey. */
 	rc = DL_DECODE_API_KEY(source, &request->dlrqm_api_key);
-
+	
 	/* Decode the Request APIVersion and check it is supported. */
 	rc += DL_DECODE_API_VERSION(source, &api_version);
-	if (api_version != 0 || api_version != 1) {
+	if (api_version != 0 && api_version != 1) {
 
 		DLOGTR1(PRIO_HIGH, "Unsupported API version %d\n", api_version);
 		return -1;

@@ -53,16 +53,14 @@ int
 dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
     struct sbuf *client, struct sbuf *topic_name, struct dl_message_set * message_set)
 {
-	//struct dl_message *message;
 	struct dl_produce_request *produce_request;
 	struct dl_produce_request_partition *req_partition;
 	struct dl_produce_request_topic *req_topic;
 	struct dl_request *request;
 	int rc;
 
-	//DL_ASSERT();
-	//DL_ASSERT();
-	//DL_ASSERT();
+	DL_ASSERT(self != NULL, ("ProduceRequest instance cannot be NULL."));
+	DL_ASSERT(topic_name != NULL, ("ProduceRequest topic name cannot be NULL."));
 
 	/* Construct the ProduceRequest. */
 	rc = dl_request_new(&request, DL_PRODUCE_API_KEY, correlation_id, client);
@@ -138,20 +136,22 @@ dl_produce_request_new_empty(struct dl_request **self, const int32_t correlation
 void
 dl_produce_request_delete(struct dl_request *self)
 {
-	//struct dl_produce_request *produce_request = self->dlrqm_produce_request;
-	//struct dl_produce_request_topic *req_topic;
+	struct dl_produce_request *produce_request = self->dlrqm_produce_request;
+	struct dl_produce_request_topic *req_topic, *req_topic_temp;
 
 	DL_ASSERT(self != NULL, ("ProduceRequest instance cannot be NULL."));
 
-	/*
-	SLIST_FOREACH(req_topic, &produce_request->dlpr_topics, dlprt_entries) {
+	SLIST_FOREACH_SAFE(req_topic, &produce_request->dlpr_topics,
+	    dlprt_entries, req_topic_temp) {
+
+		req_topic = SLIST_FIRST(&produce_request->dlpr_topics);
+		SLIST_REMOVE(&produce_request->dlpr_topics, req_topic,
+		    dl_produce_request_topic, dlprt_entries);
 
 		dlog_free(req_topic);
 	};
-	
 	dlog_free(produce_request);
 	dlog_free(self);
-	*/
 }
 
 int
