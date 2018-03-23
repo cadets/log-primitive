@@ -38,7 +38,7 @@
 #include <sys/event.h>
 #include <sys/time.h>
 
-#ifdef __KERNEL
+#ifdef _KERNEL
 #else
 #include <errno.h>
 #include <stddef.h>
@@ -52,7 +52,7 @@
 #include "dl_utils.h"
 
 
-#ifdef __KERNEL
+#ifdef _KERNEL
 #else
 static const off_t DL_FSYNC_DEFAULT_CHARS = 1000;
 
@@ -145,7 +145,7 @@ dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 			//topic_partition = SLIST_FIRST(&topic->dlt_partitions);
 			//active_segment = topic_partition->dlp_active_segment; 
 
-#ifdef __KERNEL
+#ifdef _KERNEL
 #else
 			partition->_klog = kqueue();
 // TODO error handling

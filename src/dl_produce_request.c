@@ -60,6 +60,10 @@ dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
 	struct dl_request *request;
 	int rc;
 
+	//DL_ASSERT();
+	//DL_ASSERT();
+	//DL_ASSERT();
+
 	/* Construct the ProduceRequest. */
 	rc = dl_request_new(&request, DL_PRODUCE_API_KEY, correlation_id, client);
 #ifdef _KERNEL

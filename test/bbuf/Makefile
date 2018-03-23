@@ -29,12 +29,12 @@
 # SUCH DAMAGE.
 #
 
-PACKAGE=tests
+TESTSDIR= ${TESTBASE}/protocol
 
-TESTSDIR=${TESTBASE}
+ATF_TESTS_C+= atf_dl_bbuf
 
-KYUAFILE= yes
-
-SUBDIR+=bbuf protocol
+LDADD+= -lprivateatf-c
+LDADD+= -lsbuf
+LDADD+= ${SRCTOP}/libdlog.a
 
 .include <bsd.test.mk>

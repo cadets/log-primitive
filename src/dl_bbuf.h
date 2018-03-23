@@ -44,16 +44,17 @@
 #endif
 
 enum dl_bbuf_flags {
-	DL_BBUF_AUTOEXTEND,
-	DL_BBUF_FIXEDLEN,
-	DL_BBUF_EXTERNBUF,
-	DL_BBUF_BIGENDIAN,
-	DL_BBUF_LITTLEENDIAN,
+	DL_BBUF_AUTOEXTEND = 0x01 << 0,
+	DL_BBUF_FIXEDLEN = 0x01 << 1,
+	DL_BBUF_EXTERNBUF = 0x01 << 2,
+	DL_BBUF_BIGENDIAN = 0x01 << 3,
+	DL_BBUF_LITTLEENDIAN = 0x01 << 4
 };
 typedef enum dl_bbuf_flags dl_bbuf_flags;
 
 struct dl_bbuf;
 
+extern void dl_bbuf_delete(struct dl_bbuf *);
 extern int dl_bbuf_new(struct dl_bbuf **, unsigned char *, int, int);
 extern int dl_bbuf_new_auto(struct dl_bbuf **);
 extern int dl_bbuf_bcat(struct dl_bbuf *, char const * const, int);
