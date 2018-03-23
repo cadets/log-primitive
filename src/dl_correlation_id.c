@@ -59,7 +59,7 @@ struct dl_correlation_id
 #ifdef __APPLE__
 	atomic_int_least32_t val;
 #else
-	int32_t val;
+	volatile uint32_t val;
 #endif
 };
 
@@ -67,6 +67,8 @@ int
 dl_correlation_id_new(struct dl_correlation_id **self)
 {
 	struct dl_correlation_id *cid;
+	
+	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
        
 	cid = (struct dl_correlation_id *)
 	    dlog_alloc(sizeof(struct dl_correlation_id));

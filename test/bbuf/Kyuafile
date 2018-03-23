@@ -2,6 +2,6 @@
 
 syntax(2)
 
-test_suite("FreeBSD")
+test_suite("DLog")
 
 atf_test_program{name="atf_dl_bbuf", }

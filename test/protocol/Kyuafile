@@ -2,7 +2,7 @@
 
 syntax(2)
 
-test_suite("FreeBSD")
+test_suite("Dlog")
 
 atf_test_program{name="atf_dl_fetch_request", }
 atf_test_program{name="atf_dl_produce_request", }
