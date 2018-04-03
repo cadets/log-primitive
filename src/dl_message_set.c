@@ -64,10 +64,9 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 #define DL_TIMESTAMP_SIZE sizeof(int64_t)
 
 #ifdef _KERNEL
-#define Z_NULL NULL
-#define CRC32(val, data, len) 0 //crc32_calculate(val, data, len)
+#define CRC32(data, len) crc32(data, len)
 #else
-#define CRC32(val, data, len) crc32(val, data, len)
+#define CRC32(data, len) crc32(0, data, len)
 #endif
 
 static int dl_message_decode(struct dl_message **, struct dl_bbuf *);
@@ -183,8 +182,7 @@ dl_message_decode(struct dl_message **message, struct dl_bbuf *source)
 			DL_DECODE_CRC(source, &msg_crc);
 
 			/* Computed CRC value. */
-			crc = CRC32(0L, Z_NULL, 0);
-			crc = CRC32(crc, dl_bbuf_data(source),
+			crc = CRC32(dl_bbuf_data(source),
 			    dl_bbuf_len(source));
 			if (crc == msg_crc) {
 				/* Decode and verify the MagicByte */
@@ -283,6 +281,7 @@ dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
 {
 	unsigned long crc_value, timestamp;
 	int size_pos, crc_pos, crc_start_pos;
+	unsigned char *crc_data;
 
 	DL_ASSERT(message != NULL, "Message cannot be NULL");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
@@ -333,10 +332,8 @@ dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
 		size_pos);
 	
 	/* Encode the CRC. */
-	unsigned char *crc_data = dl_bbuf_data(target) + crc_start_pos; 
-	crc_data = 0; // TODO
-	crc_value = CRC32(0L, Z_NULL, 0);
-	crc_value = CRC32(crc_value, crc_data, dl_bbuf_pos(target)-crc_start_pos);
+	crc_data = dl_bbuf_data(target) + crc_start_pos; 
+	crc_value = CRC32(crc_data, dl_bbuf_pos(target)-crc_start_pos);
 	if (DL_ENCODE_CRC_AT(target, crc_value, crc_pos) != 0)
 		goto err;
 		
