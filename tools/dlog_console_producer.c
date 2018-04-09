@@ -34,7 +34,10 @@
  *
  */
 
-#include <sbuf.h>
+#include <sys/types.h>
+#include <sys/sbuf.h>
+
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

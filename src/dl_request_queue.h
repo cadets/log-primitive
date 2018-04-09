@@ -64,7 +64,6 @@ struct dl_request_element {
 extern int dl_request_q_dequeue(struct dl_request_q *, struct dl_request_queue *);
 extern int dl_request_q_enqueue(struct dl_request_q *, struct dl_request_element *);
 extern int dl_request_q_enqueue_new(struct dl_request_q *, struct dl_bbuf *, int32_t, int16_t);
-
 extern int dl_request_q_new(struct dl_request_q **);
 extern void dl_request_q_delete(struct dl_request_q *);
 

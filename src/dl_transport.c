@@ -91,7 +91,8 @@ dl_transport_connect(struct dl_transport *self,
 	// TODO: error checking
 
 	dest.sin_len = sizeof(struct sockaddr_in);	
-	dest.sin_addr.s_addr = htonl((((((127 << 8) | 0) << 8) | 0) << 8) | 1);
+	//dest.sin_addr.s_addr = htonl((((((127 << 8) | 0) << 8) | 0) << 8) | 1);
+	dest.sin_addr.s_addr = htonl((((((192 << 8) | 168) << 8) | 100) << 8) | 11);
 	rc = soconnect(self->dlt_sock, (struct sockaddr *) &dest, td);
 	DLOGTR1(PRIO_LOW, "soconnect = %d\n", rc);
 	// TODO: error checking

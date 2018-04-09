@@ -57,6 +57,7 @@ struct dlog_handle {
 	struct thread *dlh_request_tid; 
 #else
 	pthread_t dlh_response_tid;
+	pthread_t dlh_request_tid;
 #endif
 	struct dl_request_q *dlh_request_q;
 	struct dl_correlation_id *correlation_id; // TODO: this is also not right, correlation ids aren't per client

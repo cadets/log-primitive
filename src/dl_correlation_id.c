@@ -68,7 +68,7 @@ dl_correlation_id_new(struct dl_correlation_id **self)
 {
 	struct dl_correlation_id *cid;
 	
-	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
+	DL_ASSERT(self != NULL, ("Correlation ID cannot be NULL"));
        
 	cid = (struct dl_correlation_id *)
 	    dlog_alloc(sizeof(struct dl_correlation_id));
@@ -93,7 +93,7 @@ dl_correlation_id_new(struct dl_correlation_id **self)
 int32_t
 dl_correlation_id_inc(struct dl_correlation_id * self)
 {
-	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
+	DL_ASSERT(self != NULL, ("Correlation ID cannot be NULL"));
 
 #ifdef __APPLE__
 	return atomic_fetch_add(&self->val, 1);
@@ -106,7 +106,7 @@ dl_correlation_id_inc(struct dl_correlation_id * self)
 int32_t
 dl_correlation_id_val(struct dl_correlation_id *self)
 {
-	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
+	DL_ASSERT(self != NULL, ("Correlation ID cannot be NULL"));
 
 #ifdef __APPLE__
 	return atomic_load(&self->val);
@@ -118,7 +118,7 @@ dl_correlation_id_val(struct dl_correlation_id *self)
 void
 dl_correlation_id_delete(struct dl_correlation_id *self)
 {
-	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
+	DL_ASSERT(self != NULL, ("Correlation ID cannot be NULL"));
 
 	dlog_free(self);
 }

@@ -139,7 +139,6 @@ int
 dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, int capacity, int flags)
 {
 	struct dl_bbuf *newbuf = *self;
-	int newlen;
 
 	DL_ASSERT(capacity >= 0,
 	    ("attempt to create a dl_buf of negative length (%d)", length));
@@ -182,10 +181,12 @@ dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, int capacity, int flags)
 		return 0;
 	}
 
+#ifndef _KERNEL
 err:	
 	DLOGTR0(PRIO_HIGH, "Failed to allocate dl_bbuf.\n");
 	*self = NULL;
 	return -1;
+#endif
 }
 
 int

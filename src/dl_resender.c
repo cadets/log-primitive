@@ -216,30 +216,42 @@ dl_resender_new(struct dlog_handle *handle)
 	if (resender != NULL) {
 #endif
 		bzero(resender, sizeof(struct dl_resender));
+
 		/* Initialise a red/black tree used to index the unacknowledge
 		 * responses.
 		 */
 		RB_INIT(&resender->dlr_unackd);
 #ifdef _KERNEL
-		// TODO
-		mtx_init(&resender->dlr_unackd_mtx, test, DL_RESENDER_TYPE, MTX_DEF);
+		mtx_init(&resender->dlr_unackd_mtx, test, DL_RESENDER_TYPE,
+		    MTX_DEF);
 		cv_init(&resender->dlr_unackd_cond, DL_RESENDER_TYPE);
 #else
 		pthread_mutex_init(&resender->dlr_unackd_mtx, NULL);
-		pthread_cv_init(&resender->dlr_unackd_cond, NULL);
+		pthread_cond_init(&resender->dlr_unackd_cond, NULL);
 #endif
 		resender->dlr_handle = handle;
-		resender->dlr_sleep_ms = handle->dlh_config->resender_thread_sleep_length;
+		resender->dlr_sleep_ms =
+		    handle->dlh_config->resender_thread_sleep_length;
 	}
 
 	return resender;
 }	
-int
+
+void
 dl_resender_delete(struct dl_resender *self)
 {
 
 	DL_ASSERT(self != NULL, ("Resender instance cannot be NULL."));
-	return 0;
+
+#ifdef _KERNEL
+	mtx_assert(&self->dlr_unackd_mtx, MA_NOTOWNED);
+	mtx_destroy(&self->dlr_unackd_mtx);
+	cv_destroy(&self->dlr_unackd_cond);
+#else
+	pthread_mutex_destroy(&self->dlr_unackd_mtx);
+	pthread_cond_destroy(&self->dlr_unackd_cond);
+#endif
+	dlog_free(self);
 }
 
 int
@@ -273,6 +285,7 @@ dl_resender_stop(struct dl_resender *resender)
 {
 #ifdef _KERNEL
 	// TODO
+	//return kthread_suspend(handle->dlh_response_tid, 2 * (10 * hz / 9));
 	return 0;
 #else
 	return pthread_cancel(resender->dlr_tid);

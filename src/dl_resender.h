@@ -45,7 +45,7 @@
 struct dl_resender;
 
 extern struct dl_resender * dl_resender_new(struct dlog_handle *);
-extern int dl_resender_delete(struct dl_resender *);
+extern void dl_resender_delete(struct dl_resender *);
 extern int dl_resender_start(struct dl_resender *);
 extern int dl_resender_stop(struct dl_resender *);
 extern int dl_resender_unackd_request(struct dl_resender *,

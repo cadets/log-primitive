@@ -164,6 +164,7 @@ dl_message_decode(struct dl_message **message, struct dl_bbuf *source)
 	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
 	DL_ASSERT(message != NULL, ("Message cannot be NULL"));
 
+	// TODO don't assign
 	self = *message = (struct dl_message *) dlog_alloc(
 	    sizeof(struct dl_message));
 #ifdef _KERNEL

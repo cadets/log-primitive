@@ -1,4 +1,39 @@
-#include <dtrace.h>
+/*-
+ * Copyright (c) 2018 (Graeme Jenkinson)
+ * All rights reserved.
+ *
+ * This software was developed by BAE Systems, the University of Cambridge
+ * Computer Laboratory, and Memorial University under DARPA/AFRL contract
+ * FA8650-15-C-7558 ("CADETS"), as part of the DARPA Transparent Computing
+ * (TC) research program.
+ *
+ * This software was developed by SRI International and the University of
+ * Cambridge Computer Laboratory under DARPA/AFRL contract FA8750-10-C-0237
+ * ("CTSRD"), as part of the DARPA CRASH research programme.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ */
+
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/param.h>
@@ -13,68 +48,110 @@
 #include <sys/uio.h>
 #include <sys/malloc.h>
 #include <sys/module.h>
+#include <sys/queue.h>
+#include <sys/hash.h>
 
+#include <dtrace.h>
+#include <dtrace_impl.h>
+
+#include "dl_assert.h"
 #include "dlog_client.h"
 #include "dl_memory.h"
 #include "dl_utils.h"
 
-static int event_handler(struct module *, int, void *);
+static void konsumer_open(void *, struct dtrace_state *);
+static void konsumer_close(void *, struct dtrace_state *);
+static void konsumer_free(void *addr);
+static void * konsumer_malloc(unsigned long len);
+static int konsumer_event_handler(struct module *, int, void *);
 static void konsumer_main(void *);
+static void konsumer_on_response(struct dl_response const * const);
+static void konsumer_thread(void *);
+
+static char const * const KONSUMER_NAME = "konsumer";
 
 static moduledata_t konsumer_conf = {
-	"konsumer",
-	event_handler,
+	KONSUMER_NAME,
+	konsumer_event_handler,
 	NULL
 };
-	
+
+struct konsumer {
+	LIST_ENTRY(konsumer) konsumer_entries;
+	struct cv konsumer_cv;
+	struct mtx konsumer_mtx;
+	struct thread *konsumer_tid;
+	dtrace_state_t *konsumer_state;
+	int konsumer_exit;
+	//struct dlog_handle *handle;
+	//struct sbuf *hostname;
+	//struct sbuf *topic;
+};
+
 static struct proc *dlog_client_proc;
+static char const * const KON_DEFAULT_CLIENT_ID = KONSUMER_NAME;
+static char const * const KON_DEFAULT_TOPIC  = "cadets-trace";
+static char const * const KON_DEFAULT_HOSTNAME  = "localhost";
+static const int KON_DEFAULT_PORT = 9092;
+
+static const int KON_NHASH_BUCKETS = 16;
+
+static dtrace_kops_t kops = {
+	.dtkops_open = konsumer_open,
+	.dtkops_close = konsumer_close,
+};
+static dtrace_konsumer_id_t kid;
+
+static struct mtx kon_mtx;
+static struct cv kon_cv;
+static int kon_exit = 0;
+
+// TODO per-konsumer instance
+static struct dlog_handle *handle;
+static struct sbuf *hostname;
+static struct sbuf *topic;
+
+static LIST_HEAD(konsumers, konsumer) *konsumer_hashtbl = NULL;
+static u_long konsumer_hashmask;
 
 /* Configure the distributed log logging level. */
 unsigned short PRIO_LOG = PRIO_LOW;
 
-void * my_malloc(unsigned long len);
-void my_free(void *addr);
-
-const dlog_malloc_func dlog_alloc = my_malloc;
-const dlog_free_func dlog_free = my_free;
+const dlog_malloc_func dlog_alloc = konsumer_malloc;
+const dlog_free_func dlog_free = konsumer_free;
 
 MALLOC_DECLARE(M_DLOG);
 MALLOC_DEFINE(M_DLOG, "dlog", "DLog memory");
 
-void
-my_free(void *addr)
+static void
+konsumer_free(void *addr)
 {
 	return free(addr, M_DLOG);
 }
 
-void *
-my_malloc(unsigned long len)
+static void *
+konsumer_malloc(unsigned long len)
 {
 	return malloc(len, M_DLOG, M_NOWAIT);
 }
 
-static char const * const DLC_DEFAULT_CLIENT_ID = "konsole";
-static char const * const DLC_DEFAULT_TOPIC  = "default";
-static char const * const DLC_DEFAULT_HOSTNAME  = "localhost";
-static const int DLC_DEFAULT_PORT = 9092;
-
-static void dlp_on_response(struct dl_response const * const);
-
 static void
-dlp_on_response(struct dl_response const * const response)
+konsumer_on_response(struct dl_response const * const response)
 {
 	struct dl_produce_response *produce_response;
 	struct dl_produce_response_topic *produce_topic;
-	int partition;
+	int part;
 
-	DLOGTR1(PRIO_LOW, "correlation id = %d\n", response->dlrs_correlation_id);
-	DLOGTR1(PRIO_LOW, "api key= %d\n", response->dlrs_api_key);
+	DLOGTR1(PRIO_LOW, "Response correlation id = %d\n",
+	    response->dlrs_correlation_id);
+	DLOGTR1(PRIO_LOW, "Response api key= %d\n", response->dlrs_api_key);
 
 	switch (response->dlrs_api_key) {
 	case DL_PRODUCE_API_KEY:
 		produce_response = response->dlrs_message.dlrs_produce_message;
 
-		DLOGTR1(PRIO_LOW, "ntopics= %d\n", produce_response->dlpr_ntopics);
+		DLOGTR1(PRIO_LOW, "ntopics= %d\n",
+		     produce_response->dlpr_ntopics);
 
 		SLIST_FOREACH(produce_topic,
 			&produce_response->dlpr_topics, dlprt_entries) {
@@ -82,18 +159,17 @@ dlp_on_response(struct dl_response const * const response)
 			DLOGTR1(PRIO_LOW, "Topic: %s\n",
 				sbuf_data(produce_topic->dlprt_topic_name));
 
-			for (partition = 0;
-			    partition < produce_topic->dlprt_npartitions;
-			    partition++) {
+			for (part = 0; part < produce_topic->dlprt_npartitions;
+			    part++) {
 
 				DLOGTR1(PRIO_LOW, "Partition: %d\n",
-				    produce_topic->dlprt_partitions[partition].dlprp_partition);
+				    produce_topic->dlprt_partitions[part].dlprp_partition);
 
 				DLOGTR1(PRIO_LOW, "ErrorCode: %d\n",
-				    produce_topic->dlprt_partitions[partition].dlprp_error_code);
+				    produce_topic->dlprt_partitions[part].dlprp_error_code);
 
 				DLOGTR1(PRIO_LOW, "Base offset: %ld\n",
-					produce_topic->dlprt_partitions[partition].dlprp_offset);
+				    produce_topic->dlprt_partitions[part].dlprp_offset);
 			};
 		};
 		break;
@@ -102,23 +178,35 @@ dlp_on_response(struct dl_response const * const response)
 		    response->dlrs_api_key);
 		break;
 	}
-
 }
 
-
-
 static int
-event_handler(struct module *module, int event, void *arg)
+konsumer_event_handler(struct module *module, int event, void *arg)
 {
 	int e = 0, rc;
 
 	switch(event) {
 	case MOD_LOAD:
 		DLOGTR0(PRIO_LOW, "Loading Konsumer kernel module\n");
-		rc = kproc_create(konsumer_main, NULL, &dlog_client_proc, 0, 0, "konsumer");
+
+		mtx_init(&kon_mtx, "konsumer", "konsumer", MTX_DEF);
+		cv_init(&kon_cv, "konsumer");
+
+		rc = kproc_create(konsumer_main, NULL, &dlog_client_proc, 0, 0,
+		    KONSUMER_NAME);
 		break;
 	case MOD_UNLOAD:
 		DLOGTR0(PRIO_LOW, "Unloading Konsumer kernel module\n");
+
+		mtx_lock(&kon_mtx);
+		kon_exit = 1;
+		cv_broadcast(&kon_cv);
+		mtx_unlock(&kon_mtx);
+		tsleep(&dlog_client_proc, 0, "waiting", hz);
+		DLOGTR0(PRIO_LOW, "Konsumer process exited successfully.\n");
+
+		cv_destroy(&kon_cv);
+		mtx_destroy(&kon_mtx);
 		break;
 	default:
 		e = EOPNOTSUPP;
@@ -131,32 +219,33 @@ event_handler(struct module *module, int event, void *arg)
 static void
 konsumer_main(void *argp)
 {
-	struct dlog_handle *handle;
 	struct dl_client_configuration cc;
+	struct konsumer *k, *k_tmp;
 	struct sbuf *client_id;
-	struct sbuf *hostname;
-	struct sbuf *topic;
-	int port = DLC_DEFAULT_PORT;
+	int i, port = KON_DEFAULT_PORT;
 
-	dtrace_icookie_t cookie;
-	cookie = dtrace_interrupt_disable();
-	dtrace_interrupt_enable(cookie);
+	/* Initialise the hash table of konsumer instances. */
+	konsumer_hashtbl = hashinit(KON_NHASH_BUCKETS, M_DLOG,
+	    &konsumer_hashmask);
 
-	/* Configure the default values for the client_id, topic and hostname. */
+	/* Configure the default values for the client_id. */
 	client_id = sbuf_new_auto();
-	sbuf_cpy(client_id, DLC_DEFAULT_CLIENT_ID);
+	DL_ASSERT(client_id != NULL, ("Failed to initialize sbuf client_id."));
+	sbuf_cpy(client_id, KON_DEFAULT_CLIENT_ID);
 	sbuf_finish(client_id);
 
 	hostname = sbuf_new_auto();
-	sbuf_cpy(hostname, DLC_DEFAULT_HOSTNAME);
+	DL_ASSERT(hostname != NULL, ("Failed to initialize sbuf hostname."));
+	sbuf_cpy(hostname, KON_DEFAULT_HOSTNAME);
 	sbuf_finish(hostname);
 
 	topic = sbuf_new_auto();
-	sbuf_cpy(topic, DLC_DEFAULT_TOPIC);
+	DL_ASSERT(topic != NULL, ("Failed to initialize sbuf topic."));
+	sbuf_cpy(topic, KON_DEFAULT_TOPIC);
 	sbuf_finish(topic);
-
+	
 	/* Configure and initialise the distributed log client. */
-	cc.dlcc_on_response = dlp_on_response;
+	cc.dlcc_on_response = konsumer_on_response;
 	cc.dlcc_client_id = client_id;
 	cc.to_resend = true;
 	cc.resend_timeout = 40;
@@ -164,30 +253,189 @@ konsumer_main(void *argp)
 	cc.request_notifier_thread_sleep_length = 3;
 	cc.reconn_timeout = 5;
 	cc.poll_timeout = 3000;
-
+	
 	handle = dlog_client_open(hostname, port, &cc);
         if (handle == NULL) {
 	 	DLOGTR0(PRIO_HIGH,	
 		    "Error initialising the distributed log client.\n");
 		kproc_exit(-1);
 	}
+
+	/* Register the konsumer with DTrace. After successfully
+	 * registering the konsumer with be informed of lifecycle
+	 * events (open/close) that result from DTrace consumers.
+	 */ 
+	dtrace_konsumer_register(KONSUMER_NAME, &kops, NULL, &kid);
 	
-	pause("test", 3);
-  
-	if (dlog_produce(handle, topic, "key", strlen("key"), "test", strlen("test")) == 0) {
-		DLOGTR0(PRIO_LOW, "Successfully produced message to DLog\n");
+	for (;;) {
+		mtx_lock(&kon_mtx);
+		cv_timedwait(&kon_cv, &kon_mtx, 10 * hz / 9);
+		if (kon_exit)  {
+			mtx_unlock(&kon_mtx);
+	 		DLOGTR0(PRIO_HIGH, "Stopping konsumer process..\n");
+			break;
+		}
+		mtx_unlock(&kon_mtx);
 	}
-	pause("test", 3);
+
+	/* Unregister and stop any konsumer threads. */ 
+	for (i = 0; i < KON_NHASH_BUCKETS; i++) {	
+		LIST_FOREACH_SAFE(k, &konsumer_hashtbl[i], konsumer_entries,
+		    k_tmp) {
+			DLOGTR1(PRIO_HIGH, "Stopping konsumer thread %p..\n", k);
+			/* Signal the konsumer and wait for completion. */
+			mtx_lock(&k->konsumer_mtx);
+			k->konsumer_exit = 1;
+			cv_broadcast(&k->konsumer_cv);
+			mtx_unlock(&k->konsumer_mtx);
+			tsleep(k->konsumer_tid, 0,
+			    "waiting for konsumer process", 10 * hz / 9);
+
+			/* Remove the konsumer and destroy. */
+			DLOGTR0(PRIO_LOW,
+			    "Konsumer thread stoppped successfully\n");
+			LIST_REMOVE(k, konsumer_entries);
+			mtx_destroy(&k->konsumer_mtx);
+			cv_destroy(&k->konsumer_cv);
+			dlog_free(k);
+		}
+	}
+			
+	dtrace_konsumer_unregister(&kid);
 
 	/* Close the distributed log before finishing. */
+	DLOGTR0(PRIO_LOW, "Closing dlog client..\n");
 	dlog_client_close(handle);
 
 	/* Delete the sbufs used by the DLog client. */
+	DLOGTR0(PRIO_LOW, "Freeing konsumer sbufs..\n");
 	sbuf_delete(topic);
 	sbuf_delete(hostname);
 	sbuf_delete(client_id);
 
+	/* Delete the memory for the has table storing konsumer instances. */	
+	DLOGTR0(PRIO_LOW, "Freeing konsumer hashtbl..\n");
+	hashdestroy(konsumer_hashtbl, M_DLOG, konsumer_hashmask);
+	
 	kproc_exit(0);
+}
+
+static void
+konsumer_thread(void *arg)
+{
+	struct konsumer *k = (struct konsumer *)arg;
+	dtrace_icookie_t cookie;
+	uint64_t offset = 0, xamot_offset = 0;
+
+	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
+	
+	DLOGTR0(PRIO_HIGH, "Konsumer thread starting...\n");
+
+	/* Configure the default values for the client_id, topic and
+	 * hostname.
+	 */
+	for (;;) {
+		mtx_lock(&k->konsumer_mtx);
+		cv_timedwait(&k->konsumer_cv, &k->konsumer_mtx, 10 * hz / 9);
+		if (k->konsumer_exit)  {
+			mtx_unlock(&k->konsumer_mtx);
+	 		DLOGTR0(PRIO_HIGH, "Stopping konsumer thread..\n");
+			break;
+		}
+		cookie = dtrace_interrupt_disable();
+		DL_ASSERT(k->konsumer_state->dts_buffer != NULL,
+		    ("DTrace buffer invalid whilst konsumer state is open."));
+		if (k->konsumer_exit)  {
+			mtx_unlock(&k->konsumer_mtx);
+	 		DLOGTR0(PRIO_HIGH, "Stopping konsumer thread..\n");
+			break;
+		}
+		offset = k->konsumer_state->dts_buffer->dtb_offset;
+		xamot_offset = k->konsumer_state->dts_buffer->dtb_xamot_offset;
+		dtrace_interrupt_enable(cookie);
+		mtx_unlock(&k->konsumer_mtx);
+
+		DLOGTR1(PRIO_HIGH, "Buffer dtb_offset = %lu\n", offset);
+		DLOGTR1(PRIO_HIGH, "Buffer dtb_xamot_offset = %lu\n",
+		    xamot_offset);
+
+		if (dlog_produce(handle, topic, "record", strlen("record"),
+		    &k->konsumer_state->dts_buffer->dtb_tomax[xamot_offset],
+		    offset-xamot_offset) == 0) {
+			DLOGTR0(PRIO_LOW,
+			    "Successfully produced message to DLog\n");
+
+			/* Consumed value from the DTrace ring buffer, adjust
+			 * the ring buffer accordingly.
+			 */
+			cookie = dtrace_interrupt_disable();
+			k->konsumer_state->dts_buffer->dtb_xamot_offset =
+			    offset;
+			dtrace_interrupt_enable(cookie);
+		}
+	}
+
+	DLOGTR0(PRIO_HIGH, "Konsumer thread exited successfully.\n");
+	kthread_exit();
+}
+
+static void
+konsumer_open(void *arg, struct dtrace_state *state)
+{
+	dtrace_konsumer_t *konsumer = (dtrace_konsumer_t *)arg;
+	dtrace_konsumer_id_t id = (dtrace_konsumer_id_t)konsumer;
+	struct konsumer *k;
+	uint32_t hash;
+
+	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
+
+	DLOGTR3(PRIO_HIGH, "konsumer_open called by dtrace: %s %lu %p\n",
+	    konsumer->dtk_name, id, state);
+
+	k = (struct konsumer *) dlog_alloc(sizeof(struct konsumer));
+	DL_ASSERT(k != NULL, ("Failed to allocate konsumer instance."));
+
+	bzero(k, sizeof(struct konsumer));
+	mtx_init(&k->konsumer_mtx, "konsumer mtx", "konsumer", MTX_DEF);
+	cv_init(&k->konsumer_cv, "konsumer cv");
+	k->konsumer_exit = 0;
+	k->konsumer_state = state;
+
+	hash = murmur3_32_hash(state, sizeof(struct dtrace_state), 0) &
+	    konsumer_hashmask;
+	LIST_INSERT_HEAD(&konsumer_hashtbl[hash], k, konsumer_entries);
+	kproc_kthread_add(konsumer_thread, k, &dlog_client_proc,
+	    &k->konsumer_tid, 0, 0, NULL, NULL);
+}
+
+static void
+konsumer_close(void *arg, struct dtrace_state *state)
+{
+	struct konsumer *k, *k_tmp;
+	uint32_t hash;
+
+	DLOGTR0(PRIO_HIGH, "konsumer_close called by dtrace\n");
+
+	hash = murmur3_32_hash(state, sizeof(struct dtrace_state), 0) &
+	    konsumer_hashmask;
+	LIST_FOREACH_SAFE(k, &konsumer_hashtbl[hash], konsumer_entries, k_tmp) {
+		if (state == k->konsumer_state) {
+
+			mtx_lock(&k->konsumer_mtx);
+			k->konsumer_exit = 1;
+			cv_broadcast(&k->konsumer_cv);
+			mtx_unlock(&k->konsumer_mtx);
+			tsleep(k->konsumer_tid, 0,
+			     "waiting for konsumer thread", hz);
+			DLOGTR0(PRIO_LOW,
+			     "Konsumer thread stoppped successfully\n");
+
+			LIST_REMOVE(k, konsumer_entries);
+			mtx_destroy(&k->konsumer_mtx);
+			cv_destroy(&k->konsumer_cv);
+			dlog_free(k);
+		}
+	}
 }
 
 DECLARE_MODULE(konsumer, konsumer_conf, SI_SUB_DRIVERS, SI_ORDER_MIDDLE);

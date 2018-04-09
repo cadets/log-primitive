@@ -35,15 +35,11 @@
  */
 
 #ifdef _KERNEL
+#include <sys/types.h>
 #include <sys/libkern.h>
 #else
-#include <string.h>
-#endif
-
-#ifdef _KERNEL
-#include <sys/types.h>
-#else
 #include <stddef.h>
+#include <string.h>
 #endif
 
 #include "dl_assert.h"
@@ -104,6 +100,7 @@ dl_decode_bytes(char * const target, int *target_len, struct dl_bbuf *source)
 		*target_len = 0;
 		return 0;
 	} else {
+		/* TODO: Replace with bulk drain function in dl_bbuf */
 		*target_len = nbytes;
 		for (int i = 0; i < nbytes; i++) {
 			dl_bbuf_get_int8(source, &target[i]);
@@ -121,7 +118,7 @@ dl_encode_string(struct dl_bbuf *target, struct sbuf *source)
 	char *sval;
 
 	if (source == NULL) {
-		dl_bbuf_put_int32(target, DL_BYTES_NULL);
+		dl_bbuf_put_int16(target, DL_STRING_NULL);
 	} else {
 		/* Prepended a 16bit value indicating the length (in bytes). */
 		if (dl_bbuf_put_int16(target, sbuf_len(source)) == 0) {

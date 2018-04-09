@@ -33,6 +33,7 @@ TESTSDIR= ${TESTBASE}/protocol
 
 ATF_TESTS_C+= atf_dl_fetch_request
 ATF_TESTS_C+= atf_dl_produce_request
+ATF_TESTS_C+= atf_dl_produce_response
 
 
 LDADD+= -lprivateatf-c
