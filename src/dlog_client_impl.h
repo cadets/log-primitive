@@ -50,7 +50,7 @@
 #include "dl_transport.h"
 
 struct dlog_handle {
-	struct dl_client_configuration const *dlh_config;
+	struct dl_client_config *dlh_config;
 	struct dl_resender *dlh_resender;
 #ifdef _KERNEL
 	struct thread *dlh_response_tid; 

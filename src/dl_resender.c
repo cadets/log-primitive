@@ -36,6 +36,7 @@
 #include <sys/param.h>
 #include <sys/queue.h>
 #include <sys/tree.h>
+#include <sys/nv.h>
 
 #ifdef _KERNEL
 #include <sys/types.h>
@@ -79,7 +80,6 @@ struct dl_resender {
 	pthread_cond_t dlr_unackd_cond;
 #endif
 	struct dlog_handle *dlr_handle;
-	int dlr_sleep_ms;
 };
 
 struct dl_resender_argument {
@@ -112,10 +112,13 @@ dl_resender_thread(void *vargp)
 	struct dl_resender_argument *ra =
 	    (struct dl_resender_argument *) vargp;
 	struct dl_request_element *request, *request_temp;
+	nvlist_t *props;
 	time_t now;
 #ifndef _KERNEL
 	int old_cancel_state;
 #endif
+	int resend_timeout, resend_period;
+	bool to_resend;
 
 	DL_ASSERT(vargp != NULL, "Resender thread arguments cannot be NULL");
 
@@ -124,6 +127,27 @@ dl_resender_thread(void *vargp)
 	/* Take a copy of the resender thread arguments before freeing. */
 	resender = ra->dlra_resender;
 	dlog_free(vargp);
+	
+	props = resender->dlr_handle->dlh_config->dlcc_props;
+
+	if (!nvlist_exists_bool(props, DL_CONF_TORESEND)) {
+		to_resend = nvlist_get_number(props, DL_CONF_TORESEND);
+	} else {
+		to_resend = DL_DEFAULT_TORESEND;
+	}
+
+	if (!nvlist_exists_string(props, DL_CONF_RESENDTIMEOUT)) {
+		resend_timeout = nvlist_get_number(props,
+		    DL_CONF_RESENDTIMEOUT);
+	} else {
+		resend_timeout = DL_DEFAULT_RESENDTIMEOUT;
+	}
+
+	if (!nvlist_exists_string(props, DL_CONF_RESENDPERIOD)) {
+		resend_period = nvlist_get_number(props, DL_CONF_RESENDPERIOD);
+	} else {
+		resend_period = DL_DEFAULT_RESENDPERIOD;
+	}
 
 	/* Defer cancellation of the thread until the cancellation point 
 	 * pthread_testcancel(). This ensures that thread isn't cancelled until
@@ -149,7 +173,7 @@ dl_resender_thread(void *vargp)
 #endif
 		RB_FOREACH_SAFE(request, dlr_unackd_requests,
 		    &resender->dlr_unackd, request_temp) {
-			if (resender->dlr_handle->dlh_config->to_resend) {
+			if (to_resend) {
 #ifdef _KERNEL
 				now = 0; // TODO
 #else
@@ -159,11 +183,11 @@ dl_resender_thread(void *vargp)
 				    "Resend when the difference is %d. "
 				    "Current: %lu\n",
 				    request->dlrq_last_sent, now,
-				    resender->dlr_handle->dlh_config->resend_timeout, 
+				    resend_timeout, 
 				    now - request->dlrq_last_sent);
 
 				if ((now - request->dlrq_last_sent) >
-				    resender->dlr_handle->dlh_config->resend_timeout) {
+				    resend_timeout) {
 #ifdef _KERNEL
 #else
 					request->dlrq_last_sent = time(NULL);
@@ -188,11 +212,11 @@ dl_resender_thread(void *vargp)
 
 		DLOGTR1(PRIO_LOW,
 		    "Resender thread is going to sleep for %d seconds\n",
-		    resender->dlr_sleep_ms);
+		    resend_period);
 
 #ifdef _KERNEL
 #else
-		sleep(resender->dlr_sleep_ms);
+		sleep(resend_period);
 #endif
 	}
 #ifdef _KERNEL
@@ -230,8 +254,6 @@ dl_resender_new(struct dlog_handle *handle)
 		pthread_cond_init(&resender->dlr_unackd_cond, NULL);
 #endif
 		resender->dlr_handle = handle;
-		resender->dlr_sleep_ms =
-		    handle->dlh_config->resender_thread_sleep_length;
 	}
 
 	return resender;

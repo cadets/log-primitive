@@ -53,8 +53,6 @@
 
 static int dl_remove_directory(struct sbuf *);
 
-extern unsigned short PRIO_LOG;
-
 #ifdef _KERNEL
 static int
 dl_remove_directory(struct sbuf *path)
@@ -83,6 +81,8 @@ dl_del_folder(struct sbuf *path)
 }
 
 #else /* !KERNEL */
+extern unsigned short PRIO_LOG;
+
 // adapted from https://stackoverflow.com/questions/2256945/removing-a-non-empty-directory-programmatically-in-c-or-c
 static int
 dl_remove_directory(struct sbuf *path)

@@ -38,40 +38,41 @@
 #ifndef _DL_CONFIG_H
 #define _DL_CONFIG_H
 
-#ifdef _KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sys/sbuf.h>
-#endif
+#include <sys/nv.h>
 
 #include "dl_response.h" 
 
-typedef void (* dl_ack_function) (const int32_t );
-typedef void (* dl_response_function) (struct dl_response const * const);
+typedef void (* dl_response_func) (struct dl_response const * const);
 
-enum broker_confs {
-	BROKER_SEND_ACKS = 1 << 1,
-	BROKER_FSYNC_ALWAYS = 1 << 2,
+struct dl_broker_config {
+	nvlist_t *dlbc_props;
 };
 
-// TODO: I don't think any of these are needed ATM
-struct broker_configuration {
-	int fsync_thread_sleep_length;
-	int processor_thread_sleep_length;
-	int val;
+struct dl_client_config {
+	dl_response_func dlcc_on_response;
+	nvlist_t *dlcc_props;
 };
 
-struct dl_client_configuration {
-	dl_response_function dlcc_on_response;
-	struct sbuf *dlcc_client_id;
-	int to_resend;
-	int resend_timeout;
-	int resender_thread_sleep_length;
-	int request_notifier_thread_sleep_length;
-	int reconn_timeout;
-	int poll_timeout;
+#ifdef _KERNEL
+struct dl_client_config_desc {
+	dl_response_func dlcc_on_response;
+	void * dlcc_packed_nvlist;
+	size_t dlcc_packed_nvlist_len;
 };
+#endif
 
-extern void print_configuration(struct broker_configuration *);
+#define DL_CONF_CLIENTID "client.id"
+#define DL_CONF_BROKER "client.broker"
+#define DL_CONF_BROKER_PORT "broker.port"
+#define DL_CONF_TORESEND "resend.to_resend"
+#define DL_CONF_RESENDTIMEOUT "resend.timeout"
+#define  DL_CONF_RESENDPERIOD "resend.period"
+
+#define DL_DEFAULT_CLIENTID "dlog"
+#define DL_DEFAULT_BROKER "127.0.0.1"
+#define DL_DEFAULT_BROKER_PORT 9092
+#define DL_DEFAULT_TORESEND false
+#define DL_DEFAULT_RESENDTIMEOUT 1000
+#define DL_DEFAULT_RESENDPERIOD 1000
 
 #endif

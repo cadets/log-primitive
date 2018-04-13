@@ -44,6 +44,7 @@
 #include <sys/proc.h>
 #include <sys/condvar.h>
 #include <sys/kernel.h>
+#include <sys/kthread.h>
 #else
 #include <pthread.h>
 #include <stddef.h>

@@ -78,7 +78,7 @@
 
 struct dlog_broker_handle {
 	struct dl_broker_client *clients[MAX_NO_OF_CLIENTS];
-	struct broker_configuration *conf;
+	struct dl_broker_config *conf;
 	struct dl_event_handler event_handler;
 	dl_event_handler_handle socket;
 };
@@ -222,7 +222,7 @@ dl_handle_read_event(void *instance)
 
 void
 dlog_broker_init(char const * const topic_name,
-    struct broker_configuration const * const conf)
+    struct dl_broker_config const * const conf)
 {
 	struct kevent event;
 	struct dl_partition *topic_partition;
@@ -249,7 +249,7 @@ dlog_broker_init(char const * const topic_name,
 /* TODO allow specifying which network interface to bind to */
 struct dlog_broker_handle *
 dlog_broker_create_server(const int portnumber,
-    struct broker_configuration const * const conf)
+    struct dl_broker_config const * const conf)
 {
 	struct dlog_broker_handle *handle;
 	dl_event_handler_handle socket;

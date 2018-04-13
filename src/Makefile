@@ -44,7 +44,6 @@ SRCS= dlog_client.c \
 	dl_broker_segment.c \
 	dl_broker_topic.c \
 	dl_bbuf.c \
-	dl_config.c \
 	dl_correlation_id.c \
 	dl_resender.c \
 	dl_utils.c \

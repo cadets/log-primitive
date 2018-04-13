@@ -42,6 +42,7 @@
 #include <sys/param.h>
 #include <sys/queue.h>
 #include <sys/types.h>
+#include <sys/nv.h>
 
 #ifdef _KERNEL
 #include <sys/kthread.h>
@@ -402,16 +403,30 @@ dl_stop_request_thread(struct dlog_handle *handle)
 }
 
 struct dlog_handle *
-dlog_client_open(struct sbuf *hostname,
-    const int portnumber, struct dl_client_configuration const * const cc)
+dlog_client_open(struct dl_client_config const * const config)
 {
 	struct dlog_handle *handle;
+	nvlist_t *props = config->dlcc_props;
+	char *hostname;
 	int rc;
+	unsigned short portnumber;
 
-	DL_ASSERT(hostname != NULL, "Hostname cannot be NULL");
-	DL_ASSERT(cc != NULL, "Client configuration cannot be NULL");
+	DL_ASSERT(config != NULL, "Client configuration cannot be NULL");
 	
 	DLOGTR0(PRIO_NORMAL, "Opening the Dlog client...\n");
+
+	if (!nvlist_exists_string(props, DL_CONF_BROKER)) {
+		hostname = DL_DEFAULT_BROKER;
+	} else {
+		hostname = nvlist_get_string(props, DL_CONF_BROKER);
+	}
+
+	if (!nvlist_exists_string(props, DL_CONF_BROKER_PORT)) {
+		portnumber = DL_DEFAULT_BROKER_PORT;
+	} else {
+		portnumber = (unsigned short) nvlist_get_number(props,
+		    DL_CONF_BROKER_PORT);
+	}
 
 	handle = (struct dlog_handle *) dlog_alloc(sizeof(struct dlog_handle));
 #ifdef _KERNEL
@@ -421,7 +436,7 @@ dlog_client_open(struct sbuf *hostname,
 	if (handle != NULL) {
 #endif	
 		/* Store the client configuration. */
-		handle->dlh_config = cc;
+		handle->dlh_config = config;
 
 		/* Instatiate the client resender. */
 		handle->dlh_resender = dl_resender_new(handle);
@@ -440,8 +455,7 @@ dlog_client_open(struct sbuf *hostname,
 		struct dl_transport *transport =
 		    (struct dl_transport *) dlog_alloc(
 		    sizeof(struct dl_transport));
-		dl_transport_connect(transport, sbuf_data(hostname),
-		     portnumber);
+		dl_transport_connect(transport, hostname, portnumber);
 
 		handle->dlh_transport = transport;
 
@@ -520,7 +534,17 @@ dlog_fetch(struct dlog_handle *handle, struct sbuf *topic_name,
 {
 	struct dl_bbuf *buffer;
 	struct dl_request *message;
+	nvlist_t *props = handle->dlh_config->dlcc_props;
+	struct sbuf *client_id;
 	int result = 0;
+
+	client_id = sbuf_new_auto();
+	if (!nvlist_exists_string(props, DL_CONF_CLIENTID)) {
+		sbuf_cpy(client_id, DL_DEFAULT_CLIENTID);
+	} else {
+		sbuf_cpy(client_id, nvlist_get_string(props, DL_CONF_CLIENTID));
+	}
+	sbuf_finish(client_id);
 
 	DLOGTR1(PRIO_LOW,
 	    "User requested to send a message with correlation id = %d\n",
@@ -528,8 +552,7 @@ dlog_fetch(struct dlog_handle *handle, struct sbuf *topic_name,
 
 	message = dl_fetch_request_new(
 	    dl_correlation_id_val(handle->correlation_id),
-	    handle->dlh_config->dlcc_client_id,
-	    topic_name, min_bytes,
+	    client_id, topic_name, min_bytes,
 	    max_wait_time, fetch_offset, max_bytes);
 	
 	DLOGTR1(PRIO_LOW, "Constructed request (id = %d)\n",
@@ -572,7 +595,17 @@ dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
 {
 	struct dl_bbuf *buffer;
 	struct dl_request *message;
+	nvlist_t *props = handle->dlh_config->dlcc_props;
+	struct sbuf *client_id;
 	int result = 0;
+
+	client_id = sbuf_new_auto();
+	if (!nvlist_exists_string(props, DL_CONF_CLIENTID)) {
+		sbuf_cpy(client_id, DL_DEFAULT_CLIENTID);
+	} else {
+		sbuf_cpy(client_id, nvlist_get_string(props, DL_CONF_CLIENTID));
+	}
+	sbuf_finish(client_id);
 
 	DLOGTR1(PRIO_LOW,
 	    "User requested to send a message with correlation id = %d\n",
@@ -581,8 +614,7 @@ dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
 	/* Instantiate a new ListOffsetRequest. */
 	message = dl_list_offset_request_new(
 	    dl_correlation_id_val(handle->correlation_id), 
-	    handle->dlh_config->dlcc_client_id,
-	    topic_name, time);
+	    client_id, topic_name, time);
 	
 	DLOGTR0(PRIO_LOW, "Constructed request message\n");
 
@@ -626,6 +658,16 @@ dlog_produce(struct dlog_handle *handle, struct sbuf *topic_name,
 	struct dl_bbuf *buffer;
 	struct dl_request *message;
 	struct dl_message_set *message_set;
+	nvlist_t *props = handle->dlh_config->dlcc_props;
+	struct sbuf *client_id;
+
+	client_id = sbuf_new_auto();
+	if (!nvlist_exists_string(props, DL_CONF_CLIENTID)) {
+		sbuf_cpy(client_id, DL_DEFAULT_CLIENTID);
+	} else {
+		sbuf_cpy(client_id, nvlist_get_string(props, DL_CONF_CLIENTID));
+	}
+	sbuf_finish(client_id);
 
 	/* Instantiate a new MessageSet. */
 	message_set = dl_message_set_new(key, key_len, value, value_len);
@@ -633,8 +675,7 @@ dlog_produce(struct dlog_handle *handle, struct sbuf *topic_name,
 	/* Instantiate a new ProduceRequest */
 	if (dl_produce_request_new(&message,
 	    dl_correlation_id_val(handle->correlation_id),
-	    handle->dlh_config->dlcc_client_id,
-	    topic_name, message_set) != 0)
+	    client_id, topic_name, message_set) != 0)
 		return -1;
 
 	DLOGTR1(PRIO_LOW, "Constructed request (id = %d)\n",
