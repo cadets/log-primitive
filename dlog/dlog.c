@@ -180,9 +180,9 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 		 */
 		props = nvlist_unpack(packed_nvlist,
 		    conf_desc.dlcc_packed_nvlist_len, 0); 
-		// TODO: error handling
-	
 		dlog_free(packed_nvlist);
+		if (props == NULL)
+			return EFAULT;
 
 		/* Open the DLog client with the specified properties. */
 		conf = (struct dl_client_config *) dlog_alloc(
@@ -204,7 +204,7 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 		if (devfs_set_cdevpriv(handle, dl_client_close) != 0) {
 
 			DLOGTR0(PRIO_HIGH,
-			    "Error associtaing the DLog client handle.\n");
+			    "Error associating the DLog client handle.\n");
 			dlog_client_close(handle);
 			dlog_free(conf);
 			return EFAULT;
