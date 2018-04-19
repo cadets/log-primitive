@@ -50,21 +50,23 @@
 #include <sys/module.h>
 #include <sys/queue.h>
 #include <sys/hash.h>
+#include <sys/nv.h>
+#include <sys/conf.h>
+#include <fs/devfs/devfs_int.h>
 
 #include <dtrace.h>
 #include <dtrace_impl.h>
 
 #include "dl_assert.h"
 #include "dlog_client.h"
-#include "dl_memory.h"
 #include "dl_utils.h"
+
+MALLOC_DECLARE(M_DLKON);
+MALLOC_DEFINE(M_DLKON, "kon", "DLog konsumer memory");
 
 static void konsumer_open(void *, struct dtrace_state *);
 static void konsumer_close(void *, struct dtrace_state *);
-static void konsumer_free(void *addr);
-static void * konsumer_malloc(unsigned long len);
 static int konsumer_event_handler(struct module *, int, void *);
-static void konsumer_main(void *);
 static void konsumer_on_response(struct dl_response const * const);
 static void konsumer_thread(void *);
 
@@ -80,19 +82,11 @@ struct konsumer {
 	LIST_ENTRY(konsumer) konsumer_entries;
 	struct cv konsumer_cv;
 	struct mtx konsumer_mtx;
-	struct thread *konsumer_tid;
+	struct proc *konsumer_pid;
 	dtrace_state_t *konsumer_state;
+	struct dlog_handle *konsumer_dlog_handle;
 	int konsumer_exit;
-	//struct dlog_handle *handle;
-	//struct sbuf *hostname;
-	//struct sbuf *topic;
 };
-
-static struct proc *dlog_client_proc;
-static char const * const KON_DEFAULT_CLIENT_ID = KONSUMER_NAME;
-static char const * const KON_DEFAULT_TOPIC  = "cadets-trace";
-static char const * const KON_DEFAULT_HOSTNAME  = "localhost";
-static const int KON_DEFAULT_PORT = 9092;
 
 static const int KON_NHASH_BUCKETS = 16;
 
@@ -102,38 +96,8 @@ static dtrace_kops_t kops = {
 };
 static dtrace_konsumer_id_t kid;
 
-static struct mtx kon_mtx;
-static struct cv kon_cv;
-static int kon_exit = 0;
-
-// TODO per-konsumer instance
-static struct dlog_handle *handle;
-static struct sbuf *hostname;
-static struct sbuf *topic;
-
 static LIST_HEAD(konsumers, konsumer) *konsumer_hashtbl = NULL;
 static u_long konsumer_hashmask;
-
-/* Configure the distributed log logging level. */
-unsigned short PRIO_LOG = PRIO_LOW;
-
-const dlog_malloc_func dlog_alloc = konsumer_malloc;
-const dlog_free_func dlog_free = konsumer_free;
-
-MALLOC_DECLARE(M_DLOG);
-MALLOC_DEFINE(M_DLOG, "dlog", "DLog memory");
-
-static void
-konsumer_free(void *addr)
-{
-	return free(addr, M_DLOG);
-}
-
-static void *
-konsumer_malloc(unsigned long len)
-{
-	return malloc(len, M_DLOG, M_NOWAIT);
-}
 
 static void
 konsumer_on_response(struct dl_response const * const response)
@@ -153,11 +117,11 @@ konsumer_on_response(struct dl_response const * const response)
 		DLOGTR1(PRIO_LOW, "ntopics= %d\n",
 		     produce_response->dlpr_ntopics);
 
-		SLIST_FOREACH(produce_topic,
-			&produce_response->dlpr_topics, dlprt_entries) {
+		SLIST_FOREACH(produce_topic,&produce_response->dlpr_topics,
+		    dlprt_entries) {
 
 			DLOGTR1(PRIO_LOW, "Topic: %s\n",
-				sbuf_data(produce_topic->dlprt_topic_name));
+			    sbuf_data(produce_topic->dlprt_topic_name));
 
 			for (part = 0; part < produce_topic->dlprt_npartitions;
 			    part++) {
@@ -183,30 +147,52 @@ konsumer_on_response(struct dl_response const * const response)
 static int
 konsumer_event_handler(struct module *module, int event, void *arg)
 {
-	int e = 0, rc;
+	struct konsumer *k, *k_tmp;
+	int e = 0, i;
 
 	switch(event) {
 	case MOD_LOAD:
 		DLOGTR0(PRIO_LOW, "Loading Konsumer kernel module\n");
 
-		mtx_init(&kon_mtx, "konsumer", "konsumer", MTX_DEF);
-		cv_init(&kon_cv, "konsumer");
+		/* Initialise the hash table of konsumer instances. */
+		konsumer_hashtbl = hashinit(KON_NHASH_BUCKETS, M_DLKON,
+		    &konsumer_hashmask);
 
-		rc = kproc_create(konsumer_main, NULL, &dlog_client_proc, 0, 0,
-		    KONSUMER_NAME);
+		/* Register the konsumer with DTrace. After successfully
+		 * registering the konsumer with be informed of lifecycle
+		 * events (open/close) that result from DTrace consumers.
+		 */ 
+		dtrace_konsumer_register(KONSUMER_NAME, &kops, NULL, &kid);
 		break;
 	case MOD_UNLOAD:
 		DLOGTR0(PRIO_LOW, "Unloading Konsumer kernel module\n");
+		
+		/* Unregister and stop any konsumer threads. */ 
+		for (i = 0; i < KON_NHASH_BUCKETS; i++) {	
+			LIST_FOREACH_SAFE(k, &konsumer_hashtbl[i],
+			    konsumer_entries, k_tmp) {
+				DLOGTR1(PRIO_HIGH,
+				    "Stopping konsumer thread %p..\n", k);
+				/* Signal konsumer and wait for completion. */
+				mtx_lock(&k->konsumer_mtx);
+				k->konsumer_exit = 1;
+				cv_broadcast(&k->konsumer_cv);
+				mtx_unlock(&k->konsumer_mtx);
+				tsleep(k->konsumer_pid, 0,
+				    "waiting for konsumer process",
+				    10 * hz / 9);
 
-		mtx_lock(&kon_mtx);
-		kon_exit = 1;
-		cv_broadcast(&kon_cv);
-		mtx_unlock(&kon_mtx);
-		tsleep(&dlog_client_proc, 0, "waiting", hz);
-		DLOGTR0(PRIO_LOW, "Konsumer process exited successfully.\n");
-
-		cv_destroy(&kon_cv);
-		mtx_destroy(&kon_mtx);
+				/* Remove the konsumer and destroy. */
+				DLOGTR0(PRIO_LOW,
+				    "Konsumer thread stoppped successfully\n");
+				LIST_REMOVE(k, konsumer_entries);
+				mtx_destroy(&k->konsumer_mtx);
+				cv_destroy(&k->konsumer_cv);
+				free(k, M_DLKON);
+			}
+		}
+		
+		hashdestroy(konsumer_hashtbl, M_DLKON, konsumer_hashmask);
 		break;
 	default:
 		e = EOPNOTSUPP;
@@ -217,112 +203,9 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 }
 
 static void
-konsumer_main(void *argp)
-{
-	struct dl_client_configuration cc;
-	struct konsumer *k, *k_tmp;
-	struct sbuf *client_id;
-	int i, port = KON_DEFAULT_PORT;
-
-	/* Initialise the hash table of konsumer instances. */
-	konsumer_hashtbl = hashinit(KON_NHASH_BUCKETS, M_DLOG,
-	    &konsumer_hashmask);
-
-	/* Configure the default values for the client_id. */
-	client_id = sbuf_new_auto();
-	DL_ASSERT(client_id != NULL, ("Failed to initialize sbuf client_id."));
-	sbuf_cpy(client_id, KON_DEFAULT_CLIENT_ID);
-	sbuf_finish(client_id);
-
-	hostname = sbuf_new_auto();
-	DL_ASSERT(hostname != NULL, ("Failed to initialize sbuf hostname."));
-	sbuf_cpy(hostname, KON_DEFAULT_HOSTNAME);
-	sbuf_finish(hostname);
-
-	topic = sbuf_new_auto();
-	DL_ASSERT(topic != NULL, ("Failed to initialize sbuf topic."));
-	sbuf_cpy(topic, KON_DEFAULT_TOPIC);
-	sbuf_finish(topic);
-	
-	/* Configure and initialise the distributed log client. */
-	cc.dlcc_on_response = konsumer_on_response;
-	cc.dlcc_client_id = client_id;
-	cc.to_resend = true;
-	cc.resend_timeout = 40;
-	cc.resender_thread_sleep_length = 10;
-	cc.request_notifier_thread_sleep_length = 3;
-	cc.reconn_timeout = 5;
-	cc.poll_timeout = 3000;
-	
-	handle = dlog_client_open(hostname, port, &cc);
-        if (handle == NULL) {
-	 	DLOGTR0(PRIO_HIGH,	
-		    "Error initialising the distributed log client.\n");
-		kproc_exit(-1);
-	}
-
-	/* Register the konsumer with DTrace. After successfully
-	 * registering the konsumer with be informed of lifecycle
-	 * events (open/close) that result from DTrace consumers.
-	 */ 
-	dtrace_konsumer_register(KONSUMER_NAME, &kops, NULL, &kid);
-	
-	for (;;) {
-		mtx_lock(&kon_mtx);
-		cv_timedwait(&kon_cv, &kon_mtx, 10 * hz / 9);
-		if (kon_exit)  {
-			mtx_unlock(&kon_mtx);
-	 		DLOGTR0(PRIO_HIGH, "Stopping konsumer process..\n");
-			break;
-		}
-		mtx_unlock(&kon_mtx);
-	}
-
-	/* Unregister and stop any konsumer threads. */ 
-	for (i = 0; i < KON_NHASH_BUCKETS; i++) {	
-		LIST_FOREACH_SAFE(k, &konsumer_hashtbl[i], konsumer_entries,
-		    k_tmp) {
-			DLOGTR1(PRIO_HIGH, "Stopping konsumer thread %p..\n", k);
-			/* Signal the konsumer and wait for completion. */
-			mtx_lock(&k->konsumer_mtx);
-			k->konsumer_exit = 1;
-			cv_broadcast(&k->konsumer_cv);
-			mtx_unlock(&k->konsumer_mtx);
-			tsleep(k->konsumer_tid, 0,
-			    "waiting for konsumer process", 10 * hz / 9);
-
-			/* Remove the konsumer and destroy. */
-			DLOGTR0(PRIO_LOW,
-			    "Konsumer thread stoppped successfully\n");
-			LIST_REMOVE(k, konsumer_entries);
-			mtx_destroy(&k->konsumer_mtx);
-			cv_destroy(&k->konsumer_cv);
-			dlog_free(k);
-		}
-	}
-			
-	dtrace_konsumer_unregister(&kid);
-
-	/* Close the distributed log before finishing. */
-	DLOGTR0(PRIO_LOW, "Closing dlog client..\n");
-	dlog_client_close(handle);
-
-	/* Delete the sbufs used by the DLog client. */
-	DLOGTR0(PRIO_LOW, "Freeing konsumer sbufs..\n");
-	sbuf_delete(topic);
-	sbuf_delete(hostname);
-	sbuf_delete(client_id);
-
-	/* Delete the memory for the has table storing konsumer instances. */	
-	DLOGTR0(PRIO_LOW, "Freeing konsumer hashtbl..\n");
-	hashdestroy(konsumer_hashtbl, M_DLOG, konsumer_hashmask);
-	
-	kproc_exit(0);
-}
-
-static void
 konsumer_thread(void *arg)
 {
+	struct dlog_handle *handle;
 	struct konsumer *k = (struct konsumer *)arg;
 	dtrace_icookie_t cookie;
 	uint64_t offset = 0, xamot_offset = 0;
@@ -330,6 +213,8 @@ konsumer_thread(void *arg)
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
 	
 	DLOGTR0(PRIO_HIGH, "Konsumer thread starting...\n");
+	
+	handle = k->konsumer_dlog_handle;
 
 	/* Configure the default values for the client_id, topic and
 	 * hostname.
@@ -359,7 +244,7 @@ konsumer_thread(void *arg)
 		DLOGTR1(PRIO_HIGH, "Buffer dtb_xamot_offset = %lu\n",
 		    xamot_offset);
 
-		if (dlog_produce(handle, topic, "record", strlen("record"),
+		if (dlog_produce(handle, "record", strlen("record"),
 		    &k->konsumer_state->dts_buffer->dtb_tomax[xamot_offset],
 		    offset-xamot_offset) == 0) {
 			DLOGTR0(PRIO_LOW,
@@ -382,6 +267,10 @@ konsumer_thread(void *arg)
 static void
 konsumer_open(void *arg, struct dtrace_state *state)
 {
+	struct cdev_privdata *p;
+	struct dlog_handle *handle;
+	struct file *fp;
+	struct filedesc *fdp = curproc->p_fd;
 	dtrace_konsumer_t *konsumer = (dtrace_konsumer_t *)arg;
 	dtrace_konsumer_id_t id = (dtrace_konsumer_id_t)konsumer;
 	struct konsumer *k;
@@ -392,20 +281,34 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	DLOGTR3(PRIO_HIGH, "konsumer_open called by dtrace: %s %lu %p\n",
 	    konsumer->dtk_name, id, state);
 
-	k = (struct konsumer *) dlog_alloc(sizeof(struct konsumer));
+	/* Convert the DLog file descriptor into a struct dlog_handle * */
+	FILEDESC_SLOCK(fdp);
+	fp = fget_locked(fdp, 3); // TODO: 3 is fd from dtrace options
+	// TODO: what to do if rendezvous fails
+	FILEDESC_SUNLOCK(fdp);
+	p = fp->f_cdevpriv;
+	// TODO: what to do if rendezvous fails
+	handle = (struct dlog_handle *) p->cdpd_data;
+	// TODO: what to do if rendezvous fails
+	
+	k = (struct konsumer *) malloc(sizeof(struct konsumer), M_DLKON,
+	    M_NOWAIT);
 	DL_ASSERT(k != NULL, ("Failed to allocate konsumer instance."));
 
 	bzero(k, sizeof(struct konsumer));
 	mtx_init(&k->konsumer_mtx, "konsumer mtx", "konsumer", MTX_DEF);
 	cv_init(&k->konsumer_cv, "konsumer cv");
-	k->konsumer_exit = 0;
 	k->konsumer_state = state;
+	k->konsumer_exit = 0;
+	k->konsumer_pid = NULL;
+	k->konsumer_dlog_handle = handle;
 
 	hash = murmur3_32_hash(state, sizeof(struct dtrace_state), 0) &
 	    konsumer_hashmask;
 	LIST_INSERT_HEAD(&konsumer_hashtbl[hash], k, konsumer_entries);
-	kproc_kthread_add(konsumer_thread, k, &dlog_client_proc,
-	    &k->konsumer_tid, 0, 0, NULL, NULL);
+
+	kproc_kthread_add(konsumer_thread, k, &k->konsumer_pid, NULL, 0, 0,
+	    NULL, NULL);
 }
 
 static void
@@ -425,7 +328,7 @@ konsumer_close(void *arg, struct dtrace_state *state)
 			k->konsumer_exit = 1;
 			cv_broadcast(&k->konsumer_cv);
 			mtx_unlock(&k->konsumer_mtx);
-			tsleep(k->konsumer_tid, 0,
+			tsleep(k->konsumer_pid, 0,
 			     "waiting for konsumer thread", hz);
 			DLOGTR0(PRIO_LOW,
 			     "Konsumer thread stoppped successfully\n");
@@ -433,11 +336,12 @@ konsumer_close(void *arg, struct dtrace_state *state)
 			LIST_REMOVE(k, konsumer_entries);
 			mtx_destroy(&k->konsumer_mtx);
 			cv_destroy(&k->konsumer_cv);
-			dlog_free(k);
+			free(k, M_DLKON);
 		}
 	}
 }
 
 DECLARE_MODULE(konsumer, konsumer_conf, SI_SUB_DRIVERS, SI_ORDER_MIDDLE);
 MODULE_VERSION(konsumer, 1);
+MODULE_DEPEND(konsumer, dlog, 1, 1, 1);
 MODULE_DEPEND(konsumer, dtrace, 1, 1, 1);
