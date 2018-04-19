@@ -62,7 +62,7 @@
 #include "dl_utils.h"
 
 MALLOC_DECLARE(M_DLKON);
-MALLOC_DEFINE(M_DLKON, "kon", "DLog konsumer memory");
+MALLOC_DEFINE(M_DLKON, "dlkon", "DLog konsumer memory");
 
 static void konsumer_open(void *, struct dtrace_state *);
 static void konsumer_close(void *, struct dtrace_state *);
@@ -70,7 +70,7 @@ static int konsumer_event_handler(struct module *, int, void *);
 static void konsumer_on_response(struct dl_response const * const);
 static void konsumer_thread(void *);
 
-static char const * const KONSUMER_NAME = "konsumer";
+static char const * const KONSUMER_NAME = "dl_konsumer";
 
 static moduledata_t konsumer_conf = {
 	KONSUMER_NAME,
@@ -261,7 +261,7 @@ konsumer_thread(void *arg)
 	}
 
 	DLOGTR0(PRIO_HIGH, "Konsumer thread exited successfully.\n");
-	kthread_exit();
+	kproc_exit(0);
 }
 
 static void
@@ -277,6 +277,8 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	uint32_t hash;
 
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
+	DL_ASSERT(konsumer != NULL,
+	    ("DTrace konsumer instance cannot be NULL\n"));
 
 	DLOGTR3(PRIO_HIGH, "konsumer_open called by dtrace: %s %lu %p\n",
 	    konsumer->dtk_name, id, state);
@@ -303,7 +305,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	k->konsumer_pid = NULL;
 	k->konsumer_dlog_handle = handle;
 
-	hash = murmur3_32_hash(state, sizeof(struct dtrace_state), 0) &
+	hash = murmur3_32_hash(&state, sizeof(struct dtrace_state *), 0) &
 	    konsumer_hashmask;
 	LIST_INSERT_HEAD(&konsumer_hashtbl[hash], k, konsumer_entries);
 
@@ -317,9 +319,9 @@ konsumer_close(void *arg, struct dtrace_state *state)
 	struct konsumer *k, *k_tmp;
 	uint32_t hash;
 
-	DLOGTR0(PRIO_HIGH, "konsumer_close called by dtrace\n");
+	DLOGTR1(PRIO_HIGH, "konsumer_close called by dtrace %p\n", state);
 
-	hash = murmur3_32_hash(state, sizeof(struct dtrace_state), 0) &
+	hash = murmur3_32_hash(&state, sizeof(struct dtrace_state *), 0) &
 	    konsumer_hashmask;
 	LIST_FOREACH_SAFE(k, &konsumer_hashtbl[hash], konsumer_entries, k_tmp) {
 		if (state == k->konsumer_state) {
