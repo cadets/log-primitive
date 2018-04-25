@@ -34,18 +34,44 @@
  */
 
 #include <atf-c.h>
+#include <stdlib.h>
 
-//#include "dl_fetch_request.h"
+#include "dl_bbuf.h"
+#include "dl_memory.h"
+#include "dl_fetch_request.h"
+#include "dl_utils.h"
 
-ATF_TC(test1);
-ATF_TC_HEAD(test1, tc)
-{
-	atf_tc_set_md_var(tc, "descr", "This is test 1");
-}
+unsigned short PRIO_LOG = PRIO_LOW;
 
+const dlog_malloc_func dlog_alloc = malloc;
+const dlog_free_func dlog_free = free;
+
+
+/* Test 1
+ * dl_produce_request_new() - valid params. 
+ */
+ATF_TC_WITHOUT_HEAD(test1);
 ATF_TC_BODY(test1, tc)
 {
-	ATF_REQUIRE(1);
+	struct dl_fetch_request *request;
+	struct sbuf *client_id, *topic;
+	int rc;
+
+	client_id = sbuf_new_auto();
+	sbuf_cpy(client_id, "test-client");
+	sbuf_finish(client_id);
+
+	topic = sbuf_new_auto();
+	sbuf_cpy(topic, "test-topic");
+	sbuf_finish(topic);
+
+	rc = dl_fetch_request_new(&request, 0, client_id, topic, 0, 0, 0, 0);
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(request != NULL);
+	
+//	dl_fetch_request_delete(request);
+	sbuf_delete(client_id);
+	sbuf_delete(topic);
 }
 
 ATF_TP_ADD_TCS(tp)

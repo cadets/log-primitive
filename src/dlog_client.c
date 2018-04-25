@@ -90,23 +90,18 @@ static int dl_stop_response_thread(struct dlog_handle *);
 static int dl_start_request_thread(struct dlog_handle *);
 static int dl_stop_request_thread(struct dlog_handle *);
 
-//dlog_client_init()
-
-//static struct dl_correlation_id *correlation_id = NULL;
-//
-//if (correlation_id == NULL)
-	//correlation_id = dl_correlation_id_new();
-
 #ifdef _KERNEL
 extern struct proc *dlog_client_proc;
 #endif
 
+/*
 static dl_event_handler_handle
 dlog_client_get_handle(void *instance)
 {
 	const struct dlog_handle *handle = instance;
 	return handle->dlh_transport->dlt_sock;
 }
+*/
 
 static void
 dlog_client_handle_read_event(void *instance)
@@ -149,13 +144,12 @@ dlog_client_handle_read_event(void *instance)
 					    buffer);
 					break;
 				case DL_FETCH_API_KEY:
-					response = dl_fetch_response_decode(
+					dl_fetch_response_decode(&response,
 					    buffer);
 					break;
 				case DL_OFFSET_API_KEY:
-					response =
-					    dl_list_offset_response_decode(
-						buffer);
+					dl_list_offset_response_decode(
+					    &response, buffer);
 					break;
 				default:
 					DLOGTR1(PRIO_HIGH,
@@ -172,11 +166,8 @@ dlog_client_handle_read_event(void *instance)
 				/* Invoke the client callback. */
 				if (response != NULL &&
 				    handle->dlh_config->dlcc_on_response != NULL) {
-					//handle->dlh_config->dlcc_on_response(
-			    		//header->dlrsh_correlation_id);
-					//response);
-					handle->dlh_config->dlcc_on_response(response);
-
+					handle->dlh_config->dlcc_on_response(
+					    response);
 					dlog_free(response);
 				}
 			} else {
@@ -244,6 +235,19 @@ dl_request_thread(void *vargp)
 
 	for (;;) {
 		DLOGTR0(PRIO_LOW, "Dequeuing requests...\n");
+/*
+#ifdef _KERNEL
+		mtx_assert(&handle->dl_request_mtx, MA_UNOWNED);
+		mtx_lock(&handle->dl_request_mtx);
+		if (handle->dl_client_exit) { // && dl_request_q_is_empty();
+			mtx_unlock(&handle->dl_request_mtx);
+			break;
+		}
+		mtx_unlock(&handle->dl_request_mtx);
+#else
+		pthread_testcancel();
+#endif
+*/
 		if (dl_request_q_dequeue(handle->dlh_request_q,
 			&local_request_queue) == 0) {
 			STAILQ_FOREACH_SAFE(request, &local_request_queue,
@@ -302,8 +306,23 @@ dl_request_thread(void *vargp)
 					//singal cond var and break ?
 				}
 			}
+		} else {
+			DLOGTR0(PRIO_HIGH,
+			    "Checking request thread supsend...");
+#ifdef _KERNEL
+			mtx_lock(&handle->dl_client_exit_mtx);
+			if (handle->dl_client_exit) {
+				mtx_unlock(&handle->dl_client_exit_mtx);
+				break;
+			}
+			mtx_unlock(&handle->dl_client_exit_mtx);
+#else
+			// TODO
+#endif
 		}
-	}
+}
+
+	DLOGTR0(PRIO_LOW, "Request thread stopped.\n");
 #ifdef _KERNEL
 	kproc_exit(0);
 #else
@@ -318,27 +337,46 @@ static void *
 #endif
 dl_response_thread(void *vargp)
 {
-	//struct dlog_handle *handle = (struct dlog_handle *) vargp;
-	//struct timeval tv;
+	struct dlog_handle *handle = (struct dlog_handle *) vargp;
+	struct timeval tv;
 
 	DL_ASSERT(vargp != NULL, "Request thread arguments cannot be NULL");
 
 	DLOGTR0(PRIO_LOW, "Response thread started...\n");
+	
+	/* Configure the response thread polling interval. */	
+/*	
+	if (!nvlist_exists_string(props, DL_CONF_RESPONSE_POLL)) {
+		portnumber = DL_DEFAULT_RESPONSE_POLL
+	} else {
+		portnumber = (unsigned short) nvlist_get_number(props,
+		    DL_CONF_BROKER_PORT);
+	}
+*/
+	tv.tv_sec = 1;
 
 	for (;;) {
-		kthread_suspend_check();
-		//dlog_client_handle_read_event(handle);
 #ifdef _KERNEL
-		pause("test", 10 * hz / 9);
-		//getmicrotime(&tv);
-		//tv.tv_sec += 1;
+		if (selsocket(handle->dlh_transport->dlt_sock, POLLIN, &tv,
+		    curthread) == 0) {
 
-		//if (selsocket(handle->dlh_transport->dlt_sock, POLLIN, &tv,
-		//    curthread) == 0)
-		//	dlog_client_handle_read_event(handle);
+			dlog_client_handle_read_event(handle);
+		} else {
+			DLOGTR0(PRIO_HIGH,
+			    "Checking response thread supsend...");
+			mtx_lock(&handle->dl_client_exit_mtx);
+			if (handle->dl_client_exit) {
+				mtx_unlock(&handle->dl_client_exit_mtx);
+				break;
+			}
+			mtx_unlock(&handle->dl_client_exit_mtx);
+		}
 #endif
 		//dl_poll_reactor_handle_events();
+		//dlog_client_handle_read_event(handle);
 	}
+
+	DLOGTR0(PRIO_LOW, "Response thread stopped.\n");
 #ifdef _KERNEL
 	kproc_exit(0);
 #else
@@ -367,8 +405,25 @@ dl_stop_response_thread(struct dlog_handle *handle)
 
 	DL_ASSERT(handle != NULL, ("DLog client handle cannot be NULL."));
 
+	/* Wait for the twice the response thread polling interval. */	
+/*	
+	if (!nvlist_exists_string(props, DL_CONF_RESPONSE_POLL)) {
+		portnumber = DL_DEFAULT_RESPONSE_POLL
+	} else {
+		portnumber = (unsigned short) nvlist_get_number(props,
+		    DL_CONF_BROKER_PORT);
+	}
+	*/
+	
 #ifdef _KERNEL
-	return kthread_suspend(handle->dlh_response_tid, 2 * (10 * hz / 9));
+	int timeo =  2 * (10 * hz / 9);
+
+	mtx_lock(&handle->dl_client_exit_mtx);
+	handle->dl_client_exit = 1;
+	mtx_unlock(&handle->dl_client_exit_mtx);
+	tsleep(handle->dlh_response_tid, 0, "waiting for response thread",
+	    timeo);
+	return 0;
 #else
 	return pthread_cancel(handle->dlh_response_tid);
 #endif
@@ -395,8 +450,25 @@ dl_stop_request_thread(struct dlog_handle *handle)
 
 	DL_ASSERT(handle != NULL, ("DLog client handle cannot be NULL."));
 
+	/* Wait for the twice the response thread polling interval. */	
+/*	
+	if (!nvlist_exists_string(props, DL_CONF_RESPONSE_POLL)) {
+		portnumber = DL_DEFAULT_RESPONSE_POLL
+	} else {
+		portnumber = (unsigned short) nvlist_get_number(props,
+		    DL_CONF_BROKER_PORT);
+	}
+	*/
 #ifdef _KERNEL
-	return kthread_suspend(handle->dlh_request_tid, 2 * (10 * hz / 9));
+	int timeo =  2 * (10 * hz / 9);
+
+	mtx_lock(&handle->dl_client_exit_mtx);
+	handle->dl_client_exit = 1;
+	mtx_unlock(&handle->dl_client_exit_mtx);
+	tsleep(handle->dlh_response_tid, 0, "waiting for response thread",
+	    timeo);
+	DLOGTR0(PRIO_LOW, "Response thread stopped.\n");
+	return 0;
 #else
 	return pthread_cancel(handle->dlh_request_tid);
 #endif
@@ -431,54 +503,60 @@ dlog_client_open(struct dl_client_config const * const config)
 	handle = (struct dlog_handle *) dlog_alloc(sizeof(struct dlog_handle));
 #ifdef _KERNEL
 	DL_ASSERT(handle != NULL, ("Failed allocating DLog client handle."));
-	{
 #else
-	if (handle != NULL) {
-#endif	
-		/* Store the client configuration. */
-		handle->dlh_config = config;
-
-		/* Instatiate the client resender. */
-		handle->dlh_resender = dl_resender_new(handle);
-		//dl_resender_start(handle->dlh_resender);
-
-		/* Initialise the response queue (on which client requests are
-		 * enqueued).
-		 */
-		dl_request_q_new(&handle->dlh_request_q);
-
-		/* Instantiate a correlation id. */
-		dl_correlation_id_new(&handle->correlation_id);
-		DL_ASSERT(handle->correlation_id != NULL,
-		"Failed instatiating new correlation_id\n");
-
-		struct dl_transport *transport =
-		    (struct dl_transport *) dlog_alloc(
-		    sizeof(struct dl_transport));
-		dl_transport_connect(transport, hostname, portnumber);
-
-		handle->dlh_transport = transport;
-
-		// TODO: this looks like it can be removed
-		//handle->dlh_event_handler.dleh_instance = handle;
-		//handle->dlh_event_handler.dleh_get_handle = dlog_client_get_handle;
-		//handle->dlh_event_handler.dleh_handle_event = dlog_client_handle_read_event;
-
-		//rc = dl_start_response_thread(handle);
-		// TODO error handling
-
-		rc = dl_start_request_thread(handle);
-		// TODO error handling
-
-		// TODO: temp
-		//struct broker_configuration *bc = (struct broker_configuration *)
-		//dlog_alloc(sizeof(struct broker_configuration));
-		// bc->fsync_thread_sleep_length = 10;
-
-		//dlog_broker_init("cadets-trace", bc);
-
-		//dl_poll_reactor_register(&handle->dlh_event_handler);
+	if (handle == NULL) {
+		// TODO
 	}
+#endif	
+	bzero(handle, sizeof(struct dlog_handle));
+
+	/* Store the client configuration. */
+	handle->dlh_config = config;
+
+	/* Instatiate the client resender. */
+	handle->dlh_resender = dl_resender_new(handle);
+	//dl_resender_start(handle->dlh_resender);
+
+	/* Initialise the response queue (on which client requests are
+	 * enqueued).
+	 */
+	dl_request_q_new(&handle->dlh_request_q);
+
+	/* Instantiate a correlation id. */
+	dl_correlation_id_new(&handle->correlation_id);
+	DL_ASSERT(handle->correlation_id != NULL,
+	"Failed instatiating new correlation_id\n");
+
+	struct dl_transport *transport =
+	    (struct dl_transport *) dlog_alloc(
+	    sizeof(struct dl_transport));
+	dl_transport_connect(transport, hostname, portnumber);
+
+	handle->dlh_transport = transport;
+
+	// TODO: this looks like it can be removed
+	//handle->dlh_event_handler.dleh_instance = handle;
+	//handle->dlh_event_handler.dleh_get_handle = dlog_client_get_handle;
+	//handle->dlh_event_handler.dleh_handle_event = dlog_client_handle_read_event;
+
+	rc = dl_start_response_thread(handle);
+#ifdef _KERNEL
+	mtx_init(&handle->dl_client_exit_mtx, "response", "dlog client", MTX_DEF);
+#else
+#endif
+	// TODO error handling
+
+	rc = dl_start_request_thread(handle);
+	// TODO error handling
+
+	// TODO: temp
+	//struct broker_configuration *bc = (struct broker_configuration *)
+	//dlog_alloc(sizeof(struct broker_configuration));
+	// bc->fsync_thread_sleep_length = 10;
+
+	//dlog_broker_init("cadets-trace", bc);
+
+	//dl_poll_reactor_register(&handle->dlh_event_handler);
 	return handle;
 }
 
@@ -489,23 +567,24 @@ dlog_client_close(struct dlog_handle *handle)
 
 	DL_ASSERT(handle != NULL, ("DLog client handle cannot be NULL."));
 
-	DLOGTR0(PRIO_HIGH, "Cancelling request thread\n");
 	/* Cancel the request thread. */
+	DLOGTR0(PRIO_LOW, "Cancelling request thread\n");
 	rc = dl_stop_request_thread(handle);
 	if (rc != 0)
-		DLOGTR1(PRIO_HIGH, "Error stopping request thread%d\n", rc);
+		DLOGTR1(PRIO_HIGH, "Error stopping request thread %d\n", rc);
 
-	DLOGTR0(PRIO_HIGH, "Cancelling response thread\n");
 	/* Cancel the response thread. */
-	//rc = dl_stop_response_thread(handle);
+	DLOGTR0(PRIO_LOW, "Cancelling response thread\n");
+	rc = dl_stop_response_thread(handle);
 	if (rc != 0)
 		DLOGTR1(PRIO_HIGH, "Error stopping response thread %d\n", rc);
 		
-	DLOGTR0(PRIO_HIGH, "Deleting request q\n");
 	/* Delete the request_q. */
+	DLOGTR0(PRIO_LOW, "Deleting request q\n");
 	dl_request_q_delete(handle->dlh_request_q);
 	
 	/* Cancel the resender */
+	DLOGTR0(PRIO_LOW, "TODO\n");
 	rc = dl_resender_stop(handle->dlh_resender);
 	if (rc != 0)
 		DLOGTR1(PRIO_HIGH, "Failed stopping the resender %d\n", rc);
@@ -521,6 +600,8 @@ dlog_client_close(struct dlog_handle *handle)
 
 	/* Free all the memory associated with the client handle. */
 	dlog_free(handle);	
+
+	// TODO: what about the client configuration
 
 	DLOGTR0(PRIO_LOW, "DLog client finished\n");
 
@@ -550,10 +631,12 @@ dlog_fetch(struct dlog_handle *handle, struct sbuf *topic_name,
 	    "User requested to send a message with correlation id = %d\n",
 	    dl_correlation_id_val(handle->correlation_id));
 
-	message = dl_fetch_request_new(
+	/* Instantiate a new FetchRequest */
+	if (dl_fetch_request_new(&message,
 	    dl_correlation_id_val(handle->correlation_id),
 	    client_id, topic_name, min_bytes,
-	    max_wait_time, fetch_offset, max_bytes);
+	    max_wait_time, fetch_offset, max_bytes) != 0)
+		return -1;
 	
 	DLOGTR1(PRIO_LOW, "Constructed request (id = %d)\n",
 	    message->dlrqm_correlation_id);
@@ -569,9 +652,6 @@ dlog_fetch(struct dlog_handle *handle, struct sbuf *topic_name,
 		};
 		DLOGTR0(PRIO_LOW, "\n");
 
-		// TODO: mesasge xtor
-		// dl_fetch_request_delete(message);
-
 		/* Enqueue the request for processing */
 		if (dl_request_q_enqueue_new(handle->dlh_request_q, buffer,
 		    message->dlrqm_correlation_id,
@@ -586,6 +666,10 @@ dlog_fetch(struct dlog_handle *handle, struct sbuf *topic_name,
 		DLOGTR0(PRIO_HIGH, "Error encoding FetchRequest\n");
 		result = -1;
 	}
+
+	// TODO: mesasge xtor
+	// dl_request_delete(message);
+
 	return result;
 }
 
@@ -627,9 +711,6 @@ dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
 		};
 		DLOGTR0(PRIO_LOW, "\n");
 
-		// TODO: mesasge xtor
-		// dl_list_offset_request_delete(message);
-
 		DLOGTR0(PRIO_LOW, "Encoded request message\n");
 
 		/* Enqueue the request for processing */
@@ -648,18 +729,30 @@ dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
 		DLOGTR0(PRIO_HIGH, "Error encoding ListOffsetRequest\n");
 		result = -1;
 	}
+
+	// TODO: mesasge xtor
+	// dl_request_delete(message);
+
 	return result;
 }
 
 int
-dlog_produce(struct dlog_handle *handle, struct sbuf *topic_name,
-    char *key, int key_len, char *value, int value_len)
+dlog_produce(struct dlog_handle *handle, unsigned char *key, int key_len,
+    unsigned char *value, int value_len)
 {
 	struct dl_bbuf *buffer;
 	struct dl_request *message;
 	struct dl_message_set *message_set;
 	nvlist_t *props = handle->dlh_config->dlcc_props;
-	struct sbuf *client_id;
+	struct sbuf *client_id, *topic_name;
+
+	topic_name = sbuf_new_auto();
+	if (!nvlist_exists_string(props, DL_CONF_TOPIC)) {
+		sbuf_cpy(topic_name, DL_DEFAULT_TOPIC);
+	} else {
+		sbuf_cpy(topic_name, nvlist_get_string(props, DL_CONF_TOPIC));
+	}
+	sbuf_finish(topic_name);
 
 	client_id = sbuf_new_auto();
 	if (!nvlist_exists_string(props, DL_CONF_CLIENTID)) {
@@ -675,14 +768,12 @@ dlog_produce(struct dlog_handle *handle, struct sbuf *topic_name,
 	/* Instantiate a new ProduceRequest */
 	if (dl_produce_request_new(&message,
 	    dl_correlation_id_val(handle->correlation_id),
-	    client_id, topic_name, message_set) != 0)
+	    client_id, 2000, 1, topic_name, message_set) != 0)
 		return -1;
 
 	DLOGTR1(PRIO_LOW, "Constructed request (id = %d)\n",
 	    message->dlrqm_correlation_id);
 		
-	//dlog_broker_handle(message);
-
 	/* Encode the request. */	
 	if (dl_request_encode(message, &buffer) == 0) {
 		
@@ -707,12 +798,14 @@ dlog_produce(struct dlog_handle *handle, struct sbuf *topic_name,
 			DLOGTR0(PRIO_HIGH, "Error enqueing request\n");
 		}
 
-		dl_produce_request_delete(message);
-		//dl_bbuf_delete(buffer);
+		dl_request_delete(message);
 
 		return 0;
-	} 
+	} else {
+		DLOGTR0(PRIO_HIGH, "Error encoding ProduceRequest\n");
+	}	
 
-	DLOGTR0(PRIO_HIGH, "Error encoding ProduceRequest\n");
+	dl_request_delete(message);
+
 	return -1;
 }

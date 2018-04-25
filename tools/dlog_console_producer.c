@@ -36,6 +36,7 @@
 
 #include <sys/types.h>
 #include <sys/sbuf.h>
+#include <sys/nv.h>
 
 #include <signal.h>
 #include <stdio.h>
@@ -141,38 +142,32 @@ int
 main(int argc, char **argv)
 {
 	struct dlog_handle *handle;
-	struct dl_client_configuration cc;
-	struct sbuf *client_id = NULL;
-	struct sbuf *hostname = NULL;
-	struct sbuf *topic = NULL;
-	char * line;
+	struct dl_client_config conf;
+	//struct sbuf *client_id = NULL;
+	//struct sbuf *hostname = NULL;
+	//struct sbuf *topic = NULL;
+	char *client_id = DLC_DEFAULT_CLIENT_ID;
+	char *hostname = DLC_DEFAULT_HOSTNAME;
+	char *topic = DLC_DEFAULT_TOPIC;
+	char *line;
+	nvlist_t *props;
 	int port = DLC_DEFAULT_PORT;
 	int resend_timeout = 40;
 	int opt, rc;
 	size_t len = 0;
 	size_t read = 0;
 
-	/* Configure the default values. */
-	client_id = sbuf_new_auto();
-	sbuf_cpy(client_id, DLC_DEFAULT_CLIENT_ID);
-
-	hostname = sbuf_new_auto();
-	sbuf_cpy(hostname, DLC_DEFAULT_HOSTNAME);
-
-	topic = sbuf_new_auto();
-	sbuf_cpy(topic, DLC_DEFAULT_TOPIC);
-
 	/* Parse the utilities command line arguments. */
-	while ((opt = getopt(argc, argv, "c::t::h::p::v")) != -1) {
+	while ((opt = getopt(argc, argv, "c:t:h:p:v")) != -1) {
 		switch (opt) {
 		case 'c':
-			sbuf_cpy(client_id, optarg);
+			client_id = optarg;
 			break;
 		case 't':
-			sbuf_cpy(topic, optarg);
+			topic = optarg;
 			break;
 		case 'h':
-			sbuf_cpy(hostname, optarg);
+			hostname = optarg;
 			break;
 		case 'p':
 			port = strtoul(optarg, NULL, 10);
@@ -194,16 +189,17 @@ main(int argc, char **argv)
 	signal(SIGINFO, dlp_siginfo_handler);
 
 	/* Configure and initialise the distributed log client. */
-	cc.dlcc_on_response = dlp_on_response;
-	cc.dlcc_client_id = client_id;
-	cc.to_resend = true;
-	cc.resend_timeout = resend_timeout;
-	cc.resender_thread_sleep_length = 10;
-	cc.request_notifier_thread_sleep_length = 3;
-	cc.reconn_timeout = 5;
-	cc.poll_timeout = 3000;
+	conf.dlcc_on_response = dlp_on_response;
+	
+	props = nvlist_create(0);
+	nvlist_add_string(props, DL_CONF_CLIENTID, client_id);
+	nvlist_add_string(props, DL_CONF_BROKER, hostname);
+	nvlist_add_number(props, DL_CONF_BROKER_PORT, port);
+	nvlist_add_string(props, DL_CONF_TOPIC, topic);
 
-	handle = dlog_client_open(hostname, port, &cc);
+	conf.dlcc_props = props;
+
+	handle = dlog_client_open(&conf);
         if (handle == NULL) {
 		fprintf(stderr,
 		    "Error initialising the distributed log client.\n");
@@ -223,8 +219,8 @@ main(int argc, char **argv)
 			 */
 			line[strlen(line) - 1] = '\0';
 
-			rc = dlog_produce(handle, topic,
-			    "key", strlen("key"), line, strlen(line));
+			rc = dlog_produce(handle, "key", strlen("key"),
+			    line, strlen(line));
 			if (rc != 0) {
 				fprintf(stderr,
 				    "Failed writing to the log %d\n", rc); 
@@ -236,12 +232,12 @@ main(int argc, char **argv)
 	/* Deallocate the buffer used to store the user input. */
 	free(line);
 
+close_dlog:
 	/* Close the distributed log before finishing. */
 	dlog_client_close(handle);
 
-	sbuf_delete(topic);
-	sbuf_delete(hostname);
-	sbuf_delete(client_id);
+	/* Delete the client's configuration properties. */
+	nvlist_destroy(props);
 
 	return 0;
 }

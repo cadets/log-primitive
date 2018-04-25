@@ -51,12 +51,13 @@
 #include "dlog_client.h"
 
 static void * dl_alloc(unsigned long len);
-static int dlog_event_handler(struct module *, int, void *);
 static void dl_free(void *addr);
+static void dl_client_close(void *);
+static int dlog_event_handler(struct module *, int, void *);
+static void dlog_main(void *argp);
 static d_open_t dlog_open;
 static d_close_t dlog_close;
 static d_ioctl_t dlog_ioctl;
-static void dl_client_close(void *);
 
 static char const * const DLOG_NAME = "dlog";
 
@@ -74,6 +75,11 @@ static struct cdev *dlog_dev;
 
 const dlog_malloc_func dlog_alloc = dl_alloc;
 const dlog_free_func dlog_free = dl_free;
+
+struct proc *dlog_client_proc;
+static struct mtx dlog_mtx;
+static struct cv dlog_cv;
+static int dlog_exit = 0;
 
 MALLOC_DECLARE(M_DLOG);
 MALLOC_DEFINE(M_DLOG, "dlog", "DLog memory");
@@ -98,7 +104,7 @@ static int
 dlog_event_handler(struct module *module, int event, void *arg)
 {
 	struct make_dev_args dlog_args;
-	int e = 0;
+	int rc, e = 0;
 
 	switch(event) {
 	case MOD_LOAD:
@@ -112,9 +118,25 @@ dlog_event_handler(struct module *module, int event, void *arg)
 		dlog_args.mda_mode = S_IRUSR | S_IWUSR;
 
 		e = make_dev_s(&dlog_args, &dlog_dev, DLOG_NAME);
+		
+		mtx_init(&dlog_mtx, "dlog", "dlog", MTX_DEF);
+		cv_init(&dlog_cv, "dlog");
+
+		rc = kproc_create(dlog_main, NULL, &dlog_client_proc, 0, 0,
+		    DLOG_NAME);
 		break;
 	case MOD_UNLOAD:
 		DLOGTR0(PRIO_LOW, "Unloading DLog kernel module\n");
+
+		mtx_lock(&dlog_mtx);
+		dlog_exit = 1;
+		cv_broadcast(&dlog_cv);
+		mtx_unlock(&dlog_mtx);
+		tsleep(&dlog_client_proc, 0, "waiting", 10 * hz / 9);
+		DLOGTR0(PRIO_LOW, "DLog process exited successfully.\n");
+
+		cv_destroy(&dlog_cv);
+		mtx_destroy(&dlog_mtx);
 
 		destroy_dev(dlog_dev);
 		break;
@@ -124,6 +146,24 @@ dlog_event_handler(struct module *module, int event, void *arg)
 	}
 
 	return e;
+}
+
+static void
+dlog_main(void *argp)
+{
+
+	for (;;) {
+		mtx_lock(&dlog_mtx);
+		cv_timedwait(&dlog_cv, &dlog_mtx, 10 * hz / 9);
+		if (dlog_exit)  {
+			mtx_unlock(&dlog_mtx);
+	 		DLOGTR0(PRIO_HIGH, "Stopping DLog process..\n");
+			break;
+		}
+		mtx_unlock(&dlog_mtx);
+	}
+
+	kproc_exit(0);
 }
 
 static int 

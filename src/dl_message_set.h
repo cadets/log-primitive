@@ -60,10 +60,11 @@ struct dl_message_set {
 	int32_t dlms_nmessages;
 };
 
-extern struct dl_message_set * dl_message_set_decode(struct dl_bbuf *);
+extern int dl_message_set_decode(struct dl_message_set **, struct dl_bbuf *);
 extern int dl_message_set_encode(struct dl_message_set const *,
     struct dl_bbuf *);
 extern struct dl_message_set * dl_message_set_new(char *, int32_t, char *,
     int32_t);
+extern void dl_message_set_delete(struct dl_message_set *);
 
 #endif

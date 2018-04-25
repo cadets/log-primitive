@@ -122,6 +122,11 @@ dl_list_offset_request_new(int32_t correlation_id, struct sbuf *client_id,
 	return NULL;
 }
 
+void
+dl_list_offset_request_delete(struct dl_request *self)
+{
+}
+
 /**
  * Decode the ListOffsetRequest.
  *

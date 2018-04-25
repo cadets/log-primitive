@@ -29,33 +29,31 @@
 # SUCH DAMAGE.
 #
 
+.PATH : ../src
+
 KMOD=konsumer
 
-#.PATH=../src
-
-SRCS= ../src/dlog_client.c \
-	../src/dl_broker_partition.c \
-	../src/dl_broker_segment.c \
-	../src/dl_broker_topic.c \
-	../src/dl_bbuf.c \
-	../src/dl_config.c \
-	../src/dl_correlation_id.c \
-	../src/dl_resender.c \
-	../src/dl_utils.c \
-	../src/dl_thread.c \
-	../src/dl_fetch_request.c \
-	../src/dl_fetch_response.c \
-	../src/dl_list_offset_request.c \
-	../src/dl_list_offset_response.c \
-	../src/dl_message_set.c \
-	../src/dl_primitive_types.c \
-	../src/dl_produce_request.c \
-	../src/dl_produce_response.c \
-	../src/dl_request.c \
-	../src/dl_request_queue.c \
-	../src/dl_response.c \
-	../src/dl_transport.c \
-	../src/lookup3.c \
+SRCS= dlog_client.c \
+	dl_broker_partition.c \
+	dl_broker_segment.c \
+	dl_broker_topic.c \
+	dl_bbuf.c \
+	dl_correlation_id.c \
+	dl_resender.c \
+	dl_utils.c \
+	dl_thread.c \
+	dl_fetch_request.c \
+	dl_fetch_response.c \
+	dl_list_offset_request.c \
+	dl_list_offset_response.c \
+	dl_message_set.c \
+	dl_primitive_types.c \
+	dl_produce_request.c \
+	dl_produce_response.c \
+	dl_request.c \
+	dl_request_queue.c \
+	dl_response.c \
+	dl_transport.c \
 	konsumer.c
 
 CFLAGS+=-D_KERNEL

@@ -37,8 +37,7 @@
 #ifndef _DLOG_CLIENT_IMPL_H
 #define _DLOG_CLIENT_IMPL_H
 
-#ifdef _KERNEL
-#else
+#ifndef _KERNEL
 #include <pthread.h>
 #endif
 
@@ -55,14 +54,16 @@ struct dlog_handle {
 #ifdef _KERNEL
 	struct thread *dlh_response_tid; 
 	struct thread *dlh_request_tid; 
+	struct mtx dl_client_exit_mtx;
 #else
 	pthread_t dlh_response_tid;
 	pthread_t dlh_request_tid;
+	//pthread_mtx
 #endif
 	struct dl_request_q *dlh_request_q;
-	struct dl_correlation_id *correlation_id; // TODO: this is also not right, correlation ids aren't per client
+	struct dl_correlation_id *correlation_id;
 	struct dl_transport *dlh_transport;
-	struct dl_event_handler dlh_event_handler;
+	int dl_client_exit;
 };
 
 #endif

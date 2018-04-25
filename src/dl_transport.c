@@ -114,7 +114,7 @@ dl_transport_connect(struct dl_transport *self,
 int
 dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 {
-	//struct dl_request_or_response *req_or_res;
+	char *buffer;
 	int ret, total = 0;
 	int32_t msg_size;
 	
@@ -123,33 +123,61 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 
 	/* Read the size of the request or response to process. */
 #ifdef _KERNEL
-	//soreceive
-	ret = 0;
-	msg_size = 0;
+	struct thread *td = curthread;
+	struct iovec iov[1];
+	struct uio u;
+
+	iov[0].iov_base = &msg_size;
+	iov[0].iov_len = sizeof(int32_t);
+
+	bzero(&u, sizeof(struct uio));
+	u.uio_iov = iov;
+	u.uio_iovcnt = 1;
+	u.uio_offset = 0;
+        u.uio_resid = sizeof(int32_t);
+        u.uio_segflg  = UIO_SYSSPACE;
+        u.uio_rw = UIO_READ;
+        u.uio_td = td;
+
+	ret = soreceive(self->dlt_sock, NULL, &u, NULL, NULL, NULL);
 #else
 	ret = recv(self->dlt_sock, &msg_size, sizeof(int32_t), 0);
-	msg_size = be32toh(msg_size);
 #endif
+	msg_size = be32toh(msg_size);
 	DLOGTR2(PRIO_LOW, "Read %d bytes (%d)...\n", ret, msg_size);
 	if (ret == 0) {
 		/* Peer has closed connection */
 	} else if (ret > 0) {
 		DLOGTR1(PRIO_LOW, "\tNumber of bytes: %d\n", msg_size);
 
-		char *buffer = dlog_alloc(sizeof(char) * msg_size);
+		buffer = dlog_alloc(sizeof(char) * msg_size);
+		// TODO: error handling
 		dl_bbuf_new(target, NULL, msg_size,
 			DL_BBUF_FIXEDLEN | DL_BBUF_BIGENDIAN);
 
 		while (total < msg_size) {
 #ifdef _KERNEL
-	//soreceive
+			iov[0].iov_base = buffer;
+			iov[0].iov_len = msg_size-total;
+
+			bzero(&u, sizeof(struct uio));
+			u.uio_iov = iov;
+			u.uio_iovcnt = 1;
+			u.uio_offset = 0;
+			u.uio_resid = sizeof(int32_t);
+			u.uio_segflg  = UIO_SYSSPACE;
+			u.uio_rw = UIO_READ;
+			u.uio_td = td;
+
+			total += ret = soreceive(self->dlt_sock, NULL, &u,
+			    NULL, NULL, NULL);
 #else
 			total += ret = recv(self->dlt_sock, buffer,
 				msg_size-total, 0);
 #endif
 			DLOGTR2(PRIO_LOW,
-				"\tRead %d characters; expected %d\n",
-				ret, msg_size);
+			    "\tRead %d characters; expected %d\n",
+			    ret, msg_size);
 			dl_bbuf_bcat(*target, buffer, ret);
 		}
 		dlog_free(buffer);

@@ -81,7 +81,7 @@ extern int dlog_client_close(struct dlog_handle *);
 extern int dlog_fetch(struct dlog_handle *, struct sbuf *, 
     const int32_t, const int32_t,  const int64_t, const int32_t);
 extern int dlog_list_offset(struct dlog_handle *, struct sbuf *, int64_t);
-extern int dlog_produce(struct dlog_handle *, struct sbuf *, char *, int,
-    char *, int); 
+extern int dlog_produce(struct dlog_handle *, unsigned char *, int,
+    unsigned char *, int); 
 
 #endif

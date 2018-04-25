@@ -49,8 +49,8 @@
 #include "dl_protocol.h"
 #include "dl_response.h"
 
-struct dl_response *
-dl_fetch_response_decode(struct dl_bbuf *buffer)
+int
+dl_fetch_response_decode(struct dl_response **self, struct dl_bbuf *buffer)
 {
 	//struct dl_message_set *message_set;
 	struct dl_fetch_response *fetch_response;
@@ -67,7 +67,7 @@ dl_fetch_response_decode(struct dl_bbuf *buffer)
 	response->dlrs_api_key = DL_FETCH_API_KEY;
 
 	/* Construct the FetchResponse. */
-	response->dlrs_message.dlrs_fetch_message = fetch_response =
+	response->dlrs_fetch_response = fetch_response =
 	    (struct dl_fetch_response *) dlog_alloc(
 		sizeof(struct dl_fetch_response));
 
@@ -120,8 +120,8 @@ dl_fetch_response_decode(struct dl_bbuf *buffer)
 			    &partition->dlfrpr_high_watermark);
 
 			/* Decode the MessageSet */
-			partition->dlfrp_message_set =
-			    dl_message_set_decode(buffer);
+			dl_message_set_decode(&partition->dlfrp_message_set,
+			    buffer);
 		
 			SLIST_INSERT_HEAD(&topic->dlfrt_partitions, partition,
 			    dlfrp_entries);
@@ -130,7 +130,8 @@ dl_fetch_response_decode(struct dl_bbuf *buffer)
 		SLIST_INSERT_HEAD(&fetch_response->dlfr_topics, topic,
 		    dlfrt_entries);
 	}
-	return response;
+	*self = response;
+	return 0;
 }
 
 int

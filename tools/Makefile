@@ -29,37 +29,39 @@
 # SUCH DAMAGE.
 #
 
+.PATH : ../src
+
 .OBJDIR:= obj
 MK_AUTO_OBJ:= yes
 
-DLOG_SRCS= ../src/dlog_client.c \
-	../src/dl_broker_partition.c \
-	../src/dl_broker_segment.c \
-	../src/dl_broker_topic.c \
-	../src/dl_bbuf.c \
-	../src/dl_config.c \
-	../src/dl_correlation_id.c \
-	../src/dl_resender.c \
-	../src/dl_utils.c \
-	../src/dl_thread.c \
-	../src/dl_fetch_request.c \
-	../src/dl_fetch_response.c \
-	../src/dl_list_offset_request.c \
-	../src/dl_list_offset_response.c \
-	../src/dl_message_set.c \
-	../src/dl_primitive_types.c \
-	../src/dl_produce_request.c \
-	../src/dl_produce_response.c \
-	../src/dl_request.c \
-	../src/dl_request_queue.c \
-	../src/dl_response.c \
-	../src/dl_transport.c \
-	../src/lookup3.c
+DLOG_SRCS= dlog_client.c \
+	dl_bbuf.c \
+	dl_correlation_id.c \
+	dl_resender.c \
+	dl_utils.c \
+	dl_thread.c \
+	dl_fetch_request.c \
+	dl_fetch_response.c \
+	dl_list_offset_request.c \
+	dl_list_offset_response.c \
+	dl_message_set.c \
+	dl_primitive_types.c \
+	dl_produce_request.c \
+	dl_produce_response.c \
+	dl_request.c \
+	dl_request_queue.c \
+	dl_response.c \
+	dl_transport.c \
+	lookup3.c
 
 PROGS= dlog_start_broker dlog_console_producer dlog_console_consumer
 BINDIR= bin
 
-SRCS.dlog_start_broker= dlog_start_broker.c ${DLOG_SRCS}
+SRCS.dlog_start_broker= dlog_start_broker.c \
+	../src/dl_broker_partition.c \
+	../src/dl_broker_segment.c \
+	../src/dl_broker_topic.c \
+	${DLOG_SRCS}
 MAN.dlog_start_broker=
 
 SRCS.dlog_console_producer= dlog_console_producer.c
@@ -72,8 +74,8 @@ LDADD+= -lz
 LDADD+= -lpthread
 LDADD+= -lm
 LDADD+= -lsbuf
+LDADD+= -lnv
 LDADD+= ${SRCTOP}/libdlog.a
-#LDADD+= ${SRCTOP}/obj/libdlog.a
 
 CFLAGS+= -I${SRCTOP}
 

@@ -75,7 +75,8 @@ struct dl_produce_response {
 extern int dl_produce_response_decode(struct dl_response **, struct dl_bbuf *);
 extern int32_t dl_produce_response_encode(struct dl_produce_response *,
     struct dl_bbuf *);
-struct dl_produce_response * dl_produce_response_new(char *, int32_t, int64_t,
-    int16_t);
+extern int dl_produce_response_new(struct dl_response **, int32_t,
+    struct sbuf *, int32_t, int64_t, int16_t);
+extern void dl_produce_response_delete(struct dl_produce_response *);
 
 #endif

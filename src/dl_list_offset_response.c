@@ -88,8 +88,9 @@ dl_list_offset_response_new(char *topic_name, int16_t error_code, int64_t time,
 	return response;
 }
 
-struct dl_response *
-dl_list_offset_response_decode(struct dl_bbuf *source)
+int
+dl_list_offset_response_decode(struct dl_response **self,
+    struct dl_bbuf *source)
 {
 	struct dl_list_offset_response *offset_response;
 	struct dl_list_offset_response_partition *response_partition;
@@ -107,7 +108,7 @@ dl_list_offset_response_decode(struct dl_bbuf *source)
 	response->dlrs_api_key = DL_OFFSET_API_KEY;
 
 	/* Construct the ListOffsetResponse. */
-	response->dlrs_message.dlrs_offset_message = offset_response =
+	response->dlrs_offset_response = offset_response =
 	    (struct dl_list_offset_response *) dlog_alloc(
 		sizeof(struct dl_list_offset_response));
 
@@ -163,7 +164,8 @@ dl_list_offset_response_decode(struct dl_bbuf *source)
 		SLIST_INSERT_HEAD(&offset_response->dlor_topics,
 		    response_topic, dlort_entries);
 	}
-	return response;
+	*self = response;
+	return 0;
 }
 
 int32_t

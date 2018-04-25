@@ -48,6 +48,7 @@
 
 #include "dl_bbuf.h"
 #include "dl_message_set.h"
+#include "dl_response.h"
 
 SLIST_HEAD(dl_fetch_response_topics, dl_fetch_response_topic);
 SLIST_HEAD(dl_fetch_response_partitions, dl_fetch_response_partition);
@@ -73,7 +74,7 @@ struct dl_fetch_response {
 	int32_t dlfr_throttle_time;
 };
 
-extern struct dl_response * dl_fetch_response_decode(struct dl_bbuf *);
+extern int dl_fetch_response_decode(struct dl_response **, struct dl_bbuf *);
 extern int dl_fetch_response_encode(struct dl_fetch_response *,
     struct dl_bbuf *);
 

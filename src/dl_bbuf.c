@@ -132,6 +132,8 @@ dl_bbuf_delete(struct dl_bbuf *self)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
+        if (!(self->dlb_flags & DL_BBUF_EXTERNBUF))
+		dlog_free(self->dlb_data);
 	dlog_free(self);
 }
 
@@ -160,9 +162,11 @@ dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, int capacity, int flags)
 		newbuf->dlb_pos = 0;
 
 		if (buf == NULL)  {
-			newbuf->dlb_data = (unsigned char *) dlog_alloc(capacity);
+			newbuf->dlb_data = (unsigned char *) dlog_alloc(
+			    capacity);
 #ifdef _KERNEL
-			DL_ASSERT(newbuf->dlb_data != NULL, ("Failed to allocate dl_bbuf.\n"));
+			DL_ASSERT(newbuf->dlb_data != NULL,
+			    ("Failed to allocate dl_bbuf.\n"));
 			{
 #else
 			if (newbuf->dlb_data == NULL) {
@@ -173,7 +177,8 @@ dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, int capacity, int flags)
 			}
 		} else {
 			newbuf->dlb_data = buf;
-			flags |= (DL_BBUF_EXTERNBUF & DL_BBUF_FIXEDLEN);
+			newbuf->dlb_flags |=
+			    (DL_BBUF_EXTERNBUF & DL_BBUF_FIXEDLEN);
 		}
 			
 		/* dl_bbuf constructed successfully. */

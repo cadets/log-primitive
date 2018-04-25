@@ -114,8 +114,13 @@ dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
 	return NULL;
 }
 
-struct dl_message_set *
-dl_message_set_decode(struct dl_bbuf *source)
+void
+dl_message_set_delete(struct dl_message_set *self)
+{
+}
+
+int
+dl_message_set_decode(struct dl_message_set **self, struct dl_bbuf *source)
 {
 	struct dl_message *message;
 	struct dl_message_set *message_set;
@@ -151,7 +156,8 @@ dl_message_set_decode(struct dl_bbuf *source)
 			}
 		}
 	}
-	return message_set;
+	*self = message_set;
+	return 0;
 }
 		
 static int

@@ -41,8 +41,7 @@
 #include <sys/tree.h>
 #include <sys/types.h>
 
-#ifdef _KERNEL
-#else
+#ifndef _KERNEL
 #include <stdint.h>
 #endif
 
@@ -66,5 +65,6 @@ extern int dl_request_q_enqueue(struct dl_request_q *, struct dl_request_element
 extern int dl_request_q_enqueue_new(struct dl_request_q *, struct dl_bbuf *, int32_t, int16_t);
 extern int dl_request_q_new(struct dl_request_q **);
 extern void dl_request_q_delete(struct dl_request_q *);
+extern int dl_request_q_is_empty(struct dl_request_q *);
 
 #endif

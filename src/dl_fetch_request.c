@@ -52,8 +52,8 @@
 
 static const int32_t DL_DEFAULT_REPLICA_ID = -1;
 
-struct dl_request *
-dl_fetch_request_new(const int32_t correlation_id, struct sbuf *client_id,
+extern int dl_fetch_request_new(struct dl_request **self,
+    const int32_t correlation_id, struct sbuf *client_id,
     struct sbuf *topic_name, const int32_t min_bytes,
     const int32_t max_wait_time, const int64_t fetch_offset,
     const int32_t max_bytes)
@@ -71,67 +71,86 @@ dl_fetch_request_new(const int32_t correlation_id, struct sbuf *client_id,
 	    client_id);
 #ifdef _KERNEL
 	DL_ASSERT(rc != 0, ("Failed allocating FetchRequest."));
-	{
 #else
 	if (rc != 0) {
-#endif
-		/* Construct the FetchRequest. */
-		fetch_request = request->dlrqm_fetch_request =
-		    (struct dl_fetch_request *) dlog_alloc(
-			sizeof(struct dl_fetch_request));
-#ifdef _KERNEL
-		DL_ASSERT(fetch_request != NULL,
-		    ("Failed allocating FetchRequest."));
-		{
-#else
-		if (fetch_request != NULL) {
-#endif
-			fetch_request->dlfr_replica_id = DL_DEFAULT_REPLICA_ID;
-			fetch_request->dlfr_max_wait_time = max_wait_time;
-			fetch_request->dlfr_min_bytes = min_bytes;
-			
-			fetch_request->dlfr_ntopics = 1;
-			SLIST_INIT(&fetch_request->dlfr_topics);
-
-			request_topic = (struct dl_fetch_request_topic *)
-			    dlog_alloc(sizeof(struct dl_fetch_request_topic));
-#ifdef _KERNEL
-			DL_ASSERT(request_topic != NULL,
-			    ("Failed allocating FetchRequest [topic_data]."));
-			{
-#else
-			if (request_topic != NULL) {
-#endif
-				request_topic->dlfrt_topic_name = topic_name;
-
-				request_topic->dlfrt_npartitions = 1;
-				request_partition =
-				    &request_topic->dlfrt_partitions[0];
-					
-				request_partition->dlfrp_partition =
-				    DL_DEFAULT_PARTITION;
-				request_partition->dlfrp_fetch_offset =
-				    fetch_offset;
-				request_partition->dlfrp_max_bytes =
-				    max_bytes;
-				
-				SLIST_INSERT_HEAD(&fetch_request->dlfr_topics,
-				    request_topic, dlfrt_entries);
-
-				return request;
-			} 
-			DLOGTR0(PRIO_HIGH,
-				"Failed allocating FetchRequest [topic_data].\n");
-			dlog_free(fetch_request);
-			dlog_free(request);
-			request = NULL;
-		}
 		DLOGTR0(PRIO_HIGH, "Failed allocating FetchRequest.\n");
-		dlog_free(request);
-		request = NULL;
-	} 
-	DLOGTR0(PRIO_HIGH, "Failed allocating FetchRequest.\n");
-	return NULL;
+		*self = NULL;
+		return rc;
+	}
+#endif
+	/* Construct the FetchRequest. */
+	fetch_request = request->dlrqm_fetch_request =
+	    (struct dl_fetch_request *) dlog_alloc(
+		sizeof(struct dl_fetch_request));
+#ifdef _KERNEL
+	DL_ASSERT(fetch_request != NULL, ("Failed allocating FetchRequest."));
+#else
+	if (fetch_request == NULL) {
+		DLOGTR0(PRIO_HIGH, "Failed allocating FetchRequest.\n");
+		dl_request_delete(request);
+		*self = NULL;
+		return -1;
+	}
+#endif
+	fetch_request->dlfr_replica_id = DL_DEFAULT_REPLICA_ID;
+	fetch_request->dlfr_max_wait_time = max_wait_time;
+	fetch_request->dlfr_min_bytes = min_bytes;
+	
+	fetch_request->dlfr_ntopics = 1;
+	SLIST_INIT(&fetch_request->dlfr_topics);
+
+	request_topic = (struct dl_fetch_request_topic *)
+	    dlog_alloc(sizeof(struct dl_fetch_request_topic));
+#ifdef _KERNEL
+	DL_ASSERT(request_topic != NULL,
+	    ("Failed allocating FetchRequest [topic_data]."));
+#else
+	if (request_topic == NULL) {
+		DLOGTR0(PRIO_HIGH,
+		    "Failed allocating FetchRequest [topic_data].\n");
+		dlog_free(fetch_request);
+		dl_request_delete(request);
+		*self = NULL;
+		return -1;
+
+	}
+#endif
+	request_topic->dlfrt_topic_name = topic_name;
+
+	request_topic->dlfrt_npartitions = 1;
+	request_partition = &request_topic->dlfrt_partitions[0];
+		
+	request_partition->dlfrp_partition = DL_DEFAULT_PARTITION;
+	request_partition->dlfrp_fetch_offset = fetch_offset;
+	request_partition->dlfrp_max_bytes = max_bytes;
+	
+	SLIST_INSERT_HEAD(&fetch_request->dlfr_topics,
+	    request_topic, dlfrt_entries);
+
+	*self = request;
+	return 0;
+}
+
+void
+dl_fetch_request_delete(struct dl_request *self)
+{
+	struct dl_fetch_request *fetch_request;
+	struct dl_fetch_request_topic *req_topic, *req_topic_tmp;
+
+	DL_ASSERT(self != NULL, ("FetchRequest instance cannot be NULL."));
+	fetch_request = self->dlrqm_fetch_request;
+
+	SLIST_FOREACH_SAFE(req_topic, &fetch_request->dlfr_topics,
+	    dlfrt_entries, req_topic_tmp) {
+
+		req_topic = SLIST_FIRST(&fetch_request->dlfr_topics);
+		SLIST_REMOVE(&fetch_request->dlfr_topics, req_topic,
+		    dl_fetch_request_topic, dlfrt_entries);
+
+		dlog_free(req_topic);
+	};
+	dlog_free(fetch_request);
+	dl_request_delete(self);
 }
 
 int
@@ -144,7 +163,7 @@ dl_fetch_request_decode(struct dl_fetch_request **self, struct dl_bbuf *source)
 	struct sbuf *topic_name;
 	int npartitions, partition, topic;
 	
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL\n");
+	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL."));
 	
 	/* Construct the FetchRequest. */
 	request = (struct dl_fetch_request *) dlog_alloc(
@@ -232,8 +251,8 @@ dl_fetch_request_encode(struct dl_fetch_request *self, struct dl_bbuf *target)
 	struct dl_fetch_request_topic *request_topic;
 	int partition;
 
-	DL_ASSERT(self != NULL, "FetchRequest cannot be NULL");
-	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
+	DL_ASSERT(self != NULL, ("FetchRequest cannot be NULL"));
+	DL_ASSERT(target != NULL, ("Target buffer cannot be NULL"));
 
 	/* Encode the FetchRequest ReplicaId into the buffer. */
 	if (DL_ENCODE_REPLICA_ID(target, self->dlfr_replica_id) != 0)

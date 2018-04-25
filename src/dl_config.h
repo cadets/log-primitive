@@ -53,20 +53,19 @@ struct dl_client_config {
 	nvlist_t *dlcc_props;
 };
 
-#ifdef _KERNEL
 struct dl_client_config_desc {
 	dl_response_func dlcc_on_response;
 	void * dlcc_packed_nvlist;
 	size_t dlcc_packed_nvlist_len;
 };
-#endif
 
 #define DL_CONF_CLIENTID "client.id"
 #define DL_CONF_BROKER "client.broker"
 #define DL_CONF_BROKER_PORT "broker.port"
 #define DL_CONF_TORESEND "resend.to_resend"
 #define DL_CONF_RESENDTIMEOUT "resend.timeout"
-#define  DL_CONF_RESENDPERIOD "resend.period"
+#define DL_CONF_RESENDPERIOD "resend.period"
+#define DL_CONF_TOPIC "client.topic"
 
 #define DL_DEFAULT_CLIENTID "dlog"
 #define DL_DEFAULT_BROKER "127.0.0.1"
@@ -74,5 +73,6 @@ struct dl_client_config_desc {
 #define DL_DEFAULT_TORESEND false
 #define DL_DEFAULT_RESENDTIMEOUT 1000
 #define DL_DEFAULT_RESENDPERIOD 1000
+#define DL_DEFAULT_TOPIC "test" 
 
 #endif
