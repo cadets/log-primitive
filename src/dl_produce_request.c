@@ -79,8 +79,10 @@ dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
 	DL_ASSERT(produce_request != NULL,
 	    ("Failed to allocate ProduceRequest."));
 #else
-	if (produce_request == NULL)
-		goto err_produce_request;
+	if (produce_request == NULL) {
+		dl_request_delete(request);
+		goto err_request_ctor;
+	}
 #endif
 	produce_request->dlpr_required_acks = required_acks;
 	produce_request->dlpr_timeout = timeout;
@@ -95,8 +97,11 @@ dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
 	DL_ASSERT(req_topic != NULL,
 	    ("Failed to allocate ProduceRequest [topic_data]."));
 #else
-	if (req_topic == NULL)
-		goto err_request_topic;
+	if (req_topic == NULL) {
+		dl_produce_request_delete(produce_request);
+		dl_request_delete(request);
+		goto err_request_ctor;
+	}
 #endif
 	req_topic->dlprt_topic_name = topic_name;
 	
@@ -114,12 +119,6 @@ dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
 
 	*self = request;
 	return 0;
-
-err_request_topic:
-	dlog_free(produce_request);
-
-err_produce_request:
-	dl_request_delete(request);
 
 err_request_ctor:
 	DLOGTR0(PRIO_HIGH, "Failed instatiating ProduceRequest.\n");
