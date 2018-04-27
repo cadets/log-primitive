@@ -61,8 +61,8 @@ struct dl_produce_response_partition {
 
 struct dl_produce_response_topic {
 	SLIST_ENTRY(dl_produce_response_topic) dlprt_entries;
-	int32_t dlprt_npartitions;
 	struct sbuf* dlprt_topic_name;
+	int32_t dlprt_npartitions;
 	struct dl_produce_response_partition dlprt_partitions[1];
 };	
 
