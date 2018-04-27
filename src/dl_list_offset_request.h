@@ -47,6 +47,7 @@
 #endif
 
 #include "dl_bbuf.h"
+#include "dl_request.h"
 
 struct dl_request;
 
@@ -70,9 +71,9 @@ struct dl_list_offset_request {
 	int32_t dlor_replica_id;
 };
 
-extern struct dl_request * dl_list_offset_request_new(int32_t, struct sbuf *,
-    struct sbuf *, int64_t);
-extern void dl_list_offset_request_delete(struct dl_request *);
+extern int dl_list_offset_request_new(struct dl_request **, int32_t,
+    struct sbuf *, struct sbuf *, int64_t);
+extern void dl_list_offset_request_delete(struct dl_list_offset_request *);
 
 extern int dl_list_offset_request_decode(struct dl_list_offset_request **, 
     struct dl_bbuf *);

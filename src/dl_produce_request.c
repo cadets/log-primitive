@@ -45,6 +45,7 @@
 #include "dl_primitive_types.h"
 #include "dl_protocol.h"
 #include "dl_produce_request.h"
+#include "dl_request.h"
 #include "dl_utils.h"
 
 int
@@ -152,12 +153,12 @@ dl_produce_request_delete(struct dl_produce_request *self)
 		SLIST_REMOVE(&produce_request->dlpr_topics, req_topic,
 		    dl_produce_request_topic, dlprt_entries);
 
-		for (part = 0; part< req_topic->dlprt_npartitions; part++)
+		for (part = 0; part< req_topic->dlprt_npartitions; part++) {
 
 			req_part = &req_topic->dlprt_partitions[part];
 
 			dl_message_set_delete(req_part->dlprp_message_set);
-
+		}
 		dlog_free(req_topic);
 	};
 	dlog_free(self);
@@ -213,8 +214,10 @@ dl_produce_request_decode(struct dl_produce_request **self,
 #ifdef _KERNEL
 		DL_ASSERT(req_topic != NULL, ("Failed to allocate Request."));
 #else
-		if (req_topic == NULL)
-			goto err_req_topic;
+		if (req_topic == NULL) {
+			dl_produce_request_delete(request);
+			goto err_produce_request;
+		}
 #endif
 		req_topic->dlprt_npartitions = npartitions;
 		req_topic->dlprt_topic_name = topic_name;
@@ -241,9 +244,6 @@ dl_produce_request_decode(struct dl_produce_request **self,
 		*self = request;
 		return 0;
 	}
-
-err_req_topic:
-	dl_produce_request_delete(request);
 
 err_produce_request:
 	DLOGTR0(PRIO_HIGH, "Failed decoding ProduceRequest.\n");

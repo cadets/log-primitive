@@ -209,45 +209,45 @@ dl_request_decode(struct dl_request ** const self,
 	request = (struct dl_request *) dlog_alloc(sizeof(struct dl_request));
 #ifdef _KERNEL
 	DL_ASSERT(request != NULL, ("Allocation for Request failed"));
-	{
 #else
-	if (request != NULL) {
+	if (request == NULL)
+		goto err_request;
 #endif
-		/* Decode the Request Header into the buffer. */
-		if (dl_request_header_decode(request, source) == 0) {
-		
-			/* Decode the Request Body into the buffer. */
-			switch (request->dlrqm_api_key) {
-			case DL_PRODUCE_API_KEY:
-				rc = dl_produce_request_decode(
-				    &request->dlrqm_produce_request, source);
-				break;
-			case DL_FETCH_API_KEY:
-				    rc = dl_fetch_request_decode(
-					&request->dlrqm_fetch_request, source);
-				break;
-			case DL_OFFSET_API_KEY:
-				    rc = dl_list_offset_request_decode(
-					&request->dlrqm_offset_request,
-					source);
-				break;
-			default:
-				DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
-					request->dlrqm_api_key);
-				return -1;
-			}
-			if (rc == 0) {
-				*self = request;
-				return 0;
-			}
-		} else {
-			DLOGTR0(PRIO_HIGH, "Error decoding request header.\n");
-			return -1;
+	/* Decode the Request Header into the buffer. */
+	if (dl_request_header_decode(request, source) == 0) {
+	
+		/* Decode the Request Body into the buffer. */
+		switch (request->dlrqm_api_key) {
+		case DL_PRODUCE_API_KEY:
+			rc = dl_produce_request_decode(
+			    &request->dlrqm_produce_request, source);
+			break;
+		case DL_FETCH_API_KEY:
+			    rc = dl_fetch_request_decode(
+				&request->dlrqm_fetch_request, source);
+			break;
+		case DL_OFFSET_API_KEY:
+			    rc = dl_list_offset_request_decode(
+				&request->dlrqm_offset_request, source);
+			break;
+		default:
+			DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
+			    request->dlrqm_api_key);
+			rc = -1;
 		}
-	}
 
+		if (rc != 0) {
+			dlog_free(request);
+			goto err_request;
+		}
+
+		*self = request;
+		return 0;
+	}
+	DLOGTR0(PRIO_HIGH, "Error decoding request header.\n");
+
+err_request:
 	DLOGTR0(PRIO_HIGH, "Instatiation of Request failed\n");
-	dlog_free(request);
 	*self = NULL;
 	return -1;
 }

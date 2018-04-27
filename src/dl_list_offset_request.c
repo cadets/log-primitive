@@ -16,7 +16,7 @@
  * are met:
  * 1. Redistributions of source code must retain the above copyright
  *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
+ * 2. Redistributions in binary form must relist_offset the above copyright
  *    notice, this list of conditions and the following disclaimer in the
  *    documentation and/or other materials provided with the distribution.
  *
@@ -49,82 +49,103 @@
 #include "dl_utils.h"
 
 /**
- * TODO
+ * ListOffsetRequest constructor. 
  */
-struct dl_request *
-dl_list_offset_request_new(int32_t correlation_id, struct sbuf *client_id,
-    struct sbuf *topic_name, int64_t time)
+int
+dl_list_offset_request_new(struct dl_request **self, int32_t correlation_id,
+    struct sbuf *client_id, struct sbuf *topic_name, int64_t time)
 {
 	struct dl_request *request;
 	struct dl_list_offset_request *list_offset_request;
 	struct dl_list_offset_request_topic *topic;
 	struct dl_list_offset_request_partition *partition;
 	int rc;
+	
+	DL_ASSERT(self != NULL, ("ListOffsetRequest instance cannot be NULL."));
+	DL_ASSERT(topic_name != NULL,
+	    ("ListOffsetRequest topic name cannot be NULL."));
 
 	/* Construct the ListOffsetRequest. */
 	rc = dl_request_new(&request, DL_OFFSET_API_KEY, correlation_id,
 	    client_id);
 #ifdef _KERNEL
 	DL_ASSERT(rc != 0, ("Failed allocating FetchRequest."));
-	{
 #else
-	if (rc == 0) {
+	if (rc != 0)
+		goto err_list_offset_request;
 #endif
-		list_offset_request = request->dlrqm_offset_request =
-		    (struct dl_list_offset_request *) dlog_alloc(
-			sizeof(struct dl_list_offset_request));
+	list_offset_request = request->dlrqm_offset_request =
+	    (struct dl_list_offset_request *) dlog_alloc(
+	    sizeof(struct dl_list_offset_request));
 #ifdef _KERNEL
-		DL_ASSERT(list_offset_request != NULL,
-		("Failed allocating ListOffsetequest."));
-		{
+	DL_ASSERT(list_offset_request != NULL,
+	    ("Failed allocating ListOffsetequest."));
 #else
-		if (list_offset_request != NULL) {
-#endif
-			SLIST_INIT(&list_offset_request->dlor_topics);
-			list_offset_request->dlor_ntopics = 1;
-			list_offset_request->dlor_replica_id = 0;
+	if (list_offset_request == NULL) {
 
-			/* Construct a single Topic/Partition. */
-			topic = (struct dl_list_offset_request_topic *)
-			    dlog_alloc(sizeof(struct dl_list_offset_request_topic));	    
-#ifdef _KERNEL
-			DL_ASSERT(topic != NULL,
-			    ("Failed allocating ListOffsetRequest [topic_data]."));
-			{
-#else
-			if (topic!= NULL) {
-#endif
-				topic->dlort_topic_name = topic_name;
-				topic->dlort_npartitions = 1;
-
-				partition = &topic->dlort_partitions[0];
-				partition->dlorp_partition = 0;
-				partition->dlorp_time = time;
-
-				SLIST_INSERT_HEAD(
-				    &list_offset_request->dlor_topics, topic,
-				    dlort_entries);
-
-				return request;
-			}
-			DLOGTR0(PRIO_HIGH,
-				"Failed allocating ListOffsetRequest [topic_data].\n");
-			dlog_free(list_offset_request);
-			dlog_free(request);
-			request = NULL;
-		}
-		DLOGTR0(PRIO_HIGH,
-			"Failed allocating ListOffsetRequest.\n");
-		dlog_free(request);
-		request = NULL;
+		dl_request_delete(request);
+		goto err_list_offset_request;
 	}
-	DLOGTR0(PRIO_HIGH, "Failed allocating ListOffsetRequest.\n");
-	return NULL;
+#endif
+	SLIST_INIT(&list_offset_request->dlor_topics);
+	list_offset_request->dlor_ntopics = 1;
+	list_offset_request->dlor_replica_id = 0;
+
+	/* Construct a single Topic/Partition. */
+	topic = (struct dl_list_offset_request_topic *)
+	    dlog_alloc(sizeof(struct dl_list_offset_request_topic));	    
+#ifdef _KERNEL
+	DL_ASSERT(topic != NULL,
+	    ("Failed allocating ListOffsetRequest [topic_data]."));
+#else
+	if (topic == NULL) {
+
+		dl_request_delete(request);
+		goto err_list_offset_request;
+	}
+#endif
+	topic->dlort_topic_name = topic_name;
+	topic->dlort_npartitions = 1;
+
+	partition = &topic->dlort_partitions[0];
+	partition->dlorp_partition = 0;
+	partition->dlorp_time = time;
+
+	SLIST_INSERT_HEAD(&list_offset_request->dlor_topics, topic,
+	    dlort_entries);
+
+	/* Successfully constructed the ListOffsetRequest instance. */
+	*self = request;
+	return 0;
+
+err_list_offset_request:
+	DLOGTR0(PRIO_HIGH, "Failed instatiating ProduceRequest.\n");
+	*self = NULL;
+	return -1;
 }
 
+/**
+ * ListOffsetRequest destructor. 
+ */
 void
-dl_list_offset_request_delete(struct dl_request *self)
+dl_list_offset_request_delete(struct dl_list_offset_request *self)
 {
+	struct dl_list_offset_request_topic *req_topic, *req_topic_tmp;
+	struct dl_list_offset_request_partition *req_part;
+	int part;
+
+	DL_ASSERT(self != NULL, ("ListOffsetRequest instance cannot be NULL."));
+
+	SLIST_FOREACH_SAFE(req_topic, &self->dlor_topics,
+	    dlort_entries, req_topic_tmp) {
+
+		req_topic = SLIST_FIRST(&self->dlor_topics);
+		SLIST_REMOVE(&self->dlor_topics, req_topic,
+		    dl_list_offset_request_topic, dlort_entries);
+
+		dlog_free(req_topic);
+	};
+	dlog_free(self);
 }
 
 /**
@@ -143,59 +164,83 @@ dl_list_offset_request_decode(struct dl_list_offset_request **self,
 {
 	struct dl_list_offset_request *request;
 	struct dl_list_offset_request_topic *request_topic;
-	struct dl_list_offset_request_partition *request_partition;
+	struct dl_list_offset_request_partition *request_part;
 	struct sbuf *topic_name;
-	int32_t topic_it, partition_it;
+	int32_t topic_it, nparts, part;
+	int rc = 0;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL\n");
 
-	/* Construct the ProduceRequest. */
+	/* Construct the ListOffsetRequest. */
 	request = (struct dl_list_offset_request *) dlog_alloc(
 	    sizeof(struct dl_list_offset_request));
-// TODO
+#ifdef _KERNEL
+	DL_ASSERT(request != NULL, ("Failed to allocate ProduceRequest.\n"));
+#else
+	if (request == NULL)
+		goto err_list_offset_request;
+#endif
 	/* Decode the ListOffsetRequest ReplicaId. */
-	DL_DECODE_REPLICA_ID(source, &request->dlor_replica_id);
+	rc &= DL_DECODE_REPLICA_ID(source, &request->dlor_replica_id);
 
 	/* Decode the [topic_data] array. */
-	dl_bbuf_get_int32(source, &request->dlor_ntopics);
+	rc &= dl_bbuf_get_int32(source, &request->dlor_ntopics);
 		
 	SLIST_INIT(&request->dlor_topics);
 
 	for (topic_it = 0; topic_it < request->dlor_ntopics; topic_it++) {
 
-		request_topic = (struct dl_list_offset_request_topic *)
-		    dlog_alloc(sizeof(struct dl_list_offset_request_topic));
-// TODO
-
 		/* Decode the TopicName. */
-		DL_DECODE_TOPIC_NAME(source, &topic_name);
+		rc &= DL_DECODE_TOPIC_NAME(source, &topic_name);
 
 		/* Decode the [data] array. */
-		dl_bbuf_get_int32(source, &request_topic->dlort_npartitions);
+		rc &= dl_bbuf_get_int32(source, &nparts);
 			
-		for (partition_it = 0;
-		    partition_it < request_topic->dlort_npartitions;
-		    partition_it++) {
+		request_topic = (struct dl_list_offset_request_topic *)
+		    dlog_alloc(sizeof(struct dl_list_offset_request_topic) +
+	    	    ((nparts - 1) *
+		    sizeof(struct dl_list_offset_request_partition)));
+#ifdef _KERNEL
+		DL_ASSERT(request != NULL,
+		    ("Failed to allocate ProduceRequest.\n"));
+#else
+		if (request_topic == NULL) {
 
-			request_partition =
-			    (struct dl_list_offset_request_partition *)
-			    dlog_alloc(sizeof(
-				struct dl_list_offset_request_partition));
+			dl_list_offset_request_delete(request);
+			goto err_list_offset_request;
+		}
+#endif
+		request_topic->dlort_topic_name = topic_name;
+		request_topic->dlort_npartitions = nparts;
+		
+		for (part = 0; part < request_topic->dlort_npartitions;
+		    part++) {
+			
+			request_part = &request_topic->dlort_partitions[part];
 
 			/* Decode the Partition. */
-			DL_DECODE_PARTITION(source,
-			    &request_partition->dlorp_partition);
+			rc &= DL_DECODE_PARTITION(source,
+			    &request_part->dlorp_partition);
 
 			/* Decode the Time. */
-			DL_DECODE_TIMESTAMP(source,
-			    &request_partition->dlorp_time);
+			rc &= DL_DECODE_TIMESTAMP(source,
+			    &request_part->dlorp_time);
 		}
 
 		SLIST_INSERT_HEAD(&request->dlor_topics, request_topic,
 		    dlort_entries);
 	}
-	*self = request;
-	return 0;
+
+	if (rc == 0) {
+		/* ListOffsetRequest successfully decoded. */
+		*self = request;
+		return 0;
+	}
+
+err_list_offset_request:
+	DLOGTR0(PRIO_HIGH, "Failed decoding ListOffsetRequest.\n");
+	*self = NULL;
+	return -1;
 }
 
 /**
@@ -214,53 +259,70 @@ dl_list_offset_request_encode(struct dl_list_offset_request *self,
 {
 	struct dl_list_offset_request_partition *req_partition;
 	struct dl_list_offset_request_topic *req_topic;
-	int partition;
+	int part, rc = 0;
 
 	DL_ASSERT(self != NULL, "ListOffsetRequest cannot be NULL");
-	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
+	DL_ASSERT((dl_bbuf_get_flags(target) & DL_BBUF_AUTOEXTEND) != 0,
+	    ("Target buffer must be auto-extending"));
 
 	/* Encode the ListOffsetRequest ReplicaId into the target. */
-	if (DL_ENCODE_REPLICA_ID(target, self->dlor_replica_id) != 0)
-		goto err;
+	rc &= DL_ENCODE_REPLICA_ID(target, self->dlor_replica_id);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 
 	/* Encode the ListOffsetRequest Topics. */
-	if (dl_bbuf_put_int32(target, self->dlor_ntopics) != 0)
-		goto err;
+	rc &= dl_bbuf_put_int32(target, self->dlor_ntopics);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 
 	SLIST_FOREACH(req_topic, &self->dlor_topics, dlort_entries) {
 
 		/* Encode the Request TopicName into the buffer. */
-		if (DL_ENCODE_TOPIC_NAME(target,
-		    req_topic->dlort_topic_name) != 0)
-			goto err;
+		rc &= DL_ENCODE_TOPIC_NAME(target, req_topic->dlort_topic_name);
+#ifdef _KERNEL
+		DL_ASSERT(rc == 0,
+		    ("Insert into autoextending buffer cannot fail."));
+#endif
 
 		/* Encode the Partitions. */
-		if (dl_bbuf_put_int32(target,
-		    req_topic->dlort_npartitions) != 0)
-			goto err;
+		rc &= dl_bbuf_put_int32(target, req_topic->dlort_npartitions);
+#ifdef _KERNEL
+		DL_ASSERT(rc == 0,
+		    ("Insert into autoextending buffer cannot fail."));
+#endif
 
-		for (partition = 0; partition < req_topic->dlort_npartitions;
-		    partition++) {
+		for (part = 0; part < req_topic->dlort_npartitions; part++) {
 
-			req_partition = &req_topic->dlort_partitions[partition];
+			req_partition = &req_topic->dlort_partitions[part];
 
 			/* Encode the ListOffsetRequest Partition into the
 			 * target.
 			 */
-			if (DL_ENCODE_PARTITION(target,
-			    req_partition->dlorp_partition) != 0)
-				goto err;
+			rc &= DL_ENCODE_PARTITION(target,
+			    req_partition->dlorp_partition);
+#ifdef _KERNEL
+			DL_ASSERT(rc == 0,
+			    ("Insert into autoextending buffer cannot fail."));
+#endif
 			
 			/* Encode the ListOffsetRequest Timestamp into the
 			 * target.
 			 */
-			if (DL_ENCODE_TIMESTAMP(target,
-			    req_partition->dlorp_time) != 0)
-				goto err;
+			rc &= DL_ENCODE_TIMESTAMP(target,
+			    req_partition->dlorp_time);
+#ifdef _KERNEL
+			DL_ASSERT(rc == 0,
+			    ("Insert into autoextending buffer cannot fail."));
+#endif
 		}
 	}
-	return 0;
-err:
+
+	if (rc == 0)
+		return 0;
+
+	DLOGTR0(PRIO_HIGH, "Failed encoding ListOffsetRequest.\n");
 	return -1;
 }
 

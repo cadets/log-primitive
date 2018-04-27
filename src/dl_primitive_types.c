@@ -68,6 +68,7 @@ dl_decode_string(struct dl_bbuf *source, struct sbuf **target)
 	 */
 	if (dl_bbuf_get_int16(source, &slen) != 0)
 		return -1;
+
 	if (slen == DL_STRING_NULL) {
 		*target = NULL;
 	} else {
@@ -75,7 +76,8 @@ dl_decode_string(struct dl_bbuf *source, struct sbuf **target)
 		/* TODO: Replace with bulk drain function in dl_bbuf */
 		for (int i = 0; i < slen; i++)
 			dl_bbuf_get_int8(source, &temp[i]);
-		*target = sbuf_new(NULL, temp, slen, SBUF_FIXEDLEN);
+		*target = sbuf_new(NULL, NULL, slen + 1, SBUF_FIXEDLEN);
+		sbuf_bcat(*target, temp, slen);
 	}
 	return 0;
 }

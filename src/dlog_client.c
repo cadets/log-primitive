@@ -696,9 +696,10 @@ dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
 	    dl_correlation_id_val(handle->correlation_id));
 
 	/* Instantiate a new ListOffsetRequest. */
-	message = dl_list_offset_request_new(
+	if (dl_list_offset_request_new(&message,
 	    dl_correlation_id_val(handle->correlation_id), 
-	    client_id, topic_name, time);
+	    client_id, topic_name, time) != 0)
+		return -1;
 	
 	DLOGTR0(PRIO_LOW, "Constructed request message\n");
 
