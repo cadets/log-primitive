@@ -63,10 +63,10 @@ dl_request_header_decode(struct dl_request * const request,
 	    ("Buffer for encoding must be auto extending."));
 
 	/* Decode the Request APIKey. */
-	rc &= DL_DECODE_API_KEY(source, &request->dlrqm_api_key);
+	rc |= DL_DECODE_API_KEY(source, &request->dlrqm_api_key);
 	
 	/* Decode the Request APIVersion and check it is supported. */
-	rc &= DL_DECODE_API_VERSION(source, &api_version);
+	rc |= DL_DECODE_API_VERSION(source, &api_version);
 	if (api_version != 0 && api_version != 1) {
 
 		DLOGTR1(PRIO_HIGH, "Unsupported API version %d\n", api_version);
@@ -74,10 +74,10 @@ dl_request_header_decode(struct dl_request * const request,
 	}
 
 	/* Decode the Request CorrelationId. */
-	rc &= DL_DECODE_CORRELATION_ID(source, &request->dlrqm_correlation_id);
+	rc |= DL_DECODE_CORRELATION_ID(source, &request->dlrqm_correlation_id);
 
 	/* Decode the Request ClientId. */
-	rc &= DL_DECODE_CLIENT_ID(source, &request->dlrqm_client_id);
+	rc |= DL_DECODE_CLIENT_ID(source, &request->dlrqm_client_id);
 
 	/* Check whether the decoding steps completed successfully. This
 	 * should be the case as the only way that this should fail is if the
@@ -114,16 +114,16 @@ dl_request_header_encode(struct dl_request const * const request,
 	    ("Buffer for encoding must be auto extending."));
 
 	/* Encode the Request APIKey into the buffer. */
-	rc &= DL_ENCODE_API_KEY(target, request->dlrqm_api_key);
+	rc |= DL_ENCODE_API_KEY(target, request->dlrqm_api_key);
 
 	/* Encode the Request APIVersion into the buffer. */
-	rc &= DL_ENCODE_API_VERSION(target, DLOG_API_VERSION);
+	rc |= DL_ENCODE_API_VERSION(target, DLOG_API_VERSION);
 
 	/* Encode the Request CorrelationId into the buffer. */
-	rc &= DL_ENCODE_CORRELATION_ID(target, request->dlrqm_correlation_id);
+	rc |= DL_ENCODE_CORRELATION_ID(target, request->dlrqm_correlation_id);
 
 	/* Encode the Request ClientId into the buffer. */
-	rc &= DL_ENCODE_CLIENT_ID(target, request->dlrqm_client_id);
+	rc |= DL_ENCODE_CLIENT_ID(target, request->dlrqm_client_id);
 	
 	/* Check whether the encoding steps completed successfully. This
 	 * should be the case as the only way that this should fail is if the

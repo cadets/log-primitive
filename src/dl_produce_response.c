@@ -144,7 +144,7 @@ dl_produce_response_decode(struct dl_response **self,
 	struct dl_produce_response_topic *topic_response;
 	struct dl_response *response;
 	struct sbuf *topic_name;
-	int32_t part, response_it, npartitions;
+	int32_t part, response_it, nparts;
 	int rc = 0;
 
 	DL_ASSERT(self != NULL, ("Response cannot be NULL."));
@@ -170,14 +170,14 @@ dl_produce_response_decode(struct dl_response **self,
 	    ("Failed to allocate ProduceResponse.\n"));
 #else
 	if (produce_response == NULL) {
-		dl_request_delete(response);
+		dl_response_delete(response);
 		goto err_produce_response;
 	}
 #endif
 	SLIST_INIT(&produce_response->dlpr_topics);
 
 	/* Decode the number of responses in the response array. */
-	rc &= dl_bbuf_get_int32(source, &produce_response->dlpr_ntopics);
+	rc |= dl_bbuf_get_int32(source, &produce_response->dlpr_ntopics);
 	DL_ASSERT(produce_response->dlpr_ntopics > 0,
 	    ("Non-primitive array types are not NULLABLE"));
 	// TODO: need to check this to verify message is well formed
@@ -187,45 +187,44 @@ dl_produce_response_decode(struct dl_response **self,
 	    response_it++) {
 
 		/* Decode the TopicName. */
-		rc &= DL_DECODE_TOPIC_NAME(source, &topic_name);
+		rc |= DL_DECODE_TOPIC_NAME(source, &topic_name);
 
 		/* Decode the partitions. */
-		rc &= dl_bbuf_get_int32(source, &npartitions);
+		rc |= dl_bbuf_get_int32(source, &nparts);
 		// TODO: need to check this to verify message is well formed
 	
 		/* Allocate, decode and enqueue each response. */
 		topic_response = (struct dl_produce_response_topic *)
 		    dlog_alloc(sizeof(struct dl_produce_response_topic) +
-		    (npartitions-1 * sizeof(
-		    struct dl_produce_response_partition)));
+		    (nparts-1 * sizeof(struct dl_produce_response_partition)));
 #ifdef _KERNEL
 		DL_ASSERT(topic_response != NULL,
 		    ("Failed to allocate ProduceResponse.\n"));
 #else
 		if (topic_response == NULL) {
-			dl_produce_response_delete(response);
+			dl_produce_response_delete(produce_response);
+			dl_response_delete(response);
 			goto err_produce_response;
 		}
 #endif
 		topic_response->dlprt_topic_name = topic_name; 
-		topic_response->dlprt_npartitions = npartitions; 
+		topic_response->dlprt_npartitions = nparts; 
 
-		for (part = 0; part < topic_response->dlprt_npartitions;
-		    part++) {
+		for (part = 0; part < nparts; part++) {
 
 			part_responses =
 			    &topic_response->dlprt_partitions[part];
 
 			/* Decode the Partition */
-			rc &= DL_DECODE_PARTITION(source,
+			rc |= DL_DECODE_PARTITION(source,
 			    &part_responses->dlprp_partition);
 
 			/* Decode the ErrorCode */
-			rc &= DL_DECODE_ERROR_CODE(source,
+			rc |= DL_DECODE_ERROR_CODE(source,
 			    &part_responses->dlprp_error_code);
 
 			/* Decode the Offset */
-			rc &= DL_DECODE_OFFSET(source,
+			rc |= DL_DECODE_OFFSET(source,
 			    &part_responses->dlprp_offset);
 		}
 
@@ -234,7 +233,7 @@ dl_produce_response_decode(struct dl_response **self,
 	}
 
 	/* Decode the ThrottleTime. */
-	rc &= DL_DECODE_THROTTLE_TIME(source,
+	rc |= DL_DECODE_THROTTLE_TIME(source,
 	    &produce_response->dlpr_throttle_time);
 
 	if (rc == 0) {
@@ -265,7 +264,7 @@ dl_produce_response_encode(struct dl_produce_response *self,
 	    ("Target buffer must be auto-extending"));
 
 	/* Encode the number of responses in the response array. */
-	rc &= dl_bbuf_put_int32(target, self->dlpr_ntopics);
+	rc |= dl_bbuf_put_int32(target, self->dlpr_ntopics);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
@@ -276,7 +275,7 @@ dl_produce_response_encode(struct dl_produce_response *self,
 		    "Non-primitive [response_data] array is not NULLABLE");
 
 		/* Encode the TopicName. */
-		rc &= DL_ENCODE_TOPIC_NAME(target,
+		rc |= DL_ENCODE_TOPIC_NAME(target,
 		    topic_response->dlprt_topic_name);
 #ifdef _KERNEL
 		DL_ASSERT(rc == 0,
@@ -284,7 +283,7 @@ dl_produce_response_encode(struct dl_produce_response *self,
 #endif
 
 		/* Encode the Topic partitions. */
-		rc &= dl_bbuf_put_int32(target,
+		rc |= dl_bbuf_put_int32(target,
 		    topic_response->dlprt_npartitions);
 #ifdef _KERNEL
 		DL_ASSERT(rc == 0,
@@ -298,7 +297,7 @@ dl_produce_response_encode(struct dl_produce_response *self,
 			    &topic_response->dlprt_partitions[part];
 
 			/* Encode the Partition. */
-			rc &= DL_ENCODE_PARTITION(target,
+			rc |= DL_ENCODE_PARTITION(target,
 			    part_responses->dlprp_error_code);
 #ifdef _KERNEL
 			DL_ASSERT(rc == 0,
@@ -306,7 +305,7 @@ dl_produce_response_encode(struct dl_produce_response *self,
 #endif
 			
 			/* Encode the ErrorCode. */
-			rc &= DL_ENCODE_ERROR_CODE(target,
+			rc |= DL_ENCODE_ERROR_CODE(target,
 			    part_responses->dlprp_partition);
 #ifdef _KERNEL
 			DL_ASSERT(rc == 0,
@@ -314,7 +313,7 @@ dl_produce_response_encode(struct dl_produce_response *self,
 #endif
 
 			/* Encode the Offset. */
-			rc &= DL_ENCODE_OFFSET(target,
+			rc |= DL_ENCODE_OFFSET(target,
 			    part_responses->dlprp_offset);
 #ifdef _KERNEL
 			DL_ASSERT(rc == 0,
@@ -324,7 +323,7 @@ dl_produce_response_encode(struct dl_produce_response *self,
 	}
 	
 	/* Encode the ThrottleTime. */
-	rc &= DL_ENCODE_THROTTLE_TIME(target, self->dlpr_throttle_time);
+	rc |= DL_ENCODE_THROTTLE_TIME(target, self->dlpr_throttle_time);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif

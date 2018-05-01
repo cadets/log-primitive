@@ -168,24 +168,26 @@ dl_fetch_request_decode(struct dl_fetch_request **self, struct dl_bbuf *source)
 		goto err_fetch_request;
 #endif
 	/* Decode the FetchRequest ReplicaId from the buffer. */
-	rc &= DL_DECODE_REPLICA_ID(source, &request->dlfr_replica_id);
+	rc |= DL_DECODE_REPLICA_ID(source, &request->dlfr_replica_id);
 
 	/* Decode the FetchRequest MaxWaitTime from the buffer. */
-	rc &= DL_DECODE_MAX_WAIT_TIME(source, &request->dlfr_max_wait_time);
+	rc |= DL_DECODE_MAX_WAIT_TIME(source, &request->dlfr_max_wait_time);
 
 	/* Decode the FetchRequest MinBytes from the buffer. */
-	rc &= DL_DECODE_MIN_BYTES(source, &request->dlfr_min_bytes);
+	rc |= DL_DECODE_MIN_BYTES(source, &request->dlfr_min_bytes);
+	
+	SLIST_INIT(&request->dlfr_topics);
 
 	/* Decode the [topic_data] from the buffer. */
-	rc &= dl_bbuf_get_int32(source, &request->dlfr_ntopics);
+	rc |= dl_bbuf_get_int32(source, &request->dlfr_ntopics);
 
 	for (topic = 0; topic < request->dlfr_ntopics; topic++) {
 
 		/* Decode the ProduceRequest TopicName. */
-		rc &= DL_DECODE_TOPIC_NAME(source, &topic_name);
+		rc |= DL_DECODE_TOPIC_NAME(source, &topic_name);
 	
 		/* Decode the [data] array. */
-		rc &= dl_bbuf_get_int32(source, &nparts);
+		rc |= dl_bbuf_get_int32(source, &nparts);
 
 		/* Decode the [response_data] from the buffer. */	
 		request_topic = (struct dl_fetch_request_topic *)
@@ -195,8 +197,8 @@ dl_fetch_request_decode(struct dl_fetch_request **self, struct dl_bbuf *source)
 		DL_ASSERT(request_topic != NULL,
 		    ("Failed allocating FetchRequest [data]."));
 #else
-		if (request_topic != NULL) {
-			dl_fetch_request_delete(request);
+		if (request_topic == NULL) {
+			dl_request_delete(request);
 			goto err_fetch_request;
 		}
 #endif
@@ -212,17 +214,20 @@ dl_fetch_request_decode(struct dl_fetch_request **self, struct dl_bbuf *source)
 			/* Decode the FetchRequest Partition from the
 			 * buffer.
 			 */
-			rc &= dl_bbuf_get_int32(source,
+			rc |= dl_bbuf_get_int32(source,
 			    &request_partition->dlfrp_partition);
 
 			/* Decode the FetchRequest Offset. */
-			rc &= dl_bbuf_get_int64(source,
+			rc |= dl_bbuf_get_int64(source,
 			    &request_partition->dlfrp_fetch_offset);
 
 			/* Decode the FetchRequest MaxBytes. */
-			rc &= dl_bbuf_get_int32(source,
+			rc |= dl_bbuf_get_int32(source,
 			    &request_partition->dlfrp_max_bytes);
 		}
+
+		SLIST_INSERT_HEAD(&request->dlfr_topics, request_topic,
+		    dlfrt_entries);
 	}
 
 	if (rc == 0) {
@@ -249,25 +254,25 @@ dl_fetch_request_encode(struct dl_fetch_request *self, struct dl_bbuf *target)
 	    ("Target buffer must be auto-extending"));
 
 	/* Encode the FetchRequest ReplicaId into the buffer. */
-	rc &= DL_ENCODE_REPLICA_ID(target, self->dlfr_replica_id);
+	rc |= DL_ENCODE_REPLICA_ID(target, self->dlfr_replica_id);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
 
 	/* Encode the FetchRequest MaxWaitTime into the buffer. */
-	rc &= DL_ENCODE_MAX_WAIT_TIME(target, self->dlfr_max_wait_time);
+	rc |= DL_ENCODE_MAX_WAIT_TIME(target, self->dlfr_max_wait_time);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
 
 	/* Encode the FetchRequest MinBytes into the buffer. */
-	rc &= DL_ENCODE_MIN_BYTES(target, self->dlfr_min_bytes);
+	rc |= DL_ENCODE_MIN_BYTES(target, self->dlfr_min_bytes);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
 
 	/* Encode the [topic data] into the buffer. */
-	rc &= dl_bbuf_put_int32(target, self->dlfr_ntopics);
+	rc |= dl_bbuf_put_int32(target, self->dlfr_ntopics);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
@@ -276,7 +281,7 @@ dl_fetch_request_encode(struct dl_fetch_request *self, struct dl_bbuf *target)
 	SLIST_FOREACH(request_topic, &self->dlfr_topics, dlfrt_entries) {
 
 		/* Encode the FetchRequest TopicName into the buffer. */
-		rc &= DL_ENCODE_TOPIC_NAME(target,
+		rc |= DL_ENCODE_TOPIC_NAME(target,
 		    request_topic->dlfrt_topic_name);
 #ifdef _KERNEL
 		DL_ASSERT(rc == 0,
@@ -284,7 +289,7 @@ dl_fetch_request_encode(struct dl_fetch_request *self, struct dl_bbuf *target)
 #endif
 
 		/* Encode the [partitions] into the buffer. */	
-		rc &= dl_bbuf_put_int32(target,
+		rc |= dl_bbuf_put_int32(target,
 		    request_topic->dlfrt_npartitions);
 #ifdef _KERNEL
 		DL_ASSERT(rc == 0,
@@ -300,7 +305,7 @@ dl_fetch_request_encode(struct dl_fetch_request *self, struct dl_bbuf *target)
 			/* Encode the FetchRequest Partition into the
 			 * buffer.
 			 */
-			rc &= DL_ENCODE_PARTITION(target,
+			rc |= DL_ENCODE_PARTITION(target,
 			    request_partition->dlfrp_partition);
 #ifdef _KERNEL
 			DL_ASSERT(rc == 0,
@@ -310,7 +315,7 @@ dl_fetch_request_encode(struct dl_fetch_request *self, struct dl_bbuf *target)
 			/* Encode the FetchRequest FetchOffset into the
 			 * buffer.
 			 */
-			rc &= DL_ENCODE_OFFSET(target,
+			rc |= DL_ENCODE_OFFSET(target,
 			    request_partition->dlfrp_fetch_offset);
 #ifdef _KERNEL
 			DL_ASSERT(rc == 0,
@@ -318,7 +323,7 @@ dl_fetch_request_encode(struct dl_fetch_request *self, struct dl_bbuf *target)
 #endif
 
 			/* Encode the FetchRequest MaxBytes into the buffer. */
-			rc &= DL_ENCODE_MAX_BYTES(target,
+			rc |= DL_ENCODE_MAX_BYTES(target,
 			    request_partition->dlfrp_max_bytes);
 #ifdef _KERNEL
 			DL_ASSERT(rc == 0,

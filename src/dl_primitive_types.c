@@ -87,9 +87,11 @@ dl_decode_string(struct dl_bbuf *source, struct sbuf **target)
  * a value of -1 indicates a NULL string.
  */
 int
-dl_decode_bytes(char * const target, int *target_len, struct dl_bbuf *source)
+dl_decode_bytes(char ** const target, int *target_len,
+    struct dl_bbuf *source)
 {
 	int32_t nbytes;
+	int rc;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
@@ -97,16 +99,21 @@ dl_decode_bytes(char * const target, int *target_len, struct dl_bbuf *source)
 	/* Bytes are NULLABLE.
 	 * therefore first check whether there is a value to decode.
 	 */
-	dl_bbuf_get_int32(source, &nbytes);
+	rc = dl_bbuf_get_int32(source, &nbytes);
+
 	if (nbytes == DL_BYTES_NULL) {
 		*target_len = 0;
+		*target = NULL;
 		return 0;
-	} else {
-		/* TODO: Replace with bulk drain function in dl_bbuf */
-		*target_len = nbytes;
-		for (int i = 0; i < nbytes; i++) {
-			dl_bbuf_get_int8(source, &target[i]);
-		}
+	}
+
+	*target = dlog_alloc(nbytes * sizeof(unsigned char));
+	// TODO: error checking
+	*target_len = nbytes;
+
+	/* TODO: Replace with bulk drain function in dl_bbuf */
+	for (int i = 0; i < nbytes; i++) {
+		dl_bbuf_get_int8(source, &target[i]);
 	}
 	return 0;
 }

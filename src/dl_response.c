@@ -118,10 +118,10 @@ dl_response_delete(struct dl_response const * const self)
 		dl_produce_response_delete(self->dlrs_produce_response);
 		break;
 	case DL_FETCH_API_KEY:
-		//dl_fetch_response_delete(self->dlrs_fetch_response);
+		dl_fetch_response_delete(self->dlrs_fetch_response);
 		break;
 	case DL_OFFSET_API_KEY:
-		//dl_list_offset_response_delete(self->dlrs_offset_response);
+		dl_list_offset_response_delete(self->dlrs_offset_response);
 		break;
 	}
 	
@@ -202,13 +202,17 @@ dl_response_encode(struct dl_response *response, struct dl_bbuf **target)
 		if (dl_response_header_encode(response, *target) == 0) {
 
 			switch (response->dlrs_api_key) {
-			case DL_OFFSET_API_KEY:
-				return dl_list_offset_response_encode(
-				    response->dlrs_offset_response, *target);
-				break;
 			case DL_PRODUCE_API_KEY:
 				return dl_produce_response_encode(
 				    response->dlrs_produce_response, *target);
+				break;
+			case DL_FETCH_API_KEY:
+				return dl_fetch_response_encode(
+				    response->dlrs_fetch_response, *target);
+				break;
+			case DL_OFFSET_API_KEY:
+				return dl_list_offset_response_encode(
+				    response->dlrs_offset_response, *target);
 				break;
 			default:
 				DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",

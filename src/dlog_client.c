@@ -764,7 +764,9 @@ dlog_produce(struct dlog_handle *handle, unsigned char *key, int key_len,
 	sbuf_finish(client_id);
 
 	/* Instantiate a new MessageSet. */
-	message_set = dl_message_set_new(key, key_len, value, value_len);
+	if (dl_message_set_new(&message_set, key, key_len, value, value_len
+	    != 0))
+		return -1;
 
 	/* Instantiate a new ProduceRequest */
 	if (dl_produce_request_new(&message,

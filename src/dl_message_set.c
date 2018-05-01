@@ -53,7 +53,7 @@
 static const int8_t DL_MESSAGE_MAGIC_BYTE_V0 = 0x00;
 static const int8_t DL_MESSAGE_MAGIC_BYTE_V1 = 0x01;
 static const int8_t DL_MESSAGE_MAGIC_BYTE = DL_MESSAGE_MAGIC_BYTE_V1;
-//static const int8_t DL_MESSAGE_ATTRIBUTES = 0x00;
+static const int8_t DL_MESSAGE_ATTRIBUTES = 0x00;
 static const int64_t DL_DEFAULT_OFFSET = 0;
 
 #define DL_ATTRIBUTES_SIZE sizeof(int8_t)
@@ -72,182 +72,211 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 static int dl_message_decode(struct dl_message **, struct dl_bbuf *);
 static int dl_message_encode(struct dl_message const *, struct dl_bbuf *);
 
-struct dl_message_set *
-dl_message_set_new(char *key, int32_t key_len, char *value, int32_t value_len)
+int
+dl_message_set_new(struct dl_message_set **self, unsigned char *key,
+    int32_t key_len, unsigned char *value, int32_t value_len)
 {
 	struct dl_message_set *message_set;
 	struct dl_message *message;
+	
+	DL_ASSERT(self != NULL, ("MessageSet instance cannot be NULL."));
 
 	message_set = (struct dl_message_set *) dlog_alloc(
 	    sizeof(struct dl_message_set));
 #ifdef _KERNEL
 	DL_ASSERT(message_set != NULL, ("Failed allocating message set.\n"));
-	{
 #else
-	if (message_set != NULL) {
+	if (message_set == NULL)
+		goto err_message_set;
 #endif
-		STAILQ_INIT(&message_set->dlms_messages);
-		message_set->dlms_nmessages = 1;
+	STAILQ_INIT(&message_set->dlms_messages);
+	message_set->dlms_nmessages = 1;
 
-		message = (struct dl_message *) dlog_alloc(
-		    sizeof(struct dl_message));
+	message = (struct dl_message *) dlog_alloc(
+	    sizeof(struct dl_message));
 #ifdef _KERNEL
-		DL_ASSERT(message != NULL, ("Failed allocating message.\n"));
-		{
+	DL_ASSERT(message != NULL, ("Failed allocating message.\n"));
 #else
-		if (message != NULL) {
-#endif
-			message->dlm_key = key;
-			message->dlm_key_len = key_len;
-			message->dlm_value = value;
-			message->dlm_value_len = value_len;
-
-			STAILQ_INSERT_HEAD(&message_set->dlms_messages,
-			    message, dlm_entries);
-
-			return message_set;
-		}
-		DLOGTR0(PRIO_HIGH, "Failed allocating message.\n");
+	if (message == NULL) {
 		dlog_free(message_set);
-		message_set = NULL;
+		goto err_message_set;
 	}
-	return NULL;
+#endif
+	message->dlm_key = key;
+	message->dlm_key_len = key_len;
+	message->dlm_value = value;
+	message->dlm_value_len = value_len;
+
+	STAILQ_INSERT_HEAD(&message_set->dlms_messages, message, dlm_entries);
+
+	*self = message_set;
+	return 0;
+
+err_message_set:
+	DLOGTR0(PRIO_HIGH, "Failed allocating message.\n");
+	*self = NULL;
+	return -1;
 }
 
 void
 dl_message_set_delete(struct dl_message_set *self)
 {
+	struct dl_message const *msg, *msg_tmp;
+
+	DL_ASSERT(self != NULL, ("MessageSet instance cannot be NULL."));
+
+	STAILQ_FOREACH_SAFE(msg, &self->dlms_messages, dlm_entries, msg_tmp) {
+		
+		/* Remove the Message instance from the MessageSet and free 
+		 * its memory.
+		 */
+		STAILQ_REMOVE(&self->dlms_messages, msg, dl_message,
+		    dlm_entries);
+		dlog_free(msg);
+	}
 }
 
 int
 dl_message_set_decode(struct dl_message_set **self, struct dl_bbuf *source)
 {
 	struct dl_message *message;
-	struct dl_message_set *message_set;
+	struct dl_message_set *msgset;
 	int32_t msg_set_size;
+	int rc = 0;
 
+	DL_ASSERT(self != NULL, ("MessageSet instance cannot be NULL."));
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
-
-	/* Decode the MessageSetSiz . */
-	DL_DECODE_MESSAGE_SET_SIZE(source, &msg_set_size);
-
-	message_set = (struct dl_message_set *) dlog_alloc(
+		
+	msgset = (struct dl_message_set *) dlog_alloc(
 	    sizeof(struct dl_message_set));
 #ifdef _KERNEL
-	DL_ASSERT(message_set != NULL, ("Failed allocating MessageSet."));
-	{
+	DL_ASSERT(msgset != NULL, ("Failed allocating MessageSet."));
 #else
-	if (message_set != NULL) {
+	if (msgset == NULL)
+		goto err_message_set;
 #endif
-		STAILQ_INIT(&message_set->dlms_messages);
+	bzero(msgset, sizeof(struct dl_message_set));
 
-		/* Decode the MessageSet. */
-		while (msg_set_size > 0) {
+	STAILQ_INIT(&msgset->dlms_messages);
 
-			/* Decode the Message. */
-			if (dl_message_decode(&message, source) == 0) {
-				++message_set->dlms_nmessages;
+	/* Decode the MessageSetSize. */
+	rc |= DL_DECODE_MESSAGE_SET_SIZE(source, &msg_set_size);
 
-				STAILQ_INSERT_TAIL(
-				    &message_set->dlms_messages, message,
-				    dlm_entries);
-			} else {
-				// TODO: Failure decoding
-			}
-		}
+	if (msg_set_size > dl_bbuf_len(source)-dl_bbuf_pos(source)) {
+
+		DLOGTR2(PRIO_HIGH,
+		    "MessageSetSize (%d) is greater than "
+		    "remaining buffer (%d).\n", msg_set_size,
+		    dl_bbuf_len(source)-dl_bbuf_pos(source)); 
+		dlog_free(msgset);
+		goto err_message_set;
 	}
-	*self = message_set;
-	return 0;
+
+	/* Decode the MessageSet. */
+	while (dl_bbuf_pos(source) < dl_bbuf_len(source)) {
+
+		/* Decode the Message. */
+		rc |= dl_message_decode(&message, source);
+		if (rc != 0)
+			break;
+
+		STAILQ_INSERT_HEAD(&msgset->dlms_messages, message,
+		    dlm_entries);
+	}
+
+	if (rc == 0) {
+		/* Successfully decoded MessageSet. */
+		*self = msgset;
+		return 0;
+	}
+
+err_message_set:
+	DLOGTR0(PRIO_HIGH, "Failed decoding MessageSet.\n");
+	*self = NULL;
+	return -1;
 }
 		
 static int
-dl_message_decode(struct dl_message **message, struct dl_bbuf *source)
+dl_message_decode(struct dl_message **self, struct dl_bbuf *source)
 {
-	struct dl_message *self;
-	int32_t crc, msg_crc, size;
+	struct dl_message *message;
+	unsigned long crc_value;
+	unsigned char *crc_data;
+	int32_t msg_crc, size;
+	int rc = 0, crc_start_pos;
 	int8_t attributes, magic_byte;
 
+	DL_ASSERT(self != NULL, ("Message instance cannot be NULL"));
 	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
-	DL_ASSERT(message != NULL, ("Message cannot be NULL"));
 
-	// TODO don't assign
-	self = *message = (struct dl_message *) dlog_alloc(
-	    sizeof(struct dl_message));
+	message = (struct dl_message *) dlog_alloc(sizeof(struct dl_message));
 #ifdef _KERNEL
 	DL_ASSERT(message != NULL, ("Allocation of dl_message failed\n"));
-	{
 #else
-	if (self != NULL) {
+	if (message == NULL)
+       		goto err_message;
 #endif
-		/* Decode the MessageSet Offset. */
-		DL_DECODE_OFFSET(source, &self->dlm_offset);
+	/* Decode the MessageSet Offset. */
+	rc |= DL_DECODE_OFFSET(source, &message->dlm_offset);
 
-		/* Decode the MessageSize. */
-		DL_DECODE_MESSAGE_SIZE(source, &size);
-		if (size > 0) { //  && size <= dl_bbuf_space(source)) {
-			/* Decode and verify the CRC. */
-			DL_DECODE_CRC(source, &msg_crc);
-
-			/* Computed CRC value. */
-			crc = CRC32(dl_bbuf_data(source),
-			    dl_bbuf_len(source));
-			if (crc == msg_crc) {
-				/* Decode and verify the MagicByte */
-				DL_DECODE_MAGIC_BYTE(source, &magic_byte);
-				if (magic_byte == DL_MESSAGE_MAGIC_BYTE_V0 ||
-				    magic_byte == DL_MESSAGE_MAGIC_BYTE_V1) {
-					/* Decode the Attributes */
-					DL_DECODE_ATTRIBUTES(source, &attributes);
-
-					/* The MagicByte determines the MessageSet
-					* format v0 or v1.xi
-					*/
-					if (magic_byte ==
-					    DL_MESSAGE_MAGIC_BYTE) {	
-						/* Decode the Timestamp */
-						DL_DECODE_TIMESTAMP(source,
-						    &self->dlm_timestamp);
-					}
-
-					/* Decode the Key */
-					//dl_decode_bytes
-					/*
-					dl_decode_int32(&source[*msg_size]);
-					message->dlm_key_len = dl_decode_int32(&source[*msg_size]);
-
-					if (message->dlm_key_len != -1) {
-						message->dlm_key = &source[*msg_size];
-						*msg_size += message->dlm_key_len;
-					} else {
-						message->dlm_key = NULL;
-					}
-					*/
-
-					/* Decode the Value */
-					//dl_decode_bytes
-					/*
-					message->dlm_value_len = dl_decode_int32(&source[*msg_size]);
-					
-					message->dlm_value = &source[*msg_size];
-					*msg_size += message->dlm_value_len;
-					*/
-				} else {
-					// TODO
-				}
-			} else {
-				DLOGTR2(PRIO_HIGH,
-				    "Computed CRC (%d) doess't match value "
-				    "recieved value (%d).\n", crc, msg_crc);
-				dlog_free(message);
-				message = NULL;
-			}
-		} else {
-			DLOGTR1(PRIO_HIGH,
-			    "Invalid Message size (%d)\n", size);
-			dlog_free(message);
-			message = NULL;
-		}
+	/* Decode the MessageSize. */
+	rc |= DL_DECODE_MESSAGE_SIZE(source, &size);
+	if (size <= 0) {
+		DLOGTR1(PRIO_HIGH, "Invalid Message size (%d)\n", size);
+		dlog_free(message);
+		goto err_message;
 	}
+
+	/* Decode and verify the CRC. */
+	rc |= DL_DECODE_CRC(source, &msg_crc);
+	crc_start_pos = dl_bbuf_pos(source);
+
+	/* Compute and verify the CRC value. */
+	crc_data = dl_bbuf_data(source) + crc_start_pos;
+	crc_value = CRC32(crc_data, dl_bbuf_len(source)-crc_start_pos);
+	if ((int32_t) crc_value != msg_crc) {
+		DLOGTR2(PRIO_HIGH,
+		    "Computed CRC (%d) doess't match value "
+		    "recieved value (%d).\n", crc_value, msg_crc);
+		dlog_free(message);
+		goto err_message;
+	}
+
+	/* Decode and verify the MagicByte */
+	rc |= DL_DECODE_MAGIC_BYTE(source, &magic_byte);
+	if (magic_byte != DL_MESSAGE_MAGIC_BYTE_V0 &&
+	    magic_byte != DL_MESSAGE_MAGIC_BYTE_V1) {
+		DLOGTR1(PRIO_HIGH, "Invalid MagicByte (%d)\n", magic_byte);
+		dlog_free(message);
+		goto err_message;
+	}
+
+	/* Decode the Attributes */
+	rc |= DL_DECODE_ATTRIBUTES(source, &attributes);
+
+	/* The MagicByte determines the MessageSet format v0 or v1. */
+	if (magic_byte == DL_MESSAGE_MAGIC_BYTE) {	
+
+		/* Decode the Timestamp */
+		rc |= DL_DECODE_TIMESTAMP(source,
+		    &message->dlm_timestamp);
+	}
+
+	/* Decode the Message Key */
+	rc |= dl_decode_bytes(&message->dlm_key, &message->dlm_key_len, source);
+
+	/* Decode the Message Value */
+	rc |= dl_decode_bytes(&message->dlm_value, &message->dlm_value_len,
+	    source);
+
+	if (rc == 0) {
+		*self = message; 
+		return 0;
+	}
+
+err_message:
+	DLOGTR0(PRIO_HIGH, "Failed decoding Message.\n");
+	*self = NULL;
 	return -1;
 }
 
@@ -260,91 +289,140 @@ dl_message_set_encode(struct dl_message_set const *message_set,
     struct dl_bbuf *target)
 {
 	struct dl_message const *message;
-	int size_pos, size_start_pos;
+	int msgset_size_pos, msgset_start, msgset_end;
+	int rc = 0;
 
 	DL_ASSERT(message_set != NULL, "MessageSet cannot be NULL");
-	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
+	DL_ASSERT((dl_bbuf_get_flags(target) & DL_BBUF_AUTOEXTEND) != 0,
+	    ("Target buffer must be auto-extending"));
 
-	/* Placeholder for the MessageSetSize. */
-	size_pos = dl_bbuf_pos(target);
-	dl_bbuf_put_int32(target, -1);
+	/* Add a placeholder for the MessageSetSize. */
+	msgset_size_pos = dl_bbuf_pos(target);
+	rc |= DL_ENCODE_MESSAGE_SIZE(target, -1);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 
-	size_start_pos = dl_bbuf_pos(target);
+	/* Save the position of the start of the MessageSet; this is used
+	 * to compute the MessageSetSize once the MessageSet has been
+	 * successfully encoded.
+	 */
+	msgset_start = dl_bbuf_pos(target);
 	STAILQ_FOREACH(message, &message_set->dlms_messages, dlm_entries) {
-	
+
 		/* Encode the Message. */
-		dl_message_encode(message, target);
+		rc |= dl_message_encode(message, target);
 	}
 
 	/* Encode the MessageSetSize into the buffer. */
-	dl_bbuf_put_int32_at(target, dl_bbuf_pos(target)-size_start_pos,
-	    size_pos);
+	msgset_end = dl_bbuf_pos(target);
+	rc |= DL_ENCODE_MESSAGE_SIZE_AT(target, (msgset_end-msgset_start),
+	    msgset_size_pos);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 
-	return 0;
+	if (rc == 0)
+		return 0;
+
+	DLOGTR0(PRIO_HIGH, "Failed encoding MessageSet.\n");
+	return -1;
 }
 
 static int
 dl_message_encode(struct dl_message const *message, struct dl_bbuf *target)
 {
 	unsigned long crc_value, timestamp;
-	int size_pos, crc_pos, crc_start_pos;
 	unsigned char *crc_data;
+	int rc = 0, size_pos, crc_pos, crc_start_pos;
 
 	DL_ASSERT(message != NULL, "Message cannot be NULL");
-	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
+	DL_ASSERT((dl_bbuf_get_flags(target) & DL_BBUF_AUTOEXTEND) != 0,
+	    ("Target buffer must be auto-extending"));
 
 	/* Encode the Message Offset into the target buffer. */
-	if (DL_ENCODE_OFFSET(target, DL_DEFAULT_OFFSET) != 0)
-		goto err;
+	rc |= DL_ENCODE_OFFSET(target, DL_DEFAULT_OFFSET);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 
 	/* Placeholder for the size of the encoded Message. */
 	size_pos = dl_bbuf_pos(target);
-	if (DL_ENCODE_MESSAGE_SIZE(target, -1) != 0)
-		goto err;
+	rc |= DL_ENCODE_MESSAGE_SIZE(target, -1);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 
 	/* Placeholder for the CRC computed over the encoded Message. */
 	crc_pos = dl_bbuf_pos(target);
-	if (DL_ENCODE_CRC(target, -1) != 0)
-		goto err;
+	rc |= DL_ENCODE_CRC(target, -1);
 	crc_start_pos = dl_bbuf_pos(target);
 	
 	/* Encode the MagicByte */
-	if (DL_ENCODE_MAGIC_BYTE(target) != 0)
-		goto err;
+	rc |= DL_ENCODE_MAGIC_BYTE(target);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 	
 	/* Encode the Attributes */
-	if (DL_ENCODE_ATTRIBUTES(target, 0) != 0)
-		goto err;
+	rc |= DL_ENCODE_ATTRIBUTES(target, DL_MESSAGE_ATTRIBUTES);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 	
 	/* Encode the Timestamp */
 #ifdef _KERNEL
-	// TODO: In-kernel timestamp ms since epoch?
-	timestamp = 0;
+#ifdef __APPLE__
+	int32_t secs, msecs;
+
+	clock_get_calendar_microtime(&secs, &msecs);
+	timestamp = (secs * 1000) + msecs;
+#else
+	struct timeval tv;
+
+	getmicrotime(&tv);
+	timestamp = (tv.tv_sec *1000) + (tv.tv_usec/1000);
+#endif
 #else
 	timestamp = time(NULL);
 #endif
-	if (DL_ENCODE_TIMESTAMP(target, timestamp) != 0)
-		goto err;
+	rc |= DL_ENCODE_TIMESTAMP(target, timestamp);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 	
 	/* Encode the Key */
-	if (dl_encode_bytes(message->dlm_key, message->dlm_key_len,
-	    target) != 0)
-		goto err;
+	rc |= dl_encode_bytes(message->dlm_key, message->dlm_key_len, target);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 	
 	/* Encode the Value */
-	dl_encode_bytes(message->dlm_value, message->dlm_value_len, target);
+	rc |= dl_encode_bytes(message->dlm_value, message->dlm_value_len,
+	    target);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 
 	/* Encode the MessageSize. */
-	DL_ENCODE_MESSAGE_SIZE_AT(target, dl_bbuf_pos(target)-crc_pos,
-		size_pos);
+	rc |= DL_ENCODE_MESSAGE_SIZE_AT(target, dl_bbuf_pos(target)-crc_pos,
+	    size_pos);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 	
 	/* Encode the CRC. */
 	crc_data = dl_bbuf_data(target) + crc_start_pos; 
 	crc_value = CRC32(crc_data, dl_bbuf_pos(target)-crc_start_pos);
-	if (DL_ENCODE_CRC_AT(target, crc_value, crc_pos) != 0)
-		goto err;
-		
-	return 0;
-err:
+
+	rc |= DL_ENCODE_CRC_AT(target, crc_value, crc_pos);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
+	
+	if (rc == 0)	
+		return 0;
+
+	DLOGTR0(PRIO_HIGH, "Failed encoding Message.\n");
 	return -1;
 }

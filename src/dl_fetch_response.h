@@ -50,22 +50,22 @@
 #include "dl_message_set.h"
 #include "dl_response.h"
 
+struct dl_response;
+
 SLIST_HEAD(dl_fetch_response_topics, dl_fetch_response_topic);
-SLIST_HEAD(dl_fetch_response_partitions, dl_fetch_response_partition);
 
 struct dl_fetch_response_partition {
-	SLIST_ENTRY(dl_fetch_response_partition) dlfrp_entries;
 	struct dl_message_set *dlfrp_message_set;
-	int64_t dlfrpr_high_watermark;
-	int32_t dlfrpr_partition;
-	int16_t dlfrpr_error_code;
+	int64_t dlfrp_high_watermark;
+	int32_t dlfrp_partition;
+	int16_t dlfrp_error_code;
 };
 
 struct dl_fetch_response_topic {
-	struct dl_fetch_response_partitions dlfrt_partitions;
 	SLIST_ENTRY(dl_fetch_response_topic) dlfrt_entries;
 	struct sbuf *dlfrt_topic_name;
 	int32_t dlfrt_npartitions;
+	struct dl_fetch_response_partition dlfrt_partitions[];
 };	
 
 struct dl_fetch_response {
@@ -73,6 +73,10 @@ struct dl_fetch_response {
 	int32_t dlfr_ntopics;
 	int32_t dlfr_throttle_time;
 };
+
+extern int dl_fetch_response_new(struct dl_response **, const int32_t,
+    struct sbuf *, int16_t, int64_t, struct dl_message_set *);
+extern void dl_fetch_response_delete(struct dl_fetch_response *);
 
 extern int dl_fetch_response_decode(struct dl_response **, struct dl_bbuf *);
 extern int dl_fetch_response_encode(struct dl_fetch_response *,

@@ -61,7 +61,7 @@ struct dl_fetch_request_topic {
 	SLIST_ENTRY(dl_fetch_request_topic) dlfrt_entries;
 	struct sbuf *dlfrt_topic_name;
 	int32_t dlfrt_npartitions;
-	struct dl_fetch_request_partition dlfrt_partitions[1];
+	struct dl_fetch_request_partition dlfrt_partitions[];
 };
 
 struct dl_fetch_request {

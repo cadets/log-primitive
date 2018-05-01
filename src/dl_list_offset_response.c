@@ -186,16 +186,16 @@ dl_list_offset_response_decode(struct dl_response **self,
 	SLIST_INIT(&offset_response->dlor_topics);
 
         /* Decode the [topic_data] array. */
-	rc &= dl_bbuf_get_int32(source, &offset_response->dlor_ntopics);
+	rc |= dl_bbuf_get_int32(source, &offset_response->dlor_ntopics);
 	
 	for (topic_it = 0; topic_it < offset_response->dlor_ntopics;
 	    topic_it++) {
 
 		/* Decode the TopicName */
-		rc &= DL_DECODE_TOPIC_NAME(source, &topic_name);
+		rc |= DL_DECODE_TOPIC_NAME(source, &topic_name);
 		
 		/* Decode the partitions. */
-		rc &= dl_bbuf_get_int32(source, &nparts);
+		rc |= dl_bbuf_get_int32(source, &nparts);
 
 		response_topic = (struct dl_list_offset_response_topic *)
 		    dlog_alloc(sizeof(struct dl_list_offset_response_topic) +
@@ -210,19 +210,19 @@ dl_list_offset_response_decode(struct dl_response **self,
 			response_part = &response_topic->dlort_partitions[part];
 		
 			/* Decode the Partition */
-			rc &= DL_DECODE_PARTITION(source,
+			rc |= DL_DECODE_PARTITION(source,
 			    &response_part->dlorp_partition);
 			
 			/* Decode the ErrorCode */
-			rc &= DL_DECODE_ERROR_CODE(source,
+			rc |= DL_DECODE_ERROR_CODE(source,
 			    &response_part->dlorp_error_code);
 
 			/* Decode the Timestamp */
-			rc &= DL_DECODE_TIMESTAMP(source,
+			rc |= DL_DECODE_TIMESTAMP(source,
 			    &response_part->dlorp_timestamp);
 			
 			/* Decode the Offset*/
-			rc &= DL_DECODE_OFFSET(source,
+			rc |= DL_DECODE_OFFSET(source,
 			    &response_part->dlorp_offset);
 		}
 
@@ -258,7 +258,7 @@ dl_list_offset_response_encode(struct dl_list_offset_response *self,
 	    ("Target buffer must be auto-extending"));
         
 	/* Encode the [topic_data] array. */
-	rc &= dl_bbuf_put_int32(target, self->dlor_ntopics);
+	rc |= dl_bbuf_put_int32(target, self->dlor_ntopics);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
@@ -266,7 +266,7 @@ dl_list_offset_response_encode(struct dl_list_offset_response *self,
 	SLIST_FOREACH(response_topic, &self->dlor_topics, dlort_entries) {
 
 		/* Encode the TopicName. */
-		rc &= DL_ENCODE_TOPIC_NAME(target,
+		rc |= DL_ENCODE_TOPIC_NAME(target,
 		    response_topic->dlort_topic_name);
 #ifdef _KERNEL
 		DL_ASSERT(rc == 0,
@@ -274,7 +274,7 @@ dl_list_offset_response_encode(struct dl_list_offset_response *self,
 #endif
 
 		/* Encode the [data] array. */
-		rc &= dl_bbuf_put_int32(target,
+		rc |= dl_bbuf_put_int32(target,
 		    response_topic->dlort_npartitions);
 #ifdef _KERNEL
 		DL_ASSERT(rc == 0,
@@ -288,7 +288,7 @@ dl_list_offset_response_encode(struct dl_list_offset_response *self,
 			    &response_topic->dlort_partitions[part];
 
 			/* Encode the Partition. */
-			rc &= DL_ENCODE_PARTITION(target,
+			rc |= DL_ENCODE_PARTITION(target,
 			    response_partition->dlorp_partition);
 #ifdef _KERNEL
 			DL_ASSERT(rc == 0,
@@ -296,7 +296,7 @@ dl_list_offset_response_encode(struct dl_list_offset_response *self,
 #endif
 	
 			/* Encode the ErrorCode. */
-			rc &= DL_ENCODE_ERROR_CODE(target,
+			rc |= DL_ENCODE_ERROR_CODE(target,
 			    response_partition->dlorp_error_code);
 #ifdef _KERNEL
 			DL_ASSERT(rc == 0,
@@ -304,7 +304,7 @@ dl_list_offset_response_encode(struct dl_list_offset_response *self,
 #endif
 	
 			/* Encode the Timestamp. */
-			rc &= DL_ENCODE_TIMESTAMP(target,
+			rc |= DL_ENCODE_TIMESTAMP(target,
 			    response_partition->dlorp_timestamp);
 #ifdef _KERNEL
 			DL_ASSERT(rc == 0,
@@ -312,7 +312,7 @@ dl_list_offset_response_encode(struct dl_list_offset_response *self,
 #endif
 	
 			/* Encode the Offset. */
-			rc &= DL_ENCODE_OFFSET(target,
+			rc |= DL_ENCODE_OFFSET(target,
 			    response_partition->dlorp_offset);
 #ifdef _KERNEL
 			DL_ASSERT(rc == 0,

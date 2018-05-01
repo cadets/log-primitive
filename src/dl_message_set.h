@@ -47,8 +47,8 @@ STAILQ_HEAD(dl_messages, dl_message);
 
 struct dl_message {
 	STAILQ_ENTRY(dl_message) dlm_entries;
-	char const *dlm_key;
-	char const *dlm_value;
+	unsigned char const *dlm_key;
+	unsigned char const *dlm_value;
 	int64_t dlm_offset;
 	int64_t dlm_timestamp;
 	int32_t dlm_key_len;
@@ -63,8 +63,8 @@ struct dl_message_set {
 extern int dl_message_set_decode(struct dl_message_set **, struct dl_bbuf *);
 extern int dl_message_set_encode(struct dl_message_set const *,
     struct dl_bbuf *);
-extern struct dl_message_set * dl_message_set_new(char *, int32_t, char *,
-    int32_t);
+extern int dl_message_set_new(struct dl_message_set **, unsigned char *,
+    int32_t, unsigned char *, int32_t);
 extern void dl_message_set_delete(struct dl_message_set *);
 
 #endif

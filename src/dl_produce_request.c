@@ -156,7 +156,9 @@ dl_produce_request_delete(struct dl_produce_request *self)
 
 			req_part = &req_topic->dlprt_partitions[part];
 
-			dl_message_set_delete(req_part->dlprp_message_set);
+			if (req_part->dlprp_message_set != NULL)
+				dl_message_set_delete(
+				    req_part->dlprp_message_set);
 		}
 		dlog_free(req_topic);
 	};
@@ -187,23 +189,23 @@ dl_produce_request_decode(struct dl_produce_request **self,
 		goto err_produce_request;
 #endif
 	/* Decode the ProduceRequest RequiredAcks. */
-	rc &= DL_DECODE_REQUIRED_ACKS(source, &request->dlpr_required_acks);
+	rc |= DL_DECODE_REQUIRED_ACKS(source, &request->dlpr_required_acks);
 
 	/* Decode the ProduceRequest Timeout. */
-	rc &= DL_DECODE_TIMEOUT(source, &request->dlpr_timeout);
+	rc |= DL_DECODE_TIMEOUT(source, &request->dlpr_timeout);
 
 	SLIST_INIT(&request->dlpr_topics);
 
 	/* Decode the [topic_data] array. */
-	rc &= dl_bbuf_get_int32(source, &request->dlpr_ntopics);
+	rc |= dl_bbuf_get_int32(source, &request->dlpr_ntopics);
 	
 	for (topic = 0; topic < request->dlpr_ntopics; topic++) {
 
 		/* Decode the ProduceRequest TopicName. */
-		rc &= DL_DECODE_TOPIC_NAME(source, &topic_name);
+		rc |= DL_DECODE_TOPIC_NAME(source, &topic_name);
 	
 		/* Decode the [data] array. */
-		rc &= dl_bbuf_get_int32(source, &npartitions);
+		rc |= dl_bbuf_get_int32(source, &npartitions);
 		
 		/* Allocate the Topic/Partitions. */
 		req_topic = (struct dl_produce_request_topic *)
@@ -226,11 +228,11 @@ dl_produce_request_decode(struct dl_produce_request **self,
 			req_part = &req_topic->dlprt_partitions[part];
 
 			/* Decode the ProduceRequest Partition. */
-			rc &= DL_DECODE_PARTITION(source,
+			rc |= DL_DECODE_PARTITION(source,
 			    &req_part->dlprp_partition);
 		
 			/* Decode the MessageSet. */
-			rc &= dl_message_set_decode(
+			rc |= dl_message_set_decode(
 			    &req_part->dlprp_message_set, source);
 		}
 
@@ -263,19 +265,19 @@ dl_produce_request_encode(
 	    ("Target buffer must be auto-extending"));
 
 	/* Encode the Request RequiredAcks into the buffer. */
-	rc &= DL_ENCODE_REQUIRED_ACKS(target, self->dlpr_required_acks);
+	rc |= DL_ENCODE_REQUIRED_ACKS(target, self->dlpr_required_acks);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
 
 	/* Encode the Request Timeout into the buffer. */
-	rc &= DL_ENCODE_TIMEOUT(target, self->dlpr_timeout);
+	rc |= DL_ENCODE_TIMEOUT(target, self->dlpr_timeout);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
 
 	/* Encode the [topic_data] array. */
-	rc &= dl_bbuf_put_int32(target, self->dlpr_ntopics);
+	rc |= dl_bbuf_put_int32(target, self->dlpr_ntopics);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
@@ -283,14 +285,14 @@ dl_produce_request_encode(
 	SLIST_FOREACH(req_topic, &self->dlpr_topics, dlprt_entries) {
 
 		/* Encode the Request TopicName into the buffer. */
-		rc &= DL_ENCODE_TOPIC_NAME(target, req_topic->dlprt_topic_name);
+		rc |= DL_ENCODE_TOPIC_NAME(target, req_topic->dlprt_topic_name);
 #ifdef _KERNEL
 		DL_ASSERT(rc == 0,
 		     ("Insert into autoextending buffer cannot fail."));
 #endif
 	 
 		/* Encode the [data] array. */
-		rc &= dl_bbuf_put_int32(target, req_topic->dlprt_npartitions);
+		rc |= dl_bbuf_put_int32(target, req_topic->dlprt_npartitions);
 #ifdef _KERNEL
 		DL_ASSERT(rc == 0,
 		    ("Insert into autoextending buffer cannot fail."));
@@ -301,7 +303,7 @@ dl_produce_request_encode(
 			req_part = &req_topic->dlprt_partitions[part];
 
 			/* Encode the Partition into the buffer. */
-			rc &= DL_ENCODE_PARTITION(target,
+			rc |= DL_ENCODE_PARTITION(target,
 			    req_part->dlprp_partition);
 #ifdef _KERNEL
 			DL_ASSERT(rc == 0,
@@ -311,7 +313,7 @@ dl_produce_request_encode(
 			if (req_part->dlprp_message_set != NULL) {
 
 				/* Encode the MessageSet */
-				rc &= dl_message_set_encode(
+				rc |= dl_message_set_encode(
 				    req_part->dlprp_message_set,
 				    target);
 			}
