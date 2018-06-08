@@ -45,10 +45,14 @@
 #include <sys/stat.h>
 
 #include "dl_assert.h"
+#include "dl_broker_topic.h"
 #include "dl_config.h"
 #include "dl_memory.h"
 #include "dl_utils.h"
+#include "dlog.h"
 #include "dlog_client.h"
+
+extern uint32_t hashlittle(const void *, size_t, uint32_t);
 
 static void * dl_alloc(unsigned long len);
 static void dl_free(void *addr);
@@ -84,7 +88,8 @@ static int dlog_exit = 0;
 MALLOC_DECLARE(M_DLOG);
 MALLOC_DEFINE(M_DLOG, "dlog", "DLog memory");
 	
-#define DLOGIOC_PRODUCER _IOWR('d', 1, struct dl_client_config)
+long topic_hashmask;
+LIST_HEAD(dl_broker_topics, dl_broker_topic) *topic_hashmap;
 
 static void
 dl_free(void *addr)
@@ -121,6 +126,8 @@ dlog_event_handler(struct module *module, int event, void *arg)
 		
 		mtx_init(&dlog_mtx, "dlog", "dlog", MTX_DEF);
 		cv_init(&dlog_cv, "dlog");
+
+		topic_hashmap = dl_topic_hashinit(10, &topic_hashmask);
 
 		rc = kproc_create(dlog_main, NULL, &dlog_client_proc, 0, 0,
 		    DLOG_NAME);
@@ -200,9 +207,61 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 	void *packed_nvlist;
 
 	switch(cmd) {
+	case DLOGIOC_ADDTOPICPART:
+		DLOGTR0(PRIO_LOW, "Adding new DLog Topic/Partition.\n");
+
+		struct dl_topic_desc **ptp_desc =
+	    	    (struct dl_topic_desc **) addr;
+		struct dl_topic_desc tp_desc;	
+		struct sbuf *tp_name;
+		struct dl_broker_topic *t;
+		uint32_t h;
+
+		/* Copyin the description of the new topic. */
+		if (copyin((void *) *ptp_desc, &tp_desc,
+		    sizeof(struct dl_topic_desc)) != 0)
+			return EFAULT; 
+	
+		/* Copyin the topic name into a new sbuf. */	
+		tp_name = sbuf_new_auto();
+		sbuf_copyin(tp_name, tp_desc.dltd_name,
+		    strlen(tp_desc.dltd_name));
+		sbuf_finish(tp_name);
+		
+		/* Lookup the topic in the topic hashmap. */
+		h = hashlittle(sbuf_data(tp_name), sbuf_len(tp_name), 0);
+		
+		LIST_FOREACH(t, &topic_hashmap[h & topic_hashmask],
+		    dlt_entries) {
+			if (strcmp(sbuf_data(tp_name),
+			    sbuf_data(t->dlbt_topic_name)) == 0) {
+
+				DLOGTR1(PRIO_HIGH,
+				    "Error topic %s is already present\n",
+				    sbuf_data(tp_name));
+				sbuf_delete(tp_name);
+				return -1;
+			}
+		}
+
+		/* Construct the new topic and add to the topic hashmap. */
+		if (dl_topic_new(&t, tp_name) == 0) {
+
+			LIST_INSERT_HEAD(&topic_hashmap[h & topic_hashmask], t,
+			    dlt_entries); 
+			sbuf_delete(tp_name);
+		} else {
+			sbuf_delete(tp_name);
+			return -1;
+		}
+
+		break;
+	case DLOGIOC_DELTOPICPART:
+		break;
 	case DLOGIOC_PRODUCER:
 		DLOGTR0(PRIO_LOW, "Configuring DLog producer.\n");
 
+		/* Copyin the description of the client configuration. */
 		if (copyin((void *) *pconf_desc, &conf_desc,
 		    sizeof(struct dl_client_config_desc)) != 0)
 			return EFAULT; 
@@ -222,7 +281,7 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 		    conf_desc.dlcc_packed_nvlist_len, 0); 
 		dlog_free(packed_nvlist);
 		if (props == NULL)
-			return EFAULT;
+			return EINVAL;
 
 		/* Open the DLog client with the specified properties. */
 		conf = (struct dl_client_config *) dlog_alloc(
@@ -237,7 +296,7 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 
 			DLOGTR0(PRIO_HIGH, "Error opening Dlog client.\n");
 			dlog_free(conf);
-			return EFAULT;
+			return -1;
 		}
 
 		/* Associate the the DLog client handle with the device file. */
@@ -247,7 +306,7 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			    "Error associating the DLog client handle.\n");
 			dlog_client_close(handle);
 			dlog_free(conf);
-			return EFAULT;
+			return -1;
 		}
 		break;
 	default:
