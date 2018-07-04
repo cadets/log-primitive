@@ -34,9 +34,9 @@
 KMOD=konsumer
 
 SRCS= dlog_client.c \
-	dl_broker_partition.c \
-	dl_broker_segment.c \
-	dl_broker_topic.c \
+	dl_partition.c \
+	dl_segment.c \
+	dl_topic.c \
 	dl_bbuf.c \
 	dl_correlation_id.c \
 	dl_resender.c \
@@ -53,8 +53,8 @@ SRCS= dlog_client.c \
 	dl_request.c \
 	dl_request_queue.c \
 	dl_response.c \
-	dl_transport.c \
 	konsumer.c
+	#dl_transport.c \
 
 CFLAGS+=-D_KERNEL
 CFLAGS+=-Wno-unused-label
@@ -65,6 +65,8 @@ CFLAGS+=-I/usr/src/cddl/compat/opensolaris/include
 CFLAGS+=-I/usr/src/sys/cddl/compat/opensolaris/
 CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common/
 CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common/sys
+CFLAGS+=-I/usr/src/sys
+CFLAGS+=-I/usr/src/sys/sys
 CFLAGS+=-I${SRCTOP}
 
 .include <bsd.kmod.mk>

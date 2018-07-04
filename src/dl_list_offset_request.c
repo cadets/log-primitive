@@ -118,10 +118,12 @@ dl_list_offset_request_new(struct dl_request **self, int32_t correlation_id,
 	*self = request;
 	return 0;
 
+#ifndef _KERNEL
 err_list_offset_request:
 	DLOGTR0(PRIO_HIGH, "Failed instatiating ProduceRequest.\n");
 	*self = NULL;
 	return -1;
+#endif
 }
 
 /**
@@ -131,8 +133,6 @@ void
 dl_list_offset_request_delete(struct dl_list_offset_request *self)
 {
 	struct dl_list_offset_request_topic *req_topic, *req_topic_tmp;
-	struct dl_list_offset_request_partition *req_part;
-	int part;
 
 	DL_ASSERT(self != NULL, ("ListOffsetRequest instance cannot be NULL."));
 
@@ -237,7 +237,9 @@ dl_list_offset_request_decode(struct dl_list_offset_request **self,
 		return 0;
 	}
 
+#ifndef _KERNEL
 err_list_offset_request:
+#endif
 	DLOGTR0(PRIO_HIGH, "Failed decoding ListOffsetRequest.\n");
 	*self = NULL;
 	return -1;

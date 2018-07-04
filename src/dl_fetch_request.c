@@ -42,10 +42,10 @@
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
-#include "dl_broker_partition.h"
 #include "dl_fetch_request.h"
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
+#include "dl_partition.h"
 #include "dl_protocol.h"
 #include "dl_request.h"
 #include "dl_utils.h"
@@ -61,7 +61,6 @@ extern int dl_fetch_request_new(struct dl_request **self,
 	struct dl_request *request;
 	struct dl_fetch_request *fetch_request;
 	struct dl_fetch_request_topic *request_topic;
-	struct dl_fetch_request_partition *request_partition;
 	int rc;
 
 	DL_ASSERT(self != NULL, "FetchRequest instance cannot be NULL");
@@ -121,10 +120,12 @@ extern int dl_fetch_request_new(struct dl_request **self,
 	*self = request;
 	return 0;
 
+#ifndef _KERNEL
 err_request_ctor:
 	DLOGTR0(PRIO_HIGH, "Failed instatiating ProduceRequest.\n");
 	*self = NULL;
 	return -1;
+#endif
 }
 
 void
@@ -236,7 +237,9 @@ dl_fetch_request_decode(struct dl_fetch_request **self, struct dl_bbuf *source)
 		return 0;
 	}
 
+#ifndef _KERNEL
 err_fetch_request:
+#endif
 	DLOGTR0(PRIO_HIGH, "Failed allocating FetchRequest.\n");
 	*self = NULL;
 	return -1;

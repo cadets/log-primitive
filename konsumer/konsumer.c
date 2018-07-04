@@ -112,7 +112,7 @@ konsumer_on_response(struct dl_response const * const response)
 
 	switch (response->dlrs_api_key) {
 	case DL_PRODUCE_API_KEY:
-		produce_response = response->dlrs_message.dlrs_produce_message;
+		produce_response = response->dlrs_produce_response;
 
 		DLOGTR1(PRIO_LOW, "ntopics= %d\n",
 		     produce_response->dlpr_ntopics);
@@ -244,9 +244,16 @@ konsumer_thread(void *arg)
 		DLOGTR1(PRIO_HIGH, "Buffer dtb_xamot_offset = %lu\n",
 		    xamot_offset);
 
+		/* TODO: Handle the buffer wrapping and find EPIDNONE */
+		uint64_t size = 0;
+		while (k->konsumer_state->dts_buffer->dtb_tomax[0] != 0) {
+		    size++;
+		}
+
+		DLOGTR1(PRIO_HIGH, "Buffer dtb_size = %lu\n", size);
 		if (dlog_produce(handle, "record", strlen("record"),
-		    &k->konsumer_state->dts_buffer->dtb_tomax[xamot_offset],
-		    offset-xamot_offset) == 0) {
+		    &k->konsumer_state->dts_buffer->dtb_tomax[0],
+		    size) == 0) {
 			DLOGTR0(PRIO_LOW,
 			    "Successfully produced message to DLog\n");
 

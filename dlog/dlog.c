@@ -45,107 +45,145 @@
 #include <sys/stat.h>
 
 #include "dl_assert.h"
-#include "dl_broker_topic.h"
 #include "dl_config.h"
 #include "dl_memory.h"
+#include "dl_topic.h"
 #include "dl_utils.h"
 #include "dlog.h"
 #include "dlog_client.h"
 
+MALLOC_DECLARE(M_DLOG);
+MALLOC_DEFINE(M_DLOG, "dlog", "DLog memory");
+
 extern uint32_t hashlittle(const void *, size_t, uint32_t);
 
-static void * dl_alloc(unsigned long len);
-static void dl_free(void *addr);
+static int dlog_init(void);
+static void dlog_fini(void);
+
 static void dl_client_close(void *);
 static int dlog_event_handler(struct module *, int, void *);
 static void dlog_main(void *argp);
-static d_open_t dlog_open;
-static d_close_t dlog_close;
-static d_ioctl_t dlog_ioctl;
 
-static char const * const DLOG_NAME = "dlog";
+static inline void *
+dl_alloc(unsigned long len)
+{
 
-struct proc *dlog_client_proc;
-
-static struct cdevsw dlog_cdevsw = {
-	.d_version = D_VERSION,
-	.d_open = dlog_open,
-	.d_close = dlog_close,
-	.d_ioctl = dlog_ioctl,
-	.d_name = DLOG_NAME,
-};
-
-static struct cdev *dlog_dev;
-
-const dlog_malloc_func dlog_alloc = dl_alloc;
-const dlog_free_func dlog_free = dl_free;
-
-struct proc *dlog_client_proc;
-static struct mtx dlog_mtx;
-static struct cv dlog_cv;
-static int dlog_exit = 0;
-
-MALLOC_DECLARE(M_DLOG);
-MALLOC_DEFINE(M_DLOG, "dlog", "DLog memory");
+	return malloc(len, M_DLOG, M_NOWAIT);
+}
 	
-long topic_hashmask;
-LIST_HEAD(dl_broker_topics, dl_broker_topic) *topic_hashmap;
-
-static void
+static inline void
 dl_free(void *addr)
 {
 
 	return free(addr, M_DLOG);
 }
 
-static void *
-dl_alloc(unsigned long len)
+static char const * const DLOG_NAME = "dlog";
+
+const dlog_malloc_func dlog_alloc = dl_alloc;
+const dlog_free_func dlog_free = dl_free;
+
+struct proc *dlog_client_proc;
+
+static d_open_t dlog_open;
+static d_close_t dlog_close;
+static d_read_t dlog_read;
+static d_ioctl_t dlog_ioctl;
+
+static struct cdevsw dlog_cdevsw = {
+	.d_version = D_VERSION,
+	.d_open = dlog_open,
+	.d_close = dlog_close,
+	.d_ioctl = dlog_ioctl,
+	.d_read = dlog_read,
+	.d_name = DLOG_NAME,
+};
+static struct cdev *dlog_dev;
+
+struct proc *dlog_client_proc;
+
+static struct mtx dlog_mtx;
+static struct cv dlog_cv;
+static int dlog_exit = 0;
+
+static int 
+dlog_init()
+{
+	struct make_dev_args dlog_args;
+	int rc, e;
+
+	mtx_init(&dlog_mtx, "dlog mtx", DLOG_NAME, MTX_DEF);
+	mtx_assert(dlog_mtx, MA_NOTOWNED);
+
+	cv_init(&dlog_cv, "dlog cv");
+
+	/* Allocate the topic hashmap. */
+	topic_hashmap = dl_topic_hashmap_new(10, &topic_hashmask);
+
+	/* Create a kernel process, each topic creates threads 
+	 * within this process.
+	 */
+	rc = kproc_create(dlog_main, NULL, &dlog_client_proc, 0, 0, DLOG_NAME);
+	if (rc != 0) {
+
+		dl_topic_hashmap_delete(topic_hashmap);
+		cv_destroy(&dlog_cv);
+		mtx_destroy(&dlog_mtx);
+		return -1;
+	}
+
+	make_dev_args_init(&dlog_args);
+	dlog_args.mda_flags = MAKEDEV_CHECKNAME | MAKEDEV_WAITOK;
+	dlog_args.mda_devsw = &dlog_cdevsw;
+	dlog_args.mda_uid = UID_ROOT;
+	dlog_args.mda_gid = GID_WHEEL;
+	dlog_args.mda_mode = S_IRUSR | S_IWUSR;
+
+	e = make_dev_s(&dlog_args, &dlog_dev, DLOG_NAME);
+	DL_ASSERT(e != 0, ("Failed to create dlog device"));
+
+	return 0;
+}
+
+static void 
+dlog_fini()
 {
 
-	return malloc(len, M_DLOG, M_NOWAIT);
+	DLOGTR1(PRIO_LOW, "Stoping %s process...\n", DLOG_NAME);
+	
+	mtx_assert(dlog_mtx, MA_NOTOWNED);
+	mtx_lock(&dlog_mtx);
+	dlog_exit = 1;
+	cv_broadcast(&dlog_cv);
+	mtx_assert(dlog_mtx, MA_OWNED);
+	mtx_unlock(&dlog_mtx);
+	tsleep(&dlog_client_proc, 0, "dlog terminating...", 10 * hz / 9);
+
+	cv_destroy(&dlog_cv);
+	mtx_destroy(&dlog_mtx);
+	
+	/* Delete the topic hash map. */
+	dl_topic_hashmap_delete(topic_hashmap);
+
+	destroy_dev(dlog_dev);
 }
 
 static int
 dlog_event_handler(struct module *module, int event, void *arg)
 {
-	struct make_dev_args dlog_args;
-	int rc, e = 0;
+	int e = 0;
 
 	switch(event) {
 	case MOD_LOAD:
 		DLOGTR0(PRIO_LOW, "Loading DLog kernel module\n");
 
-		make_dev_args_init(&dlog_args);
-		dlog_args.mda_flags = MAKEDEV_CHECKNAME | MAKEDEV_WAITOK;
-		dlog_args.mda_devsw = &dlog_cdevsw;
-		dlog_args.mda_uid = UID_ROOT;
-		dlog_args.mda_gid = GID_WHEEL;
-		dlog_args.mda_mode = S_IRUSR | S_IWUSR;
-
-		e = make_dev_s(&dlog_args, &dlog_dev, DLOG_NAME);
-		
-		mtx_init(&dlog_mtx, "dlog", "dlog", MTX_DEF);
-		cv_init(&dlog_cv, "dlog");
-
-		topic_hashmap = dl_topic_hashinit(10, &topic_hashmask);
-
-		rc = kproc_create(dlog_main, NULL, &dlog_client_proc, 0, 0,
-		    DLOG_NAME);
+		if (dlog_init() != 0)
+			e = EFAULT;
 		break;
 	case MOD_UNLOAD:
 		DLOGTR0(PRIO_LOW, "Unloading DLog kernel module\n");
 
-		mtx_lock(&dlog_mtx);
-		dlog_exit = 1;
-		cv_broadcast(&dlog_cv);
-		mtx_unlock(&dlog_mtx);
-		tsleep(&dlog_client_proc, 0, "waiting", 10 * hz / 9);
-		DLOGTR0(PRIO_LOW, "DLog process exited successfully.\n");
-
-		cv_destroy(&dlog_cv);
-		mtx_destroy(&dlog_mtx);
-
-		destroy_dev(dlog_dev);
+		dlog_fini();
 		break;
 	default:
 		e = EOPNOTSUPP;
@@ -160,16 +198,20 @@ dlog_main(void *argp)
 {
 
 	for (;;) {
+		mtx_assert(dlog_mtx, MA_NOTOWNED);
 		mtx_lock(&dlog_mtx);
 		cv_timedwait(&dlog_cv, &dlog_mtx, 10 * hz / 9);
-		if (dlog_exit)  {
+		if (dlog_exit == 1)  {
+			mtx_assert(dlog_mtx, MA_OWNED);
 			mtx_unlock(&dlog_mtx);
 	 		DLOGTR0(PRIO_HIGH, "Stopping DLog process..\n");
 			break;
 		}
+		mtx_assert(dlog_mtx, MA_OWNED);
 		mtx_unlock(&dlog_mtx);
 	}
 
+	DLOGTR0(PRIO_LOW, "DLog process exited successfully.\n");
 	kproc_exit(0);
 }
 
@@ -177,7 +219,7 @@ static int
 dlog_open(struct cdev *dev, int oflags, int devtype, struct thread *td)
 {
 
-	DLOGTR0(PRIO_LOW, "Opening the DLog device.\n");
+	DLOGTR1(PRIO_LOW, "Opening the %s device.\n", DLOG_NAME);
 	return 0;
 }
 
@@ -185,13 +227,19 @@ static int
 dlog_close(struct cdev *dev, int fflag, int devtype, struct thread *td)
 {
 
-	DLOGTR0(PRIO_LOW, "Closing the DLog device.\n");
+	DLOGTR1(PRIO_LOW, "Closing the %s device.\n", DLOG_NAME);
 
 	/* Clean up the associated private state (that is the DLog handle,
 	 * if configured).
 	 */
 	devfs_clear_cdevpriv();
 	return 0;	
+}
+
+static int 
+dlog_read(struct cdev *dev, struct uio *uio, int flag)
+{
+	return 0;
 }
 
 static int 
@@ -205,17 +253,16 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 	struct dlog_handle *handle;
 	nvlist_t *props;
 	void *packed_nvlist;
+	struct dl_topic_desc **ptp_desc =
+	    (struct dl_topic_desc **) addr;
+	struct dl_topic_desc tp_desc;	
+	struct sbuf *tp_name;
+	struct dl_topic *t;
+	uint32_t h;
 
 	switch(cmd) {
 	case DLOGIOC_ADDTOPICPART:
-		DLOGTR0(PRIO_LOW, "Adding new DLog Topic/Partition.\n");
-
-		struct dl_topic_desc **ptp_desc =
-	    	    (struct dl_topic_desc **) addr;
-		struct dl_topic_desc tp_desc;	
-		struct sbuf *tp_name;
-		struct dl_broker_topic *t;
-		uint32_t h;
+		DLOGTR0(PRIO_LOW, "Adding new Topic/Partition.\n");
 
 		/* Copyin the description of the new topic. */
 		if (copyin((void *) *ptp_desc, &tp_desc,
@@ -224,17 +271,26 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 	
 		/* Copyin the topic name into a new sbuf. */	
 		tp_name = sbuf_new_auto();
-		sbuf_copyin(tp_name, tp_desc.dltd_name,
-		    strlen(tp_desc.dltd_name));
+		DL_ASSERT(tp_name != NULL,
+		    ("Failed allocating memory for sbuf.")); 
+		if (sbuf_copyin(tp_name, tp_desc.dltd_name,
+		    strlen(tp_desc.dltd_name)) == -1) {
+
+			sbuf_delete(tp_name);
+			return EFAULT;
+		}
 		sbuf_finish(tp_name);
 		
 		/* Lookup the topic in the topic hashmap. */
 		h = hashlittle(sbuf_data(tp_name), sbuf_len(tp_name), 0);
-		
+		DLOGTR4(PRIO_LOW, "topic %s (%zu) hashes to %u (%zu)\n",
+		    sbuf_data(tp_name), sbuf_len(tp_name), h,
+		    h & topic_hashmask);
+
 		LIST_FOREACH(t, &topic_hashmap[h & topic_hashmask],
 		    dlt_entries) {
 			if (strcmp(sbuf_data(tp_name),
-			    sbuf_data(t->dlbt_topic_name)) == 0) {
+			    sbuf_data(t->dlt_name)) == 0) {
 
 				DLOGTR1(PRIO_HIGH,
 				    "Error topic %s is already present\n",
@@ -245,7 +301,8 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 		}
 
 		/* Construct the new topic and add to the topic hashmap. */
-		if (dl_topic_new(&t, tp_name) == 0) {
+		if (dl_topic_from_desc(&t, tp_name,
+		    &tp_desc.dltd_active_seg) == 0) {
 
 			LIST_INSERT_HEAD(&topic_hashmap[h & topic_hashmask], t,
 			    dlt_entries); 

@@ -51,6 +51,8 @@
 #include "dl_protocol.h"
 #include "dl_response.h"
 
+struct dl_response;
+
 SLIST_HEAD(dl_list_offset_response_topics, dl_list_offset_response_topic);
 
 struct dl_list_offset_response_partition {

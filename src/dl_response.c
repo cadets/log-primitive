@@ -117,17 +117,20 @@ dl_response_delete(struct dl_response const * const self)
 	case DL_PRODUCE_API_KEY:
 		dl_produce_response_delete(self->dlrs_produce_response);
 		break;
+#ifndef _KERNEL
 	case DL_FETCH_API_KEY:
 		dl_fetch_response_delete(self->dlrs_fetch_response);
 		break;
 	case DL_OFFSET_API_KEY:
 		dl_list_offset_response_delete(self->dlrs_offset_response);
 		break;
+#endif
 	}
 	
 	dlog_free(self);	
 }
 
+/*
 int
 dl_response_decode(struct dl_response ** const self,
     struct dl_bbuf const * const source)
@@ -138,30 +141,30 @@ dl_response_decode(struct dl_response ** const self,
 	DL_ASSERT(self != NULL, ("Request buffer cannot be NULL"));
 	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
 
-	response = (struct dl_response *) dlog_alloc(sizeof(struct dl_response));
+	response = (struct dl_response *) dlog_alloc(
+	    sizeof(struct dl_response));
 #ifdef _KERNEL
 	DL_ASSERT(response != NULL, ("Allocation for Request failed"));
 	{
 #else
 	if (response != NULL) {
 #endif
-		/* Decode the Request Header into the buffer. */
+		* Decode the Request Header into the buffer. *
 		if (dl_response_header_decode(response, source) == 0) {
 		
-			/* Decode the Request Body into the buffer. */
+			* Decode the Request Body into the buffer. *
 			switch (response->dlrs_api_key) {
 			case DL_PRODUCE_API_KEY:
 				rc = dl_produce_response_decode(
-				    &response->dlrs_produce_response, source);
+				    &response, source);
 				break;
 			case DL_FETCH_API_KEY:
-				    rc = dl_fetch_response_decode(
-					&response->dlrs_fetch_response, source);
+				rc = dl_fetch_response_decode(
+				    &response, source);
 				break;
 			case DL_OFFSET_API_KEY:
-				    rc = dl_list_offset_response_decode(
-					&response->dlrs_offset_response,
-					source);
+				rc = dl_list_offset_response_decode(
+				    &response, source);
 				break;
 			default:
 				DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
@@ -183,6 +186,7 @@ dl_response_decode(struct dl_response ** const self,
 	*self = NULL;
 	return -1;
 }
+*/
 
 int32_t
 dl_response_encode(struct dl_response *response, struct dl_bbuf **target)
@@ -206,6 +210,7 @@ dl_response_encode(struct dl_response *response, struct dl_bbuf **target)
 				return dl_produce_response_encode(
 				    response->dlrs_produce_response, *target);
 				break;
+#ifndef _KERNEL
 			case DL_FETCH_API_KEY:
 				return dl_fetch_response_encode(
 				    response->dlrs_fetch_response, *target);
@@ -214,6 +219,7 @@ dl_response_encode(struct dl_response *response, struct dl_bbuf **target)
 				return dl_list_offset_response_encode(
 				    response->dlrs_offset_response, *target);
 				break;
+#endif
 			default:
 				DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
 				    response->dlrs_api_key);

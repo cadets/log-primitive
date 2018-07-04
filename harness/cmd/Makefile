@@ -29,10 +29,13 @@
 # SUCH DAMAGE.
 #
 
-.PATH : ../src
+.PATH : ../../src
 
 .OBJDIR:= obj
 MK_AUTO_OBJ:= yes
+
+PROGS= harness_cmd 
+BINDIR= bin
 
 DLOG_SRCS= dlog_client.c \
 	dl_bbuf.c \
@@ -45,38 +48,30 @@ DLOG_SRCS= dlog_client.c \
 	dl_list_offset_request.c \
 	dl_list_offset_response.c \
 	dl_message_set.c \
+	dl_partition.c \
 	dl_primitive_types.c \
 	dl_produce_request.c \
 	dl_produce_response.c \
 	dl_request.c \
 	dl_request_queue.c \
 	dl_response.c \
+	dl_segment.c \
 	dl_transport.c \
-	lookup3.c
+	dl_topic.c \
+	lookup3.c \
+	dl_poll_reactor.c \
+	dl_producer.c
 
-PROGS= dlog_start_broker dlog_console_producer dlog_console_consumer
-BINDIR= bin
+SRCS.harness_cmd = harness_cmd.c ${DLOG_SRCS}
+MAN.harness_cmd =
 
-SRCS.dlog_start_broker= dlog_start_broker.c \
-	../src/dl_partition.c \
-	../src/dl_segment.c \
-	../src/dl_topic.c \
-	${DLOG_SRCS}
-MAN.dlog_start_broker=
+LDADD+=-lcrypto
+LDADD+=-lnv
+LDADD+=-lpthread
+LDADD+=-lsbuf
+LDADD+=-lz
 
-SRCS.dlog_console_producer= dlog_console_producer.c
-MAN.dlog_console_producer=
-
-SRCS.dlog_console_consumer= dlog_console_consumer.c ${DLOG_SRCS}
-MAN.dlog_console_consumer=
-
-LDADD+= -lz
-LDADD+= -lpthread
-LDADD+= -lm
-LDADD+= -lsbuf
-LDADD+= -lnv
-LDADD+= ${SRCTOP}/libdlog.a
-
-CFLAGS+= -I${SRCTOP}
+CFLAGS+=-I../../src
+#CFLAGS+=-I${SRCTOP}
 
 .include <bsd.progs.mk>

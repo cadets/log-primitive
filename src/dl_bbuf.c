@@ -209,8 +209,7 @@ dl_bbuf_bcat(struct dl_bbuf *self, char const * const source, int len)
 
 	dl_bbuf_assert_integrity(__func__, self);
 
-	if (self->dlb_pos + len >
-	    self->dlb_capacity) {
+	if (self->dlb_pos + len > self->dlb_capacity) {
 
 		if (self->dlb_flags & DL_BBUF_AUTOEXTEND) {
 
@@ -222,6 +221,9 @@ dl_bbuf_bcat(struct dl_bbuf *self, char const * const source, int len)
 			return -1;
 		}	
 	}
+
+	DLOGTR1(PRIO_LOW, "source = %p\n", source);
+	DLOGTR1(PRIO_LOW, "target = %p\n", &self->dlb_data[self->dlb_pos]);
 
 	bcopy(source, &self->dlb_data[self->dlb_pos], len);
 	self->dlb_pos += len;

@@ -38,13 +38,16 @@
 #if defined(HAVE_POSIX_FALLOCATE) && !defined(__sun) && !defined(__sun__)
 #define _XOPEN_SOURCE 600
 #endif
+
 #if !defined(_GNU_SOURCE) && defined(HAVE_LINUX_FALLOC_H)
 #define _GNU_SOURCE
 #endif
+
 #ifndef _KERNEL
 // TODO what is all this mess
 #include <utime.h>
 #endif
+
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -69,15 +72,18 @@
 #endif
 
 
-#ifdef _KERNEL
-// TODO
-#define NULL 0
-#else
-
 #include <sys/types.h>
-#include <sys/mman.h>
+//#include <sys/mman.h>
+#include <sys/uio.h>
 
-#include <stdio.h>
+#ifdef _KERNEL
+#include <sys/capsicum.h>
+#include <sys/syscallsubr.h>
+#include <sys/vnode.h>
+#include <sys/unistd.h>
+#else
+#include <dirent.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/socket.h>
@@ -87,7 +93,6 @@
 #include <strings.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/dir.h>
 #include <math.h>
 #include <string.h>
 #include <stdarg.h>
@@ -95,9 +100,10 @@
 #include <unistd.h>
 #endif
 
-#include "dl_broker_segment.h"
+#include "dl_assert.h"
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
+#include "dl_segment.h"
 #include "dl_utils.h"
 
 static int dl_alloc_big_file(int, long int, long int);
@@ -200,18 +206,28 @@ dl_segment_new_default_sized(long int base_offset,
 	return dl_segment_new(base_offset, 1024*1024, partition_name);
 }
 
+void
+dl_segment_delete(struct dl_segment *self)
+{
+
+	dlog_free(self);
+}
+
 //Method used to create the segment with its log and index files
+//#ifdef _KERNEL
 struct dl_segment * dl_segment_new(long int base_offset,
     long int length, struct sbuf *partition_name)
 {
 	struct dl_segment *seg;
-	int log_file, index_file;
 	struct sbuf *log_name, *idx_name;
+	int log_file, index_file;
 
 	log_name = sbuf_new_auto();
 	sbuf_printf(log_name, "%s/%.*ld.log",
 	    sbuf_data(partition_name), 20, base_offset);
+	sbuf_finish(log_name);
 #ifdef _KERNEL
+	log_file = 0;
 #else
 	log_file = open(sbuf_data(log_name), O_RDWR | O_APPEND | O_CREAT, 0666);
 	dl_alloc_big_file(log_file, 0, length);
@@ -221,9 +237,12 @@ struct dl_segment * dl_segment_new(long int base_offset,
 	idx_name = sbuf_new_auto();
 	sbuf_printf(idx_name, "%s/%.*ld.index",
 	    sbuf_data(partition_name), 20, base_offset);
+	sbuf_finish(idx_name);
 #ifdef _KERNEL
+	index_file = 0;
 #else
-	index_file = open(sbuf_data(idx_name), O_RDWR | O_APPEND | O_CREAT, 0666);
+	index_file = open(sbuf_data(idx_name), O_RDWR | O_APPEND | O_CREAT,
+	    0666);
 	dl_alloc_big_file(index_file, 0,  length);
 #endif
 	sbuf_delete(idx_name);
@@ -233,18 +252,23 @@ struct dl_segment * dl_segment_new(long int base_offset,
 	 */
 #ifdef _KERNEL
 #else
-	mmap(NULL, length, PROT_READ|PROT_WRITE, MAP_SHARED, index_file, 0);
+	//mmap(NULL, length, PROT_READ|PROT_WRITE, MAP_SHARED, index_file, 0);
 #endif
 
 	seg = (struct dl_segment *) dlog_alloc(sizeof(struct dl_segment));
+#ifdef _KERNEL
+#else
+#endif
 // TODO
-	log_file = 0; // TODO
+#ifdef _KERNEL
+#else
 	seg->_log = log_file;
-	index_file = 0; // TODO
 	seg->_index = index_file;
+#endif
 	seg->offset = base_offset;
 	seg->base_offset = base_offset;
 	seg->segment_size = length;
+	seg->last_sync_pos = 0;
 #ifdef _KERNEL
 #else
 	if (pthread_mutex_init(&seg->mtx, NULL) != 0){
@@ -254,87 +278,205 @@ struct dl_segment * dl_segment_new(long int base_offset,
 
 	return seg;
 }
+//#endif
+int
+dl_segment_new_from_desc(struct dl_segment **self,
+    struct dl_segment_desc *seg_desc)
+{
+	struct dl_segment *seg;
+
+	seg = (struct dl_segment *) dlog_alloc(sizeof(struct dl_segment));
+#ifdef _KERNEL
+	struct thread *td = curthread;
+	cap_rights_t rights;
+	struct file *fp;
+
+	seg->ucred = td->td_ucred;
+	fget_write(td, seg_desc->dlsd_log, cap_rights_init(&rights, CAP_WRITE),
+	    &fp); 
+	seg->_log = fp->f_vnode;
+	fget_write(td, seg_desc->dlsd_index,
+	    cap_rights_init(&rights, CAP_WRITE), &fp);
+	seg->_index = fp->f_vnode;
+#else
+	seg->_log = seg_desc->dlsd_log;
+	seg->_index = seg_desc->dlsd_index;
+#endif
+	seg->offset = seg_desc->dlsd_base_offset;
+	seg->base_offset = seg_desc->dlsd_base_offset;
+	seg->segment_size = seg_desc->dlsd_seg_size;
+	seg->last_sync_pos = 0;
+#ifdef _KERNEL
+#else
+	if (pthread_mutex_init(&seg->mtx, NULL) != 0){
+		dl_debug(PRIO_HIGH, "Segment mutex init failed\n");
+	}
+#endif
+	*self = seg;
+	return 0;
+}
 
 //Method invoked when a new message gets recieved into a segment
 int
-dl_segment_insert_message(struct dl_segment *as, char *message, int32_t message_size)
+dl_segment_insert_message(struct dl_segment *self, unsigned char *message,
+    int32_t message_size)
 {
 #ifdef _KERNEL
-#else
-	off_t index_position, log_position;
+	struct mount *mp;
+	struct thread *td = curthread;
+	struct uio u;
+#endif
+	struct iovec index_bufs[2], log_bufs[2]; //log_bufs[3];
+	off_t log_position;
 	uint32_t offset, relative_offset;
-	struct iovec index_bufs[2], log_bufs[2];
 
-	DLOGTR1(PRIO_HIGH, "Inserting into the log: '%s'\n", message);
+	DL_ASSERT(self != NULL, ("Segment instance cannot be NULL."));
 
-	dl_segment_lock(as);
+	DLOGTR1(PRIO_HIGH, "Inserting (%d bytes) into the log\n", message_size);
+
+	dl_segment_lock(self);
 	
 	/* Update the index file. */
-	relative_offset = htobe32((uint32_t) as->offset - as->base_offset);
+	relative_offset = (uint32_t) self->offset - self->base_offset;
+	DLOGTR1(PRIO_HIGH, "relative_offset : '%d'\n", relative_offset);
 	index_bufs[0].iov_base = &relative_offset;
 	index_bufs[0].iov_len = sizeof(uint32_t);
 
-	log_position = htobe32(lseek(as->_log, 0, SEEK_END));
+#ifdef _KERNEL
+	//log_position = vn_seek(self->_log, 0, 2, td);
+	log_position = 0;
+#else
+	log_position = lseek(self->_log, 0, SEEK_END);
+#endif
+	DLOGTR1(PRIO_HIGH, "log_position : '%ld'\n",log_position);
 	index_bufs[1].iov_base = &log_position;
 	index_bufs[1].iov_len = sizeof(uint32_t);
 
-	writev(as->_index, index_bufs, 2);	
+#ifdef _KERNEL
+	bzero(&u, sizeof(struct uio));
+	u.uio_iov = index_bufs;
+	u.uio_iovcnt = 2;
+	u.uio_offset = -1;
+        u.uio_resid = index_bufs[0].iov_len + index_bufs[1].iov_len;
+        u.uio_segflg = UIO_USERSPACE;
+        u.uio_rw = UIO_WRITE;
+        u.uio_td = td;
+
+	VREF(self->_index);
+	crhold(self->ucred);
+	vn_start_write(self->_index, &mp, V_WAIT);
+	vn_lock(self->_index, LK_EXCLUSIVE | LK_RETRY);
+	VOP_WRITE(self->_index, &u, IO_UNIT | IO_APPEND, self->ucred);
+	VOP_UNLOCK(self->_index, 0);
+	vn_finished_write(mp);
+	crfree(self->ucred);
+#else
+	writev(self->_index, index_bufs, 2);	
+#endif
 
 	/* Update the log file. */
-	offset = htobe32(as->offset); 
+	offset = htobe32(self->offset); 
 	log_bufs[0].iov_base = &offset;
 	log_bufs[0].iov_len = sizeof(uint32_t);
+	
+	//log_bufs[1].iov_base = &timestamp;
+	//log_bufs[1].iov_len = sizeof(uint32_t);
 
 	log_bufs[1].iov_base = message;
 	log_bufs[1].iov_len = message_size;
 
-	writev(as->_log, log_bufs, 2);	
+#ifdef _KERNEL
+	bzero(&u, sizeof(struct uio));
+	u.uio_iov = log_bufs;
+	u.uio_iovcnt = 2;
+	u.uio_offset = -1;
+        u.uio_resid = log_bufs[0].iov_len + log_bufs[1].iov_len;
+        u.uio_segflg  = UIO_SYSSPACE;
+        u.uio_rw = UIO_WRITE;
+        u.uio_td = td;
+
+	VREF(self->_log);
+	crhold(self->ucred);
+	vn_start_write(self->_log, &mp, V_WAIT);
+	vn_lock(self->_log, LK_EXCLUSIVE | LK_RETRY);
+	VOP_WRITE(self->_log, &u, IO_UNIT | IO_APPEND, self->ucred);
+	VOP_UNLOCK(self->_log, 0);
+	vn_finished_write(mp);
+	crfree(self->ucred);
+#else
+	writev(self->_log, log_bufs, 2);	
+#endif
 
 	/* Update the offset. */
-	as->offset++;
+	self->offset++;
 
-	dl_segment_unlock(as);
-#endif
+	dl_segment_unlock(self);
 	return 0;
 }
 
-/*
 int
-dl_segment_get_message_by_offset(struct dl_segment *as, int offset, void *saveto)
+dl_segment_get_message_by_offset(struct dl_segment *as, int offset,
+    struct dl_bbuf **msg_buf)
 {
-	char buf[bytes_per_index_entry];
-	char *bp = buf;
-	char log_size_field[log_size_entry];
-	int ret, log_offset, msg_size;
+	struct dl_bbuf *idx_buf, *t;
+	int32_t roffset, poffset, tmp_buf[2], cid, size;
+	int ret;
 
-	lseek(as->_index, offset*bytes_per_index_entry, SEEK_SET);
-
-	ret = read(as->_index, buf, bytes_per_index_entry);
+#ifdef _KERNEL
+	ret = - 1;
+#else
+	lseek(as->_index, offset * 2 * sizeof(int32_t), SEEK_SET);
+	ret = read(as->_index, tmp_buf, sizeof(tmp_buf));
+#endif
 	if (ret > 0) {
-		log_offset = atoi(bp+index_size_entry);
-		dl_debug(PRIO_LOW,
-		    "For requested offset %d log offset is %d\n", offset,
-		    log_offset);
+		dl_bbuf_new(&idx_buf, (unsigned char *) tmp_buf,
+		    sizeof(tmp_buf), DL_BBUF_LITTLEENDIAN);
 
-		lseek(as->_log, log_offset, SEEK_SET);
+		dl_bbuf_get_int32(idx_buf, &roffset);
+		dl_bbuf_get_int32(idx_buf, &poffset);
 
-		log_size_field[log_size_entry] = '\0';
+		DLOGTR2(PRIO_LOW,
+		    "Relative log offset %d indexs to physical log offset %d\n",
+		    roffset, poffset);
+		// TODO: buf needs to be allocated
+		//dl_bbuf_delete(idx_buf);
 
-		ret = read(as->_log, log_size_field, log_size_entry);
-		if (ret > 0) {
-			msg_size = atoi(log_size_field);
+#ifdef _KERNEL
+#else
+		lseek(as->_log, poffset, SEEK_SET);
+		read(as->_log, tmp_buf, sizeof(tmp_buf));
+#endif
+		dl_bbuf_new(&t, (unsigned char *) tmp_buf,
+		    sizeof(tmp_buf), DL_BBUF_BIGENDIAN);
+		dl_bbuf_get_int32(t, &cid);
+		dl_bbuf_get_int32(t, &size);
+		// TODO: buf needs to be allocated
+		//dl_bbuf_delete(idx_buf);
 
-			ret = read(as->_log, saveto, msg_size);
-			return msg_size;
-		}
-		return ret;
+		DLOGTR1(PRIO_LOW, "Message set size = %d\n", size);
+		
+
+		unsigned char *msg_tmp =
+		    dlog_alloc(size * sizeof(unsigned char) + sizeof(int32_t));
+#ifdef _KERNEL
+#else
+		lseek(as->_log, poffset+sizeof(int32_t), SEEK_SET);
+		ret = read(as->_log, msg_tmp, size + sizeof(int32_t));
+#endif
+		dl_bbuf_new(msg_buf, NULL, size + sizeof(int32_t), DL_BBUF_BIGENDIAN);
+		dl_bbuf_bcat(*msg_buf, msg_tmp, size + sizeof(int32_t));
+		return 0;
 	} else {
-		dl_debug(PRIO_HIGH, "For offset %d no message found.\n",
-		    offset);
+#ifdef _KERNEL
+		DLOGTR1(PRIO_HIGH, "For offset %d no message found\n", offset);
+#else
+		DLOGTR2(PRIO_HIGH, "For offset %d no message found %d.\n",
+		    offset, errno);
+#endif
+		return -1;
 	}
 	return 0;
 }
-*/
 
 void
 dl_segment_close(struct dl_segment *seg)

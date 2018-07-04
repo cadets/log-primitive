@@ -56,7 +56,6 @@ dl_list_offset_response_new(struct dl_response **self,
 {
 	struct dl_list_offset_response *offset_response;
 	struct dl_list_offset_response_topic *response_topic;
-	struct dl_list_offset_response_partition *response_partition;
 	struct dl_response *response;
 	int rc;
 	
@@ -116,10 +115,12 @@ dl_list_offset_response_new(struct dl_response **self,
 	*self = response;
 	return 0;
 
+#ifndef _KERNEL
 err_response_ctor:
 	DLOGTR0(PRIO_HIGH, "Failed instatiating ProduceRequest.\n");
 	*self = NULL;
 	return -1;
+#endif
 }
 
 void
@@ -127,8 +128,6 @@ dl_list_offset_response_delete(struct dl_list_offset_response *self)
 {
 	struct dl_list_offset_response *list_offset_response = self;
 	struct dl_list_offset_response_topic *req_topic, *req_topic_tmp;
-	struct dl_list_offset_response_partition *req_part;
-	int part;
 
 	DL_ASSERT(self != NULL, ("ListOffsetRequest instance cannot be NULL."));
 
@@ -235,8 +234,9 @@ dl_list_offset_response_decode(struct dl_response **self,
 		*self = response;
 		return 0;
 	}
-
+#ifndef _KERNEL
 err_list_offset_response:
+#endif
 	DLOGTR0(PRIO_HIGH, "Failed decoding ListOffsetResponse,\n");
 	*self = NULL;
 	return -1;

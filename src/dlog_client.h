@@ -76,7 +76,7 @@ struct dl_client_event_notifier {
 
 extern struct dlog_handle * dlog_client_open(
     struct dl_client_config const * const);
-extern int dlog_client_close(struct dlog_handle *);
+extern void dlog_client_close(struct dlog_handle *);
 
 extern int dlog_fetch(struct dlog_handle *, struct sbuf *, 
     const int32_t, const int32_t,  const int64_t, const int32_t);

@@ -57,7 +57,6 @@ dl_fetch_response_new(struct dl_response **self,
 {
 	struct dl_fetch_response *fetch_response;
 	struct dl_fetch_response_topic *response_topic;
-	struct dl_fetch_response_partition *response_partition;
 	struct dl_response *response;
 	int rc;
 	
@@ -121,10 +120,12 @@ dl_fetch_response_new(struct dl_response **self,
 	*self = response;
 	return 0;
 
+#ifndef _KERNEL
 err_response_ctor:
 	DLOGTR0(PRIO_HIGH, "Failed instatiating ProduceRequest.\n");
 	*self = NULL;
 	return -1;
+#endif
 }
 
 void
@@ -264,7 +265,9 @@ dl_fetch_response_decode(struct dl_response **self, struct dl_bbuf *source)
 		return 0;
 	}
 
+#ifndef _KERNEL
 err_fetch_response:
+#endif
 	DLOGTR0(PRIO_HIGH, "Failed decoding FetchResponse,\n");
 	*self = NULL;
 	return -1;

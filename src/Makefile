@@ -40,9 +40,6 @@ MK_AUTO_OBJ:= yes
 
 LIB:= dlog
 SRCS= dlog_client.c \
-	dl_broker_partition.c \
-	dl_broker_segment.c \
-	dl_broker_topic.c \
 	dl_bbuf.c \
 	dl_correlation_id.c \
 	dl_resender.c \
@@ -53,13 +50,16 @@ SRCS= dlog_client.c \
 	dl_list_offset_request.c \
 	dl_list_offset_response.c \
 	dl_message_set.c \
+	dl_partition.c \
 	dl_primitive_types.c \
 	dl_produce_request.c \
 	dl_produce_response.c \
 	dl_request.c \
 	dl_request_queue.c \
 	dl_response.c \
+	dl_segment.c \
 	dl_transport.c \
+	dl_topic.c \
 	lookup3.c
 
 .include <bsd.lib.mk>

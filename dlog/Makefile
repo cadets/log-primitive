@@ -34,27 +34,19 @@
 KMOD=dlog
 
 SRCS= dlog_client.c \
-	dl_broker_partition.c \
-	dl_broker_segment.c \
-	dl_broker_topic.c \
 	dl_bbuf.c \
-	dl_connection.c \
-	dl_correlation_id.c \
-	dl_resender.c \
 	dl_utils.c \
 	dl_thread.c \
-	dl_fetch_request.c \
-	dl_fetch_response.c \
-	dl_list_offset_request.c \
-	dl_list_offset_response.c \
 	dl_message_set.c \
+	dl_partition.c \
 	dl_primitive_types.c \
 	dl_produce_request.c \
 	dl_produce_response.c \
 	dl_request.c \
 	dl_request_queue.c \
 	dl_response.c \
-	dl_transport.c \
+	dl_segment.c \
+	dl_topic.c \
 	dlog.c \
 	lookup3.c
 
@@ -63,11 +55,14 @@ CFLAGS+=-Wno-unused-label
 CFLAGS+=-Wno-unused-variable
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-Wno-missing-prototypes
+CFLAGS+=-I/usr/src/sys
+CFLAGS+=-I/usr/src/sys/sys
 CFLAGS+=-I/usr/src/cddl/compat/opensolaris/include
 CFLAGS+=-I/usr/src/sys/cddl/compat/opensolaris/
 CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common/
 CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common/sys
-CFLAGS+=-I/usr/src/sys/sys
 CFLAGS+=-I${SRCTOP}
+
+EXPORT_SYMS= dlog_produce
 
 .include <bsd.kmod.mk>

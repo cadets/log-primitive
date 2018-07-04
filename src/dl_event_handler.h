@@ -39,12 +39,7 @@
 
 #include "dl_config.h"
 
-#ifdef _KERNEL
-#include <sys/socketvar.h>
-typedef struct socket * dl_event_handler_handle;
-#else
 typedef int dl_event_handler_handle;
-#endif
 
 /**
  * All interaction from Reactor to an event handler goes through function
@@ -52,12 +47,13 @@ typedef int dl_event_handler_handle;
  */
 
 typedef dl_event_handler_handle (*dl_get_handle_func)(void *);
-typedef void (*dl_handle_event_func)(void *);
+typedef void (*dl_handle_event_func)(void *, int);
  
 struct dl_event_handler {
 	void *dleh_instance;
 	dl_get_handle_func dleh_get_handle;
 	dl_handle_event_func dleh_handle_event;
+	// TODO: what?
 	struct broker_configuration *dleh_conf;
 };
 

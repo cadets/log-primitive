@@ -47,6 +47,7 @@
 #include "dlog_client.h"
 #include "dl_memory.h"
 #include "dl_utils.h"
+#include "dl_request_queue.h"
 
 static void dlp_siginfo_handler(int);
 static void dlp_sigint_handler(int);
@@ -102,7 +103,8 @@ dlp_on_response(struct dl_response const * const response)
 
 	switch (response->dlrs_api_key) {
 	case DL_PRODUCE_API_KEY:
-		produce_response = response->dlrs_message.dlrs_produce_message;
+		//produce_response = response->dlrs_message.dlrs_produce_message;
+		produce_response = response->dlrs_produce_response;
 
 		dl_debug(PRIO_LOW, "ntopics= %d\n", produce_response->dlpr_ntopics);
 
@@ -134,6 +136,12 @@ dlp_on_response(struct dl_response const * const response)
 	}
 
 }
+
+#include <sys/queue.h>
+#include <dl_broker_topic.h>
+
+unsigned long topic_hashmask;
+LIST_HEAD(dl_broker_topics, dl_broker_topic) *topic_hashmap;
 
 /**
  * Utility for writing to the distributed log from the console.
@@ -182,6 +190,22 @@ main(int argc, char **argv)
 		}
 	}
 
+	/* Create the hashmap to store the names of the topics managed by the
+	 * broker and their segments.
+	 */
+	topic_hashmap = dl_topic_hashinit(10, &topic_hashmask);
+
+	/* Preallocate an initial segement file for the topic and add to the
+	 * hashmap.
+	 */
+	struct sbuf *tname = sbuf_new_auto();
+	sbuf_cpy(tname, "cadets-trace"); //topic);
+	struct dl_broker_topic *t;
+	dl_topic_new(&t, tname, handle);
+
+	uint32_t h = hashlittle(topic, strlen(topic), 0);
+	LIST_INSERT_HEAD(&topic_hashmap[h & topic_hashmask], t, dlt_entries); 
+
 	/* Install signal handler to terminate broker cleanly on SIGINT. */	
 	signal(SIGINT, dlp_sigint_handler);
 
@@ -205,7 +229,7 @@ main(int argc, char **argv)
 		    "Error initialising the distributed log client.\n");
 		exit(EXIT_FAILURE);
 	}
-  
+ 
        	/* Allocate memory for the user input. */	
 	len = DLC_DISTLOG_RECORD_SIZE_BYTES; 
 	line = malloc(len * sizeof(char));

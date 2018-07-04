@@ -101,6 +101,7 @@ dl_produce_response_new(struct dl_response **self,
 	*self = response;
 	return 0;
 
+#ifndef _KERNEL
 err_response_topic:
 	dlog_free(produce_response);
 
@@ -111,6 +112,7 @@ err_response_ctor:
 	DLOGTR0(PRIO_HIGH, "Failed instatiating ProduceRequest.\n");
 	*self = NULL;
 	return -1;
+#endif
 }
 
 void
@@ -118,8 +120,6 @@ dl_produce_response_delete(struct dl_produce_response *self)
 {
 	struct dl_produce_response *produce_response = self;
 	struct dl_produce_response_topic *req_topic, *req_topic_tmp;
-	struct dl_produce_response_partition *req_part;
-	int part;
 
 	DL_ASSERT(self != NULL, ("ProduceRequest instance cannot be NULL."));
 
@@ -241,8 +241,9 @@ dl_produce_response_decode(struct dl_response **self,
 		*self = response;
 		return 0;
 	}
-
+#ifndef _KERNEL
 err_produce_response:
+#endif
 	DLOGTR0(PRIO_HIGH, "Failed decoding ProduceResponse,\n");
 	*self = NULL;
 	return -1;

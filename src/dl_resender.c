@@ -64,7 +64,6 @@
 #include "dl_resender.h"
 #include "dl_transport.h"
 #include "dl_utils.h"
-#include "dlog_client_impl.h"
 	
 RB_HEAD(dlr_unackd_requests, dl_request_element);
 
@@ -88,7 +87,7 @@ struct dl_resender_argument {
 
 static int dl_request_element_cmp(struct dl_request_element *,
     struct dl_request_element *);
-static void * dl_resender_thread(void *);
+static void dl_resender_thread(void *);
 
 RB_PROTOTYPE(dlr_unackd_requests, dl_request_element, dlrq_linkage,
     dl_request_element_cmp);
@@ -105,7 +104,7 @@ dl_request_element_cmp(struct dl_request_element *el1,
 	return el2->dlrq_correlation_id - el1->dlrq_correlation_id;
 }
 
-static void *
+static void
 dl_resender_thread(void *vargp)
 {
 	struct dl_resender *resender;
@@ -128,7 +127,7 @@ dl_resender_thread(void *vargp)
 	resender = ra->dlra_resender;
 	dlog_free(vargp);
 	
-	props = resender->dlr_handle->dlh_config->dlcc_props;
+	props = NULL; //resender->dlr_handle->dlh_config->dlcc_props;
 
 	if (!nvlist_exists_bool(props, DL_CONF_TORESEND)) {
 		to_resend = nvlist_get_number(props, DL_CONF_TORESEND);
@@ -197,8 +196,8 @@ dl_resender_thread(void *vargp)
 					    &resender->dlr_unackd, request);
 
 					/* Resend the request. */
-					dl_request_q_enqueue(resender->dlr_handle->dlh_request_q,
-					    request);
+					//dl_request_q_enqueue(resender->dlr_handle->dlh_request_q,
+					  //  request);
 					
 					DLOGTR0(PRIO_LOW, "Resending request.\n");
 				}

@@ -34,35 +34,11 @@
  *
  */
 
-#ifndef _DL_BROKER_PARTITION_H
-#define _DL_BROKER_PARTITION_H
+#ifndef _HARNESS_H
+#define _HARNESS_H
 
-#include <sys/types.h>
-#ifdef _KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sys/sbuf.h>
-#endif
-
-#include <sys/queue.h>
-#include <sys/types.h>
-
-#include "dl_broker_segment.h"
-#include "dl_broker_topic.h"
-#include "dl_event_handler.h"
-
-struct dl_partition {
-	SLIST_ENTRY(dl_partition) dlp_entries;
-	u_int32_t dlp_offset; /* Current offset into the log. */
-	struct dl_segments dlp_segments;
-	struct dl_segment *dlp_active_segment;
-	int _klog;
-	int _kindex;
-	struct dl_event_handler event_handler;
-};
-
-static const int32_t DL_DEFAULT_PARTITION = 0;
-
-extern int dl_partition_new(struct dl_partition **, struct sbuf *);
+#include <sys/ioccom.h>
+	
+#define HARNESSIOC_REGDLOG _IOWR('d', 1, struct dl_client_config)
 
 #endif

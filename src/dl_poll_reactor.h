@@ -40,7 +40,8 @@
 #include "dl_event_handler.h"
 
 extern void dl_poll_reactor_handle_events(void);
-extern void dl_poll_reactor_register(struct dl_event_handler const * const);
+extern void dl_poll_reactor_register(struct dl_event_handler const * const,
+    int);
 extern void dl_poll_reactor_unregister(struct dl_event_handler const * const);
 
 #endif

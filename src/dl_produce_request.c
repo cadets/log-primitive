@@ -50,7 +50,7 @@
 
 int
 dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
-    struct sbuf *client, int16_t required_acks, int16_t timeout,
+    struct sbuf *client, int16_t required_acks, int32_t timeout,
     struct sbuf *topic_name, struct dl_message_set *message_set)
 {
 	struct dl_produce_request *produce_request;
@@ -120,16 +120,18 @@ dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
 	*self = request;
 	return 0;
 
+#ifndef _KERNEL
 err_request_ctor:
 	DLOGTR0(PRIO_HIGH, "Failed instatiating ProduceRequest.\n");
 	*self = NULL;
 	return -1;
+#endif
 }
 
 int
 dl_produce_request_new_nomsg(struct dl_request **self,
     const int32_t correlation_id, struct sbuf *client, int16_t required_acks,
-    int16_t timeout, struct sbuf *topic_name)
+    int32_t timeout, struct sbuf *topic_name)
 {
 	return dl_produce_request_new(self, correlation_id, client,
 	    required_acks, timeout, topic_name, NULL);
@@ -246,7 +248,9 @@ dl_produce_request_decode(struct dl_produce_request **self,
 		return 0;
 	}
 
+#ifndef _KERNEL
 err_produce_request:
+#endif
 	DLOGTR0(PRIO_HIGH, "Failed decoding ProduceRequest.\n");
 	*self = NULL;
 	return -1;

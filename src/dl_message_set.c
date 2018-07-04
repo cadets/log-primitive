@@ -112,10 +112,12 @@ dl_message_set_new(struct dl_message_set **self, unsigned char *key,
 	*self = message_set;
 	return 0;
 
+#ifndef _KERNEL
 err_message_set:
 	DLOGTR0(PRIO_HIGH, "Failed allocating message.\n");
 	*self = NULL;
 	return -1;
+#endif
 }
 
 void
@@ -236,7 +238,7 @@ dl_message_decode(struct dl_message **self, struct dl_bbuf *source)
 	crc_value = CRC32(crc_data, dl_bbuf_len(source)-crc_start_pos);
 	if ((int32_t) crc_value != msg_crc) {
 		DLOGTR2(PRIO_HIGH,
-		    "Computed CRC (%d) doess't match value "
+		    "Computed CRC (%ld) doess't match value "
 		    "recieved value (%d).\n", crc_value, msg_crc);
 		dlog_free(message);
 		goto err_message;

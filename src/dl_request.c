@@ -185,12 +185,14 @@ dl_request_delete(struct dl_request const * const self)
 	case DL_PRODUCE_API_KEY:
 		dl_produce_request_delete(self->dlrqm_produce_request);
 		break;
+#ifndef _KERNEL
 	case DL_FETCH_API_KEY:
 		dl_fetch_request_delete(self->dlrqm_fetch_request);
 		break;
 	case DL_OFFSET_API_KEY:
 		dl_list_offset_request_delete(self->dlrqm_offset_request);
 		break;
+#endif
 	}
 	
 	dlog_free(self);	
@@ -222,6 +224,7 @@ dl_request_decode(struct dl_request ** const self,
 			rc = dl_produce_request_decode(
 			    &request->dlrqm_produce_request, source);
 			break;
+#ifndef _KERNEL
 		case DL_FETCH_API_KEY:
 			    rc = dl_fetch_request_decode(
 				&request->dlrqm_fetch_request, source);
@@ -230,6 +233,7 @@ dl_request_decode(struct dl_request ** const self,
 			    rc = dl_list_offset_request_decode(
 				&request->dlrqm_offset_request, source);
 			break;
+#endif
 		default:
 			DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
 			    request->dlrqm_api_key);
@@ -283,6 +287,7 @@ dl_request_encode(struct dl_request const *request, struct dl_bbuf **target)
 				    request->dlrqm_produce_request,
 				    *target);
 				break;
+#ifndef _KERNEL
 			case DL_FETCH_API_KEY:
 				return dl_fetch_request_encode(
 				    request->dlrqm_fetch_request,
@@ -293,6 +298,7 @@ dl_request_encode(struct dl_request const *request, struct dl_bbuf **target)
 				    request->dlrqm_offset_request,
 				    *target);
 				break;
+#endif
 			default:
 				DLOGTR1(PRIO_HIGH, "Invalid api key %d\n",
 				    request->dlrqm_api_key);
