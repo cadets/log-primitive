@@ -35,31 +35,14 @@
  */
 
 #include <sys/types.h>
-#include <netinet/in.h>
 #include <sys/param.h>
 #include <sys/kernel.h>
-#include <sys/kthread.h>
-#include <sys/lock.h>
 #include <sys/module.h>
-#include <sys/mutex.h>
-#include <sys/socket.h>
-#include <sys/socketvar.h>
-#include <sys/systm.h>
 #include <sys/uio.h>
-#include <sys/malloc.h>
-#include <sys/module.h>
-#include <sys/queue.h>
-#include <sys/hash.h>
-#include <sys/nv.h>
 #include <sys/conf.h>
-#include <fs/devfs/devfs_int.h>
 #include <sys/file.h>
 #include <sys/filedesc.h>
-
-
-#include <sys/ioccom.h>
 #include <sys/stat.h>
-#include <sys/uio.h>
 #include <fs/devfs/devfs_int.h>
 
 #include "dl_assert.h"
@@ -67,12 +50,9 @@
 #include "harness.h"
 #include "dlog_client.h"
 
-static void harness_cleanup(void *);
-
-MALLOC_DECLARE(M_DLOG);
-MALLOC_DEFINE(M_DLOG, "harness", "DLog memory");
-
 extern uint32_t hashlittle(const void *, size_t, uint32_t);
+
+static void harness_cleanup(void *);
 
 static int harness_init(void);
 static void harness_fini(void);
@@ -83,7 +63,6 @@ static char const * const HARNESS_NAME = "harness";
 
 static d_open_t harness_open;
 static d_close_t harness_close;
-static d_read_t harness_read;
 static d_write_t harness_write;
 static d_ioctl_t harness_ioctl;
 
@@ -92,10 +71,10 @@ static struct cdevsw harness_cdevsw = {
 	.d_open = harness_open,
 	.d_close = harness_close,
 	.d_ioctl = harness_ioctl,
-	.d_read = harness_read,
 	.d_write = harness_write,
 	.d_name = HARNESS_NAME,
 };
+
 static struct cdev *harness_dev;
 
 static int 
@@ -171,12 +150,6 @@ harness_close(struct cdev *dev, int fflag, int devtype, struct thread *td)
 }
 
 static int 
-harness_read(struct cdev *dev, struct uio *uio, int flag)
-{
-	return 0;
-}
-
-static int 
 harness_write(struct cdev *dev, struct uio *uio, int flag)
 {
 	struct dlog_handle *handle;
@@ -215,13 +188,10 @@ harness_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 	switch(cmd) {
 	case HARNESSIOC_REGDLOG:
 
-		DLOGTR0(PRIO_LOW, "here\n");
-
 		/* Copyin the description of the client configuration. */
 		if (copyin((void *) *pdlog, &dlog, sizeof(int)) != 0)
 			return EFAULT; 
 
-		DLOGTR1(PRIO_LOW, "here %d\n", dlog);
 		/* Convert the DLog file descriptor into a struct dlog_handle */
 		FILEDESC_SLOCK(fdp);
 		fp = fget_locked(fdp, dlog);
@@ -229,7 +199,6 @@ harness_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			DLOGTR0(PRIO_HIGH, "File descriptor is invalid\n");
 			return EINVAL;
 		}
-		DLOGTR0(PRIO_LOW, "here\n");
 		
 		FILEDESC_SUNLOCK(fdp);
 		p = fp->f_cdevpriv;
