@@ -203,7 +203,7 @@ dl_bbuf_new_auto(struct dl_bbuf **buffer)
 }
 
 int
-dl_bbuf_bcat(struct dl_bbuf *self, char const * const source, int len)
+dl_bbuf_bcat(struct dl_bbuf *self, unsigned char const * const source, int len)
 {
 	int add_len;
 
@@ -222,11 +222,19 @@ dl_bbuf_bcat(struct dl_bbuf *self, char const * const source, int len)
 		}	
 	}
 
-	DLOGTR1(PRIO_LOW, "source = %p\n", source);
-	DLOGTR1(PRIO_LOW, "target = %p\n", &self->dlb_data[self->dlb_pos]);
-
 	bcopy(source, &self->dlb_data[self->dlb_pos], len);
 	self->dlb_pos += len;
+	return 0;
+}
+
+int
+dl_bbuf_scat(struct dl_bbuf *self, struct sbuf *source)
+{
+	dl_bbuf_assert_integrity(__func__, self);
+	DL_ASSERT(source != NULL, ("Source sbuf cannot be NULL"));
+
+	dl_bbuf_bcat(self, (unsigned char *)  sbuf_data(source),
+	    sbuf_len(source));
 	return 0;
 }
 

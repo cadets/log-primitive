@@ -51,18 +51,7 @@
 #include "dl_assert.h"
 #include "dl_utils.h"
 
-static int dl_remove_directory(struct sbuf *);
-
 #ifdef _KERNEL
-static int
-dl_remove_directory(struct sbuf *path)
-{
-	DL_ASSERT(path != NULL, ("File path to delete cannot be NULL."));
-
-	// TODO
-	return -1;
-}
-
 int
 dl_make_folder(struct sbuf *path)
 {
@@ -82,6 +71,89 @@ dl_del_folder(struct sbuf *path)
 
 #else /* !KERNEL */
 extern unsigned short PRIO_LOG;
+
+// Adopted from http://www.doc.ic.ac.uk/~rn710/Installs/otp_src_17.0/erts/emulator/drivers/unix/unix_efile.c
+//
+extern int
+dl_alloc_big_file(int fd, long int offset, long int length)
+{
+#if defined HAVE_FALLOCATE
+	/* Linux specific, more efficient than posix_fallocate. */
+	int ret;
+
+	do {
+		ret = fallocate(fd, FALLOC_FL_KEEP_SIZE, (off_t) offset,
+		    (off_t) length);
+	} while (ret != 0 && errno == EINTR);
+
+#if defined HAVE_POSIX_FALLOCATE
+	/* Fallback to posix_fallocate if available. */
+	if (ret != 0) {
+        	ret = dl_call_posix_fallocate(fd, offset, length);
+    	}
+#endif
+
+	return check_error(ret, errInfo);
+#elif defined F_PREALLOCATE
+	/* Mac OS X specific, equivalent to posix_fallocate. */
+	int ret;
+	fstore_t fs;
+
+	memset(&fs, 0, sizeof(fs));
+	fs.fst_flags = F_ALLOCATECONTIG;
+	fs.fst_posmode = F_VOLPOSMODE;
+	fs.fst_offset = (off_t) offset;
+	fs.fst_length = (off_t) length;
+
+	dl_debug(PRIO_LOW, "Preallocating the file for mac ... ");
+	ret = fcntl(fd, F_PREALLOCATE, &fs);
+	if (ret == -1) {
+		dl_debug(PRIO_NORMAL, "Failed to preallocate... Trying to allocate all...\n");
+		fs.fst_flags = F_ALLOCATEALL;
+		ret = fcntl(fd, F_PREALLOCATE, &fs);
+		dl_debug(PRIO_NORMAL, "Returncode: %d\n", ret);
+
+#if defined HAVE_POSIX_FALLOCATE
+		/* Fallback to posix_fallocate if available. */
+		if (ret == -1) {
+			ret = dl_call_posix_fallocate(fd, offset, length);
+		}
+#endif
+	}
+
+	return ret < 0 ? 0 : 1;
+#elif defined HAVE_POSIX_FALLOCATE
+	/* Other Unixes, use posix_fallocate if available. */
+	return dl_call_posix_fallocate(fd, offset, length) < 0 ? 0 : 1;
+#else
+	return -1;
+#endif
+}
+
+#ifdef HAVE_POSIX_FALLOCATE
+extern int
+dl_call_posix_fallocate(int fd, Sint64 offset, Sint64 length)
+{
+	int ret;
+
+	/*
+	* On Linux and Solaris for example, posix_fallocate() returns
+	* a positive error number on error and it does not set errno.
+	* On FreeBSD however (9.0 at least), it returns -1 on error
+	* and it sets errno.
+	*/
+	do {
+		ret = posix_fallocate(fd, (off_t) offset, (off_t) length);
+		if (ret > 0) {
+			errno = ret;
+			ret = -1;
+		}
+	} while (ret != 0 && errno == EINTR);
+
+	return ret;
+}
+#endif /* HAVE_POSIX_FALLOCATE */
+
 
 // adapted from https://stackoverflow.com/questions/2256945/removing-a-non-empty-directory-programmatically-in-c-or-c
 static int

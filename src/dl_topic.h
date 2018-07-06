@@ -82,7 +82,7 @@ extern struct dl_segment *dl_topic_get_active_segment(struct dl_topic *);
 
 extern void dl_topic_hashmap_delete(void *);
 extern void * dl_topic_hashmap_new(int, unsigned long *);
-extern int dl_topic_hashmap_get(char *, struct dl_topic **);
+extern int dl_topic_hashmap_get(char const * const, struct dl_topic **);
 extern int dl_topic_hashmap_put(void *, struct dl_topic *);
 
 extern int dl_topic_produce_to(struct dl_topic *, struct dl_bbuf *); 

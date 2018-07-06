@@ -79,31 +79,44 @@
 #include "dlog_broker.h"
 #include "dlog_client.h"
 
-//SYSCTL_DECL(_dlog_client);
+static unsigned int dlog_nopen = 0;
+static unsigned int dlog_nproduce = 0;
 
-//static unsigned int dlog_nopen = 0;
-//SYSCTL_UINT(_dlog_client, OID_AUTO, open_handles, CTLFLAG_RD, &dlog_nopen, 0,
-//    "Number of open DLog handles");
+SYSCTL_DECL(_debug);
 
-//static unsigned int dlog_nproduce= 0;
-//SYSCTL_UINT(_dlog_client, OID_AUTO, produce_requests, CTLFLAG_RD,
-//    &dlog_nproduce, 0, "Number of produce requests");
+SYSCTL_NODE(_debug, OID_AUTO, dlog, CTLFLAG_RW, 0, "DLog client");
+
+SYSCTL_UINT(_debug_dlog, OID_AUTO, open_handles, CTLFLAG_RD, &dlog_nopen, 0,
+    "Number of open DLog handles");
+
+SYSCTL_UINT(_debug_dlog, OID_AUTO, produce_requests, CTLFLAG_RD,
+    &dlog_nproduce, 0, "Number of produce requests");
 
 struct dlog_handle {
-	struct dl_client_config *dlh_config;
+	const struct dl_client_config *dlh_config;
 	struct dl_topic *dlh_topic;
 };
 
-// TODO error handling
-struct dlog_handle *
-dlog_client_open(struct dl_client_config const * const config)
+static inline void
+dlog_client_check_integrity(struct dlog_handle *self)
+{
+	DL_ASSERT(self != NULL, ("DLog client handle cannot be NULL."));
+	DL_ASSERT(self->dlh_config != NULL,
+	    ("DLog client config cannot be NULL."));
+	DL_ASSERT(self->dlh_config->dlcc_props != NULL,
+	    ("DLog client config properties cannot be NULL."));
+}
+
+int
+dlog_client_open(struct dlog_handle **self,
+     struct dl_client_config const * const config)
 {
 	struct dlog_handle *handle;
 	nvlist_t *props = config->dlcc_props;
-	char *hostname;
+	const char *hostname;
 	unsigned short portnumber;
 	struct dl_topic *topic;
-	char *topic_name;
+	const char *topic_name;
 	
 	DL_ASSERT(config != NULL, "Client configuration cannot be NULL");
 	DLOGTR0(PRIO_NORMAL, "Opening the Dlog client...\n");
@@ -116,25 +129,13 @@ dlog_client_open(struct dl_client_config const * const config)
 	}
 
 	/* Lookup the topic in the topic hashmap. */
-	dl_topic_hashmap_get(topic_name, &topic);
-	
-	/*
-	h = hashlittle(topic_name, strlen(topic_name), 0);
-
-	LIST_FOREACH(t, &topic_hashmap[h & topic_hashmask], dlt_entries) {
-		if (strcmp(topic_name, sbuf_data(t->dlt_name)) == 0) {
-
-			topic = t;
-			break;
-		}
-	}
-	*/
-	if (topic == NULL) {
+	if (dl_topic_hashmap_get(topic_name, &topic) != 0) {
 
 		/* The specified topic was not found in the topic hashmap. */
 		DLOGTR1(PRIO_NORMAL, "Topic %s has not been created\n",
 		    topic_name);
-		return NULL;
+		*self = NULL;
+		return -1;
 	}
 
 	handle = (struct dlog_handle *) dlog_alloc(sizeof(struct dlog_handle));
@@ -142,7 +143,8 @@ dlog_client_open(struct dl_client_config const * const config)
 	DL_ASSERT(handle != NULL, ("Failed allocating DLog client handle."));
 #else
 	if (handle == NULL) {
-		// TODO
+		DLOGTR0(PRIO_HIGH, "Failed allocating DLog client handle\n");
+		return -1;
 	}
 #endif	
 	bzero(handle, sizeof(struct dlog_handle));
@@ -167,28 +169,36 @@ dlog_client_open(struct dl_client_config const * const config)
 		    DL_CONF_BROKER_PORT);
 	}
 
-	return handle;
+	/* Increment the SYSCTL count of open handles */
+	dlog_nopen++;
+
+	*self = handle;
+	return 0;
 }
 
 void
-dlog_client_close(struct dlog_handle *handle)
+dlog_client_close(struct dlog_handle *self)
 {
-	nvlist_t *props = handle->dlh_config->dlcc_props;
+	nvlist_t *props = self->dlh_config->dlcc_props;
 
-	DL_ASSERT(handle != NULL, ("DLog client handle cannot be NULL."));
+	dlog_client_check_integrity(self);
 
-	/* Free the nvlist that stores the configuration associated with this
-	 * handle.
+	/* Free the nvlist that stores the configuration properties associated
+	 * with this handle.
 	 */
 	nvlist_destroy(props);
 
-	/* Free all the memory associated with the client handle. */
-	dlog_free(handle);	
+	/* Free the client configuration. */
+	dlog_free( self->dlh_config);
 
-	DLOGTR0(PRIO_LOW, "DLog client finished\n");
+	/* Free all the memory associated with the client handle. */
+	dlog_free(self);	
+
+	/* Decrement the SYSCTL count of open handles */
+	dlog_nopen--;
 }
 
-#ifdef CLIENT 
+#ifndef _KERNEL 
 int
 dlog_fetch(struct dlog_handle *handle, struct sbuf *topic_name,
     int32_t min_bytes, int32_t max_wait_time, int64_t fetch_offset,
@@ -199,6 +209,8 @@ dlog_fetch(struct dlog_handle *handle, struct sbuf *topic_name,
 	nvlist_t *props = handle->dlh_config->dlcc_props;
 	struct sbuf *client_id;
 	int result = 0;
+	
+	dlog_client_check_integrity(self);
 
 	client_id = sbuf_new_auto();
 	if (!nvlist_exists_string(props, DL_CONF_CLIENTID)) {
@@ -263,6 +275,8 @@ dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
 	nvlist_t *props = handle->dlh_config->dlcc_props;
 	struct sbuf *client_id;
 	int result = 0;
+	
+	dlog_client_check_integrity(self);
 
 	client_id = sbuf_new_auto();
 	if (!nvlist_exists_string(props, DL_CONF_CLIENTID)) {
@@ -320,13 +334,13 @@ dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
 #endif
 
 int
-dlog_produce(struct dlog_handle *handle, unsigned char *k, int k_len,
-    unsigned char *v, int v_len)
+dlog_produce(struct dlog_handle *self, unsigned char *k, size_t k_len,
+    unsigned char *v, size_t v_len)
 {
 	struct dl_bbuf *buffer;
 	struct dl_message_set *message_set;
 
-	DL_ASSERT(handle != NULL, ("DLog client handle cannot be NULL."));
+	dlog_client_check_integrity(self);
 
 	/* Instantiate a new MessageSet. */
 	if (dl_message_set_new(&message_set, k, k_len, v, v_len) != 0)
@@ -334,14 +348,14 @@ dlog_produce(struct dlog_handle *handle, unsigned char *k, int k_len,
 
 	if (dl_bbuf_new(&buffer, NULL, DL_MTU,
 	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN) != 0)
-		goto err_produce_request;
+		goto err_free_msgset;
 
 	if (dl_message_set_encode(message_set, buffer) != 0) {
 
 		DLOGTR0(PRIO_HIGH, "Error encoding MessageSet\n");
-		dl_bbuf_delete(buffer);
-		goto err_produce_request;
+		goto err_free_bbuf;
 	}
+	
 	
 	DLOGTR0(PRIO_LOW, "Encoded request message\n");
 
@@ -352,19 +366,33 @@ dlog_produce(struct dlog_handle *handle, unsigned char *k, int k_len,
 	DLOGTR0(PRIO_LOW, "\n");
 
 	/* Enqueue the MessageSet for processing */
-	if (dl_topic_produce_to(handle->dlh_topic, buffer) != 0) {
+	if (dl_topic_produce_to(self->dlh_topic, buffer) != 0) {
 
 		DLOGTR0(PRIO_HIGH, "Error enquing MessageSet\n");
-		dl_bbuf_delete(buffer);
-		goto err_produce_request;
+		goto err_free_bbuf;
 	}
 		
-	DLOGTR0(PRIO_LOW, "Produce request to log\n");
-	return 0;
-
-err_produce_request:
-	DLOGTR0(PRIO_HIGH, "Error producing request\n");
+	dl_bbuf_delete(buffer);
 	dl_message_set_delete(message_set);
 
+	/* Increment the SYSCTL count of produced records */
+	dlog_nproduce++;
+
+	DLOGTR0(PRIO_LOW, "Produced request to log\n");
+	return 0;
+
+err_free_bbuf:
+	dl_bbuf_delete(buffer);
+
+err_free_msgset:
+	dl_message_set_delete(message_set);
+
+	DLOGTR0(PRIO_HIGH, "Error producing request\n");
 	return -1;
+}
+
+int
+dlog_produce_no_key(struct dlog_handle *handle, unsigned char *v, size_t v_len)
+{
+	return dlog_produce(handle, NULL, 0, v, v_len);
 }

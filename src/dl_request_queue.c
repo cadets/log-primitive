@@ -36,6 +36,7 @@
 
 #include <sys/types.h>
 #include <sys/sbuf.h>
+#include <sys/time.h>
 
 #ifdef _KERNEL
 #include <sys/param.h>

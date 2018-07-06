@@ -93,6 +93,10 @@ extern int dl_del_folder(struct sbuf *);
 
 #ifndef _KERNEL
 extern void dl_debug(int, const char *, ...);
+extern int dl_alloc_big_file(int, long int, long int);
+#ifdef HAVE_POSIX_FALLOCATE
+extern int dl_call_posix_fallocate(int, Sint64, Sint64);
+#endif
 #endif
 
 #endif

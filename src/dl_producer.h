@@ -1,6 +1,5 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
- * Copyright (c) 2017 (Graeme Jenkinson)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -35,24 +34,18 @@
  *
  */
 
-#ifndef _DLOG_CLIENT_H
-#define _DLOG_CLIENT_H
+#ifndef _DL_PRODUCER_H
+#define _DL_PRODUCER_H
 
-#include <sys/types.h>
+#include "dl_topic.h"
 
-#include "dl_config.h"
+struct dl_producer;
 
-struct dlog_handle;
+extern int dl_producer_new(struct dl_producer **, struct dl_topic *);
 
-extern int dlog_client_open(struct dlog_handle **, 
-    struct dl_client_config const * const);
-extern void dlog_client_close(struct dlog_handle *);
-
-extern int dlog_fetch(struct dlog_handle *, struct sbuf *, 
-    const int32_t, const int32_t,  const int64_t, const int32_t);
-extern int dlog_list_offset(struct dlog_handle *, struct sbuf *, int64_t);
-extern int dlog_produce(struct dlog_handle *, unsigned char *, size_t,
-    unsigned char *, size_t); 
-extern int dlog_produce_no_key(struct dlog_handle *, unsigned char *, size_t); 
+extern void dl_producer_produce(struct dl_producer const * const);
+extern void dl_producer_up(struct dl_producer const * const);
+extern void dl_producer_down(struct dl_producer const * const);
+extern void dl_producer_syncd(struct dl_producer const * const);
 
 #endif

@@ -148,6 +148,8 @@ dlog_init()
 static void 
 dlog_fini()
 {
+	int t;
+	struct dl_topic *topic, *tmp;
 
 	DLOGTR1(PRIO_LOW, "Stoping %s process...\n", DLOG_NAME);
 	
@@ -161,6 +163,16 @@ dlog_fini()
 
 	cv_destroy(&dlog_cv);
 	mtx_destroy(&dlog_mtx);
+
+	/* Delete the topics from the topic hashmap. */
+	for (t = 0; t < topic_hashmask + 1 ; t++) {
+		LIST_FOREACH_SAFE(topic, &topic_hashmap[t],
+		    dlt_entries, tmp) {
+
+			LIST_REMOVE(topic, dlt_entries);
+			dl_topic_delete(topic);
+		}
+	}
 	
 	/* Delete the topic hash map. */
 	dl_topic_hashmap_delete(topic_hashmap);
@@ -345,11 +357,10 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 		    sizeof(struct dl_client_config));
 		DL_ASSERT(conf != NULL,
 		    ("Failed allocating DLog client configuration."));
-		conf->dlcc_on_response = conf_desc.dlcc_on_response;;
+		conf->dlcc_on_response = conf_desc.dlcc_on_response;
 		conf->dlcc_props = props;
 
-		handle = dlog_client_open(conf);
-		if (handle == NULL) {
+		if (dlog_client_open(&handle, conf) != 0) {
 
 			DLOGTR0(PRIO_HIGH, "Error opening Dlog client.\n");
 			dlog_free(conf);

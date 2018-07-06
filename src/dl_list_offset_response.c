@@ -97,7 +97,8 @@ dl_list_offset_response_new(struct dl_response **self,
 #else
 	if (response_topic == NULL ) {
 
-		dl_list_offset_response_delete(response);
+		dl_list_offset_response_delete(offset_response);
+		dl_response_delete(response);
 		goto err_response_ctor;
 	}
 #endif	

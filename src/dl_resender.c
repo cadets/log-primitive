@@ -87,7 +87,7 @@ struct dl_resender_argument {
 
 static int dl_request_element_cmp(struct dl_request_element *,
     struct dl_request_element *);
-static void dl_resender_thread(void *);
+static void * dl_resender_thread(void *);
 
 RB_PROTOTYPE(dlr_unackd_requests, dl_request_element, dlrq_linkage,
     dl_request_element_cmp);
@@ -104,7 +104,7 @@ dl_request_element_cmp(struct dl_request_element *el1,
 	return el2->dlrq_correlation_id - el1->dlrq_correlation_id;
 }
 
-static void
+static void *
 dl_resender_thread(void *vargp)
 {
 	struct dl_resender *resender;

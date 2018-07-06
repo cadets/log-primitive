@@ -48,6 +48,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "dl_config.h"
 #include "dl_memory.h"
@@ -68,8 +69,10 @@
 const dlog_malloc_func dlog_alloc = malloc;
 const dlog_free_func dlog_free = free;
 
+static char const * const DLC_DEFAULT_CLIENT_ID = "loadgen";
 static char const * const DLOG = "/dev/dlog";
 static char const * const HARNESS = "/dev/harness";
+static char const * const USAGE = "%s: [-c client id] [-t topic] [-v]\n";
 
 unsigned short PRIO_LOG = PRIO_LOW;
 
@@ -78,16 +81,8 @@ static int stop  = 0;
 unsigned long topic_hashmask2;
 LIST_HEAD(dld_parts, dld_part) *topic_hashmap2;
 
-static void dlogd_stop(int);
-
-static void
-dlogd_stop(int sig)
-{
-	stop = 1;
-}
-
 int
-main(void)
+main(int argc, char **argv)
 {
 	struct dl_broker_topic *t;
 	struct dl_client_config_desc *conf;
@@ -97,112 +92,99 @@ main(void)
 	struct iovec iov[2];
 	nvlist_t *props;
 	struct sbuf *tname;
-	char *line;
-	int * tmp;
-	int dlog, harness, rc;
-	size_t len = 0, read = 0, packed_len;
+	char *client_id = (char *) DLC_DEFAULT_CLIENT_ID;
+	char *line, *sep;
+	int *harg;
+	int dlog, harness, iocnt, opt, rc;
+	size_t len = 0, packed_len;
+	ssize_t read;
 
+	/* Parse the utilities command line arguments. */
+	while ((opt = getopt(argc, argv, "c:t:h:p:v")) != -1) {
+		switch (opt) {
+		case 'c':
+			client_id = optarg;
+			break;
+		case 'v':
+			PRIO_LOG = PRIO_LOW;
+			break;
+		default:
+			fprintf(stderr, USAGE, argv[0]);
+			exit(EXIT_FAILURE);
+			break;
+		}
+	}
+	
 	DLOGTR0(PRIO_LOW, "Dlog daemon starting...\n");
 
-	//signal(SIGINT, dlogd_stop);
-
-	/* Create the hashmap to store the names of the topics managed by the
-	 * broker and their segments.
-	 */
-	//topic_hashmap2 = dl_topic_hashmap_new(10, &topic_hashmask2);
-
-	/* Preallocate an initial segement file for the topic and add to the
-	 * hashmap.
-	 */
-	/*
-	tname = sbuf_new_auto();
-	sbuf_cpy(tname, "cadets-trace");
-	rc = dl_topic_new(&t, tname);
-	rc = dl_transport_new(&trans);
-	if (rc != 0)
-		exit(EXIT_FAILURE);
-
-	rc = dl_transport_connect(trans, "127.0.0.1", 9090);
-	if (rc != 0)
-		exit(EXIT_FAILURE);
-	DLOGTR2(PRIO_LOW, "%d (%d)...\n", rc, errno);
-	
-	rc = dl_producer_new(&producer, t, trans);
-	if (rc != 0)
-		exit(EXIT_FAILURE);
-
-	dl_topic_as_desc(t, &tp_desc);	
-	rc = ioctl(dlog, DLOGIOC_ADDTOPICPART, &tp_desc);	
-	if (rc != 0)
-		exit(EXIT_FAILURE);
-	DLOGTR3(PRIO_LOW, "%s %d (%d)...\n", DLOG, rc, errno);
-*/
 	dlog = open(DLOG, O_RDWR);
 	if (dlog == -1)
-		exit(EXIT_FAILURE);
-	DLOGTR2(PRIO_LOW, "Successfully opened the %s device (%d)\n",
-	    DLOG, dlog);
-
+		goto harness_exit;
+	DLOGTR2(PRIO_LOW, "Opened the %s device (%d)\n", DLOG, dlog);
 
 	props = nvlist_create(0);
 	if (props == NULL)
-		goto harness_exit;
+		goto close_dlog;
 
-	nvlist_add_string(props, DL_CONF_CLIENTID, "harness");
+	nvlist_add_string(props, DL_CONF_CLIENTID, client_id);
 	nvlist_add_string(props, DL_CONF_TOPIC, "cadets-trace-0");
 
 	conf = (struct dl_client_config_desc *) malloc(
 	    sizeof(struct dl_client_config_desc));
 	if (conf == NULL)
-		goto err1;
+		goto close_producer;
 
 	conf->dlcc_packed_nvlist = nvlist_pack(props, &packed_len); 
 	conf->dlcc_packed_nvlist_len = packed_len;
-	DLOGTR1(PRIO_LOW, "packed nvlist length = %d", packed_len);
 
 	rc = ioctl(dlog, DLOGIOC_PRODUCER, &conf);	
-	DLOGTR2(PRIO_LOW, "/dev/dlog %d (%d)...\n", rc, errno);
 	if (rc != 0)
-		exit(EXIT_FAILURE);
+		goto close_producer;
+	DLOGTR0(PRIO_LOW, "Created DLog producer\n");
 
 	harness = open(HARNESS, O_RDWR);
 	if (harness == -1)
-		exit(EXIT_FAILURE);
-	DLOGTR2(PRIO_LOW, "Successfully opened the %s device (%d)\n",
-	    HARNESS, harness);
-	
-	tmp = &dlog;	
-	rc = ioctl(harness, HARNESSIOC_REGDLOG, &tmp);	
-	if (rc != 0) {
-		DLOGTR2(PRIO_LOW, "%d (%d)...\n", rc, errno);
-		exit(EXIT_FAILURE);
-	}
-	DLOGTR2(PRIO_LOW, "%d (%d)...\n", rc, errno);
+		goto close_harness;
+	DLOGTR2(PRIO_LOW, "Opened the %s device (%d)\n", HARNESS, harness);
+
+	/* Configure the test harness with the DLog device fd. */	
+	harg = &dlog;	
+	rc = ioctl(harness, HARNESSIOC_REGDLOG, &harg);	
+	if (rc != 0)
+		goto close_harness;
 
 	/* Allocate memory for the user input. */	
-	len = 1024; 
-	line = malloc(1024* sizeof(char));
+	len = 1024;
+	line = malloc(1024 * sizeof(char));
 	if (line == NULL)
-		exit(EXIT_FAILURE);
+		goto close_harness;
 	
        	/* Echo from the command line to the distributed log. */	
-	while ((read = getline(&line, &len, stdin) > 0)) {
+	while ((read = getline(&line, &len, stdin)) > 0) {
 
-		if (strcmp(line, "") != 0) {
-			/* If the line is not empty, strip the newline and
-			 * write to the distributed log.
-			 */
-			line[strlen(line) - 1] = '\0';
+		if (read > 1) {
+			/* Parse the input either a value or key=value */
+			sep = strchrnul(line, '=');
+		
+			if ((sep - line) == read ) {
+				iocnt = 1;
 
-			iov[0].iov_base = "key";
-			iov[0].iov_len = 3;
+				iov[0].iov_base = line;
+				iov[0].iov_len = read - 1;
+			} else {
+				iocnt = 2;
 
-			iov[1].iov_base = line;
-			iov[1].iov_len = strlen(line);
+				iov[0].iov_base = line;
+				iov[0].iov_len = sep - line;
 
-			rc = writev(harness, &iov[0], 2);
+				iov[1].iov_base = ++sep;
+				iov[1].iov_len = (read - 1) - (sep - line);
+			}
+
+			/* Write to the distributed log. */
+			rc = writev(harness, &iov[0], iocnt);
 			if (rc != 0) {
-				fprintf(stderr,
+				DLOGTR1(PRIO_HIGH,
 				    "Failed writing to the log %d\n", rc); 
 				break;
 			}
@@ -216,14 +198,14 @@ close_harness:
 	/* Close the load generator harness.  */	
 	DLOGTR0(PRIO_LOW, "Closing load generator harness.\n");
 	close(harness);
+		
+close_producer:
+	nvlist_destroy(props);
  
 close_dlog:
 	/* Close the distibuted log. */	
 	DLOGTR0(PRIO_LOW, "Closing distributed log.\n");
 	close(dlog);
-		
-err1:
-	nvlist_destroy(props);
 
 harness_exit:	
 	DLOGTR0(PRIO_LOW, "Dlog daemon stopped.\n");

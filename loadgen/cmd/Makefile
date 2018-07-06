@@ -34,44 +34,21 @@
 .OBJDIR:= obj
 MK_AUTO_OBJ:= yes
 
-PROGS= harness_cmd 
+PROGS= loadgen 
 BINDIR= bin
 
-DLOG_SRCS= dlog_client.c \
-	dl_bbuf.c \
-	dl_correlation_id.c \
-	dl_resender.c \
-	dl_utils.c \
-	dl_thread.c \
-	dl_fetch_request.c \
-	dl_fetch_response.c \
-	dl_list_offset_request.c \
-	dl_list_offset_response.c \
-	dl_message_set.c \
-	dl_partition.c \
-	dl_primitive_types.c \
-	dl_produce_request.c \
-	dl_produce_response.c \
-	dl_request.c \
-	dl_request_queue.c \
-	dl_response.c \
-	dl_segment.c \
-	dl_transport.c \
-	dl_topic.c \
-	lookup3.c \
-	dl_poll_reactor.c \
-	dl_producer.c
+DLOG_SRCS= dl_utils.c
 
-SRCS.harness_cmd = harness_cmd.c ${DLOG_SRCS}
-MAN.harness_cmd =
+SRCS.loadgen= loadgen.c ${DLOG_SRCS}
+MAN.loadgen=
 
-LDADD+=-lcrypto
+LDADD+=-lc
+#LDADD+=-lcrypto
 LDADD+=-lnv
-LDADD+=-lpthread
+#LDADD+=-lpthread
 LDADD+=-lsbuf
-LDADD+=-lz
+#LDADD+=-lz
 
 CFLAGS+=-I../../src
-#CFLAGS+=-I${SRCTOP}
 
 .include <bsd.progs.mk>

@@ -41,6 +41,7 @@
 #else
 #include <zlib.h>
 #include <stddef.h>
+#include <strings.h>
 #endif
 
 #include "dl_assert.h"
@@ -136,6 +137,8 @@ dl_message_set_delete(struct dl_message_set *self)
 		    dlm_entries);
 		dlog_free(msg);
 	}
+
+	dlog_free(self);
 }
 
 int

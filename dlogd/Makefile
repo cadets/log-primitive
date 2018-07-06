@@ -29,16 +29,33 @@
 # SUCH DAMAGE.
 #
 
-.PATH : ../../src
+.PATH : ../src
 
-KMOD= harness
+.OBJDIR:= obj
+MK_AUTO_OBJ:= yes
 
-SRCS= dl_utils.c \
-	harness.c
+PROGS= dlogd
+BINDIR= bin
 
-CFLAGS+=-D_KERNEL
-CFLAGS+=-I/usr/src/sys/cddl/compat/opensolaris/
-CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common/
-CFLAGS+=-I../../src
+DLOG_SRCS= lookup3.c \
+	dl_topic.c \
+	dl_bbuf.c \
+	dl_partition.c \
+	dl_segment.c \
+	dl_poll_reactor.c \
+	dl_utils.c
 
-.include <bsd.kmod.mk>
+SRCS.dlogd = dlogd.c ${DLOG_SRCS}
+MAN.dlogd =
+
+LDADD+=-lcrypto
+LDADD+=-lnv
+LDADD+=-lpthread
+LDADD+=-lsbuf
+LDADD+=-lz
+
+CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
+CFLAGS+=-I${SRCTOP}
+CFLAGS+=-I${SRCTOP}/../dlog
+
+.include <bsd.progs.mk>

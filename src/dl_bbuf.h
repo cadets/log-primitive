@@ -37,9 +37,10 @@
 #ifndef _DL_BBUF_H
 #define _DL_BBUF_H
 
-#ifdef _KERNEL
 #include <sys/types.h>
-#else
+#include <sys/sbuf.h>
+
+#ifndef _KERNEL
 #include <stdint.h>
 #endif
 
@@ -57,7 +58,8 @@ struct dl_bbuf;
 extern void dl_bbuf_delete(struct dl_bbuf *);
 extern int dl_bbuf_new(struct dl_bbuf **, unsigned char *, int, int);
 extern int dl_bbuf_new_auto(struct dl_bbuf **);
-extern int dl_bbuf_bcat(struct dl_bbuf *, char const * const, int);
+extern int dl_bbuf_bcat(struct dl_bbuf *, unsigned char const * const, int);
+extern int dl_bbuf_scat(struct dl_bbuf *, struct sbuf *);
 extern void dl_bbuf_clear(struct dl_bbuf *);
 extern int dl_bbuf_concat(struct dl_bbuf *, struct dl_bbuf *);
 extern unsigned char * dl_bbuf_data(struct dl_bbuf *);

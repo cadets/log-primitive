@@ -72,7 +72,7 @@ dl_decode_string(struct dl_bbuf *source, struct sbuf **target)
 	if (slen == DL_STRING_NULL) {
 		*target = NULL;
 	} else {
-		char * temp = (char *) dlog_alloc(sizeof(char) * slen);
+		int8_t * temp = (int8_t *) dlog_alloc(sizeof(int8_t) * slen);
 
 		/* TODO: Replace with bulk drain function in dl_bbuf */
 		for (int i = 0; i < slen; i++)
@@ -111,7 +111,7 @@ dl_decode_bytes(unsigned char ** const target, int *target_len,
 		return 0;
 	}
 
-	*target = dlog_alloc(nbytes * sizeof(unsigned char));
+	*target = (int8_t *) dlog_alloc(nbytes * sizeof(int8_t));
 #ifdef _KERNEL
 	DL_ASSERT(*target != NULL, ("Failed allocating target buffer."));
 #else
@@ -143,8 +143,7 @@ dl_encode_string(struct dl_bbuf *target, struct sbuf *source)
 		if (dl_bbuf_put_int16(target, sbuf_len(source)) == 0) {
 
 			/* Copy source bytes into the target buffer. */
-			dl_bbuf_bcat(target, sbuf_data(source),
-			    sbuf_len(source));
+			dl_bbuf_scat(target, source);
 		} else {
 			return -1;
 		}

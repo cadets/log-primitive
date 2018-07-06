@@ -225,7 +225,7 @@ dl_fetch_response_decode(struct dl_response **self, struct dl_bbuf *source)
 		    ("Failed to allocate FetchResponse.\n"));
 #else
 		if (topic == NULL) {
-			dl_produce_response_delete(fetch_response);
+			dl_fetch_response_delete(fetch_response);
 			dl_response_delete(response);
 			goto err_fetch_response;
 		}
@@ -301,7 +301,6 @@ dl_fetch_response_encode(struct dl_fetch_response *self,
 	SLIST_FOREACH(topic, &self->dlfr_topics, dlfrt_entries) {
 
 		/* Decode the TopicName */
-		printf("topic = %s\n", sbuf_data(topic->dlfrt_topic_name));
 		rc |= DL_ENCODE_TOPIC_NAME(target, topic->dlfrt_topic_name);
 #ifdef _KERNEL
 		DL_ASSERT(rc == 0,

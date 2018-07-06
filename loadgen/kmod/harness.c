@@ -153,17 +153,26 @@ static int
 harness_write(struct cdev *dev, struct uio *uio, int flag)
 {
 	struct dlog_handle *handle;
-	struct iovec *key = &uio->uio_iov[0], *value = &uio->uio_iov[1];
+	struct iovec *key, *value;
 	int rc;
-
-	if (uio->uio_iovcnt != 2)
-		return EINVAL;
 
 	if (devfs_get_cdevpriv((void **) &handle) != 0)
 		return EFAULT;
 
-	rc = dlog_produce(handle, key->iov_base, key->iov_len,
-	    value->iov_base, value->iov_len);
+	if (uio->uio_iovcnt == 1) {
+		value = &uio->uio_iov[0];
+
+		rc = dlog_produce_no_key(handle, 
+		    value->iov_base, value->iov_len);
+	} else if (uio->uio_iovcnt == 2) {
+		key = &uio->uio_iov[0];
+		value = &uio->uio_iov[1];
+
+		rc = dlog_produce(handle, key->iov_base, key->iov_len,
+		    value->iov_base, value->iov_len);
+	} else { 
+		return EINVAL;
+	}
 	if (rc != 0) {
 		DLOGTR1(PRIO_HIGH,
 		    "Failed producing message to DLog (%d)\n", rc);

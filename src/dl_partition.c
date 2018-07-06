@@ -56,7 +56,7 @@
 static const off_t DL_FSYNC_DEFAULT_CHARS = 1000;
 
 static dl_event_handler_handle dl_partition_get_kq(void *);
-static void dl_partition_handle_kq(void *);
+static void dl_partition_handle_kq(void *, int);
 
 static dl_event_handler_handle
 dl_partition_get_kq(void* instance)
@@ -66,7 +66,7 @@ dl_partition_get_kq(void* instance)
 }
 
 static void
-dl_partition_handle_kq(void *instance)
+dl_partition_handle_kq(void *instance, int revents)
 {
 	struct dl_partition * const partition = instance;
 	struct dl_segment *segment = partition->dlp_active_segment;
@@ -170,15 +170,6 @@ dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 			    EVFILT_VNODE, EV_ADD | EV_CLEAR, NOTE_WRITE, 0,
 			    NULL);
 			kevent(partition->_klog, &event, 1, NULL, 0, NULL); 
-// TODO error handling
-			partition->event_handler.dleh_instance = partition;
-			partition->event_handler.dleh_get_handle =
-			    dl_partition_get_kq;
-			partition->event_handler.dleh_handle_event =
-			    dl_partition_handle_kq;
-
-			/* Register the topic's active partition with the poll reactor. */
-			//dl_poll_reactor_register(&partition->event_handler);
 // TODO error handling
 #endif
 

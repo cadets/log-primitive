@@ -199,7 +199,7 @@ dl_fetch_request_decode(struct dl_fetch_request **self, struct dl_bbuf *source)
 		    ("Failed allocating FetchRequest [data]."));
 #else
 		if (request_topic == NULL) {
-			dl_request_delete(request);
+			dl_fetch_request_delete(request);
 			goto err_fetch_request;
 		}
 #endif

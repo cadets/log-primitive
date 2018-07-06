@@ -51,10 +51,7 @@ SRCS= dlog_client.c \
 	lookup3.c
 
 CFLAGS+=-D_KERNEL
-CFLAGS+=-Wno-unused-label
-CFLAGS+=-Wno-unused-variable
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
-CFLAGS+=-Wno-missing-prototypes
 CFLAGS+=-I/usr/src/sys
 CFLAGS+=-I/usr/src/sys/sys
 CFLAGS+=-I/usr/src/cddl/compat/opensolaris/include
@@ -63,6 +60,6 @@ CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common/
 CFLAGS+=-I/usr/src/sys/cddl/contrib/opensolaris/uts/common/sys
 CFLAGS+=-I${SRCTOP}
 
-EXPORT_SYMS= dlog_produce
+EXPORT_SYMS= dlog_produce dlog_produce_no_key
 
 .include <bsd.kmod.mk>

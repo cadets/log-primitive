@@ -101,7 +101,7 @@ dl_topic_hashmap_new(int elements, unsigned long *hashmask)
 }
 
 int
-dl_topic_hashmap_get(char *key, struct dl_topic **topic)
+dl_topic_hashmap_get(char const * const key, struct dl_topic **topic)
 {
 	struct dl_topic *t;
 	uint32_t h;
@@ -305,9 +305,6 @@ dl_topic_produce_to(struct dl_topic *self, struct dl_bbuf *buffer)
 	/* Produce the Message into the topic. */
 	request_partition = SLIST_FIRST(&self->dlt_partitions);
 	
-	DLOGTR1(PRIO_LOW, "Inserting (%d bytes) into the log\n",
-	    dl_bbuf_pos(buffer));
-
 	return dl_segment_insert_message(
 	    request_partition->dlp_active_segment,
 	    dl_bbuf_data(buffer), dl_bbuf_pos(buffer));

@@ -152,7 +152,7 @@ dl_transport_connect(struct dl_transport *self,
 int
 dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 {
-	char *buffer;
+	const unsigned char *buffer;
 	int ret, total = 0;
 	int32_t msg_size;
 	
@@ -213,8 +213,7 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 			total += ret = recv(self->dlt_fd, buffer,
 				msg_size-total, 0);
 #endif
-			DLOGTR2(PRIO_LOW,
-			    "\tRead %d characters; expected %d\n",
+			DLOGTR2(PRIO_LOW, "\tRead %d characters; expected %d\n",
 			    ret, msg_size);
 			dl_bbuf_bcat(*target, buffer, ret);
 		}
