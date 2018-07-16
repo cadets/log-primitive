@@ -35,6 +35,7 @@
  */
 
 #include <sys/types.h>
+#include <machine/atomic.h>
 #include <netinet/in.h>
 #include <sys/param.h>
 #include <sys/kernel.h>
@@ -67,7 +68,6 @@ MALLOC_DEFINE(M_DLKON, "dlkon", "DLog konsumer memory");
 static void konsumer_open(void *, struct dtrace_state *);
 static void konsumer_close(void *, struct dtrace_state *);
 static int konsumer_event_handler(struct module *, int, void *);
-static void konsumer_on_response(struct dl_response const * const);
 static void konsumer_thread(void *);
 
 static char const * const KONSUMER_NAME = "dl_konsumer";
@@ -85,6 +85,7 @@ struct konsumer {
 	struct proc *konsumer_pid;
 	dtrace_state_t *konsumer_state;
 	struct dlog_handle *konsumer_dlog_handle;
+	uint64_t konsumer_offset;
 	int konsumer_exit;
 };
 
@@ -98,51 +99,6 @@ static dtrace_konsumer_id_t kid;
 
 static LIST_HEAD(konsumers, konsumer) *konsumer_hashtbl = NULL;
 static u_long konsumer_hashmask;
-
-static void
-konsumer_on_response(struct dl_response const * const response)
-{
-	struct dl_produce_response *produce_response;
-	struct dl_produce_response_topic *produce_topic;
-	int part;
-
-	DLOGTR1(PRIO_LOW, "Response correlation id = %d\n",
-	    response->dlrs_correlation_id);
-	DLOGTR1(PRIO_LOW, "Response api key= %d\n", response->dlrs_api_key);
-
-	switch (response->dlrs_api_key) {
-	case DL_PRODUCE_API_KEY:
-		produce_response = response->dlrs_produce_response;
-
-		DLOGTR1(PRIO_LOW, "ntopics= %d\n",
-		     produce_response->dlpr_ntopics);
-
-		SLIST_FOREACH(produce_topic,&produce_response->dlpr_topics,
-		    dlprt_entries) {
-
-			DLOGTR1(PRIO_LOW, "Topic: %s\n",
-			    sbuf_data(produce_topic->dlprt_topic_name));
-
-			for (part = 0; part < produce_topic->dlprt_npartitions;
-			    part++) {
-
-				DLOGTR1(PRIO_LOW, "Partition: %d\n",
-				    produce_topic->dlprt_partitions[part].dlprp_partition);
-
-				DLOGTR1(PRIO_LOW, "ErrorCode: %d\n",
-				    produce_topic->dlprt_partitions[part].dlprp_error_code);
-
-				DLOGTR1(PRIO_LOW, "Base offset: %ld\n",
-				    produce_topic->dlprt_partitions[part].dlprp_offset);
-			};
-		};
-		break;
-	default:
-		DLOGTR1(PRIO_HIGH, "Unexcepted Response %d\n",
-		    response->dlrs_api_key);
-		break;
-	}
-}
 
 static int
 konsumer_event_handler(struct module *module, int event, void *arg)
@@ -206,15 +162,16 @@ static void
 konsumer_thread(void *arg)
 {
 	struct dlog_handle *handle;
-	struct konsumer *k = (struct konsumer *)arg;
-	dtrace_icookie_t cookie;
-	uint64_t offset = 0, xamot_offset = 0;
+	dtrace_state_t *kon_state;
+	struct konsumer *k = (struct konsumer *) arg;
+	uint64_t offset, size;
 
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
 	
 	DLOGTR0(PRIO_HIGH, "Konsumer thread starting...\n");
 	
 	handle = k->konsumer_dlog_handle;
+	kon_state = k->konsumer_state;
 
 	/* Configure the default values for the client_id, topic and
 	 * hostname.
@@ -227,43 +184,42 @@ konsumer_thread(void *arg)
 	 		DLOGTR0(PRIO_HIGH, "Stopping konsumer thread..\n");
 			break;
 		}
-		cookie = dtrace_interrupt_disable();
+		mtx_unlock(&k->konsumer_mtx);
+
 		DL_ASSERT(k->konsumer_state->dts_buffer != NULL,
 		    ("DTrace buffer invalid whilst konsumer state is open."));
 		if (k->konsumer_exit)  {
-			mtx_unlock(&k->konsumer_mtx);
 	 		DLOGTR0(PRIO_HIGH, "Stopping konsumer thread..\n");
 			break;
 		}
-		offset = k->konsumer_state->dts_buffer->dtb_offset;
-		xamot_offset = k->konsumer_state->dts_buffer->dtb_xamot_offset;
-		dtrace_interrupt_enable(cookie);
-		mtx_unlock(&k->konsumer_mtx);
 
+		offset = atomic_load_acq_64(
+		    &kon_state->dts_buffer->dtb_offset);
 		DLOGTR1(PRIO_HIGH, "Buffer dtb_offset = %lu\n", offset);
-		DLOGTR1(PRIO_HIGH, "Buffer dtb_xamot_offset = %lu\n",
-		    xamot_offset);
+		DLOGTR1(PRIO_HIGH, "Buffer konsumer_offset = %lu ",
+		    k->konsumer_offset);
+		if (offset > k->konsumer_offset) {
 
-		/* TODO: Handle the buffer wrapping and find EPIDNONE */
-		uint64_t size = 0;
-		while (k->konsumer_state->dts_buffer->dtb_tomax[0] != 0) {
-		    size++;
-		}
+			size = offset - k->konsumer_offset;
+			DLOGTR1(PRIO_HIGH,
+			    "Buffer offset-k->konsumer_offset = %lu\n", size);
 
-		DLOGTR1(PRIO_HIGH, "Buffer dtb_size = %lu\n", size);
-		if (dlog_produce(handle, "record", strlen("record"),
-		    &k->konsumer_state->dts_buffer->dtb_tomax[0],
-		    size) == 0) {
-			DLOGTR0(PRIO_LOW,
-			    "Successfully produced message to DLog\n");
+			if (dlog_produce_no_key(handle, 
+			    &kon_state->dts_buffer->dtb_tomax[
+			    k->konsumer_offset], size) == 0) {
+				DLOGTR0(PRIO_LOW,
+				    "Successfully produced message to DLog\n");
 
-			/* Consumed value from the DTrace ring buffer, adjust
-			 * the ring buffer accordingly.
-			 */
-			cookie = dtrace_interrupt_disable();
-			k->konsumer_state->dts_buffer->dtb_xamot_offset =
-			    offset;
-			dtrace_interrupt_enable(cookie);
+				/* Consumed value from the DTrace ring buffer,
+				 * adjust the ring buffer consumer accordingly.
+				 */
+				atomic_store_rel_64(&k->konsumer_offset,
+				    offset);
+			
+			} else {
+				DLOGTR0(PRIO_HIGH,
+				    "Error producing message to DLog\n");
+			}
 		}
 	}
 
@@ -292,13 +248,25 @@ konsumer_open(void *arg, struct dtrace_state *state)
 
 	/* Convert the DLog file descriptor into a struct dlog_handle * */
 	FILEDESC_SLOCK(fdp);
-	fp = fget_locked(fdp, 3); // TODO: 3 is fd from dtrace options
-	// TODO: what to do if rendezvous fails
+	fp = fget_locked(fdp, state->dts_options[DTRACEOPT_KONSUMERARG]);
+	if (fp == NULL) {
+		/* TODO: what to do if rendezvous fails? */
+		FILEDESC_SUNLOCK(fdp);
+		return;
+	}
+	
 	FILEDESC_SUNLOCK(fdp);
 	p = fp->f_cdevpriv;
-	// TODO: what to do if rendezvous fails
+	if (p == NULL) {
+		/* TODO: what to do if rendezvous fails? */
+		return;
+	}
+
 	handle = (struct dlog_handle *) p->cdpd_data;
-	// TODO: what to do if rendezvous fails
+	if (handle == NULL) {
+		/* TODO: what to do if rendezvous fails? */
+		return;
+	}
 	
 	k = (struct konsumer *) malloc(sizeof(struct konsumer), M_DLKON,
 	    M_NOWAIT);
@@ -311,6 +279,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	k->konsumer_exit = 0;
 	k->konsumer_pid = NULL;
 	k->konsumer_dlog_handle = handle;
+	k->konsumer_offset = 0;
 
 	hash = murmur3_32_hash(&state, sizeof(struct dtrace_state *), 0) &
 	    konsumer_hashmask;
