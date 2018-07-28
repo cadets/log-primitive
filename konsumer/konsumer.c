@@ -199,56 +199,40 @@ konsumer_thread(void *arg)
 		
 		//mutex_enter(&dtrace_lock);
 
-		/* TODO: Loop for all CPUs */
-		buf = &kon_state->dts_buffer[0];
+		for (int cpu = 0; cpu < NCPU; cpu++) {
+			buf = &kon_state->dts_buffer[cpu];
 
-		dtrace_xcall(0, (dtrace_xcall_t) dtrace_buffer_switch, buf);
+			dtrace_xcall(cpu, (dtrace_xcall_t) dtrace_buffer_switch, buf);
 
-		kon_state->dts_errors += buf->dtb_xamot_errors;
+			kon_state->dts_errors += buf->dtb_xamot_errors;
 
-		desc.dtbd_data = buf->dtb_xamot;
-		desc.dtbd_size = buf->dtb_xamot_offset;
-		desc.dtbd_drops = buf->dtb_xamot_drops;
-		desc.dtbd_errors = buf->dtb_xamot_errors;
-		desc.dtbd_oldest = 0;
-		desc.dtbd_timestamp = buf->dtb_switched;
+			desc.dtbd_data = buf->dtb_xamot;
+			desc.dtbd_size = buf->dtb_xamot_offset;
+			desc.dtbd_drops = buf->dtb_xamot_drops;
+			desc.dtbd_errors = buf->dtb_xamot_errors;
+			desc.dtbd_oldest = 0;
+			desc.dtbd_timestamp = buf->dtb_switched;
 
-		//mutex_exit(&dtrace_lock);
+			//mutex_exit(&dtrace_lock);
 
-		DLOGTR1(PRIO_LOW, "desc.dtbd_size = %zu\n", desc.dtbd_size);
-
-		size_t msg_start = 0, msg_size = 0, sz = 0;
-		dtrace_epid_t epid;
-
-		while (sz < desc.dtbd_size) {
-
-			epid = (dtrace_epid_t) desc.dtbd_data[sz];
-
-			sz += dtrace_epid2size(kon_state, epid);
-		
 			DLOGTR1(PRIO_LOW, "desc.dtbd_size = %zu\n",
 			    desc.dtbd_size);
 
-			if (msg_size + dtrace_epid2size(kon_state, epid) >
-			    DL_MTU) {
-				if (dlog_produce_no_key(handle, 
-				    &desc.dtbd_data[msg_start], msg_size) ==
-				    0) {
-					DLOGTR0(PRIO_LOW,
-					    "Successfully produced message to "
-					    "DLog\n");
-				} else {
+			size_t msg_start = 0, msg_size = 0, sz = 0;
+			dtrace_epid_t epid;
 
-					DLOGTR0(PRIO_HIGH,
-					    "Error producing message to DLog\n");
-				}
+			while (sz < desc.dtbd_size) {
 
-				msg_start = msg_start + msg_size;
-				msg_size = 0;
-			} else {
-				msg_size += dtrace_epid2size(kon_state, epid);
+				epid = (dtrace_epid_t) desc.dtbd_data[sz];
 
-				if (msg_size == desc.dtbd_size) {
+				sz += dtrace_epid2size(kon_state, epid);
+			
+				DLOGTR1(PRIO_LOW, "desc.dtbd_size = %zu\n",
+				    desc.dtbd_size);
+
+				if (msg_size +
+				    dtrace_epid2size(kon_state, epid) >
+				    DL_MTU) {
 					if (dlog_produce_no_key(handle, 
 					    &desc.dtbd_data[msg_start],
 					    msg_size) == 0) {
@@ -262,8 +246,31 @@ konsumer_thread(void *arg)
 						    "to DLog\n");
 					}
 
-					msg_start = msg_start + msg_size;
+					msg_start += msg_size;
 					msg_size = 0;
+				} else {
+					msg_size += dtrace_epid2size(
+					    kon_state, epid);
+
+					if (msg_size == desc.dtbd_size) {
+						if (dlog_produce_no_key(handle, 
+						    &desc.dtbd_data[msg_start],
+						    msg_size) == 0) {
+							DLOGTR0(PRIO_LOW,
+							    "Successfully "
+							    "produced message "
+							    "to DLog\n");
+						} else {
+
+							DLOGTR0(PRIO_HIGH,
+							    "Error producing "
+							    "message to "
+							    "DLog\n");
+						}
+
+						msg_start += msg_size;
+						msg_size = 0;
+					}
 				}
 			}
 		}
