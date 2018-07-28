@@ -129,7 +129,7 @@ dl_topic_hashmap_put(void *a, struct dl_topic *b)
 // TODO error handling
 #ifndef _KERNEL
 int
-dl_topic_new(struct dl_topic **self, struct sbuf *topic_name)
+dl_topic_new(struct dl_topic **self, char *topic_name)
 {
 	struct dl_topic *topic;
 	struct kevent event;
@@ -139,8 +139,9 @@ dl_topic_new(struct dl_topic **self, struct sbuf *topic_name)
 	    sizeof(struct dl_topic));
 	if (topic != NULL) {
 		topic->dlt_name = sbuf_new_auto();
-		sbuf_printf(topic->dlt_name, "%s-%d", sbuf_data(topic_name),
-		    DL_DEFAULT_PARTITION);
+		//sbuf_printf(topic->dlt_name, "%s-%d", topic_name,
+		//    DL_DEFAULT_PARTITION);
+		sbuf_printf(topic->dlt_name, "%s", topic_name);
 		sbuf_finish(topic->dlt_name);
 
 		dl_del_folder(topic->dlt_name);
@@ -266,31 +267,25 @@ err_topic:
 void
 dl_topic_delete(struct dl_topic *self)
 {
-	struct dl_partition *part, *part_tmp;
 
 	DL_ASSERT(self!= NULL, ("Topic instance cannot be NULL."));
-
+	
+	dl_segment_delete(self->dlp_active_segment);
 	sbuf_delete(self->dlt_name);
-	SLIST_FOREACH_SAFE(part, &self->dlt_partitions, dlp_entries, part_tmp) {
-
-		SLIST_REMOVE(&self->dlt_partitions, part, dl_partition,
-		    dlp_entries);
-
-		dl_partition_delete(part);
-	};
-
 	dlog_free(self);
 }
 
 struct sbuf *
 dl_topic_get_name(struct dl_topic *self)
 {
+
 	return self->dlt_name;
 }
 
 struct dl_segment *
 dl_topic_get_active_segment(struct dl_topic *self)
 {
+
 	return self->dlp_active_segment;
 }
 

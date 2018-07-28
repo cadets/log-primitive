@@ -70,7 +70,6 @@
 #include "dl_memory.h"
 #include "dl_poll_reactor.h"
 #include "dl_topic.h"
-#include "dl_resender.h"
 #include "dl_request.h"
 #include "dl_response.h"
 #include "dl_request_queue.h"
@@ -82,6 +81,7 @@
 static unsigned int dlog_nopen = 0;
 static unsigned int dlog_nproduce = 0;
 
+#ifdef _KERNEL
 SYSCTL_DECL(_debug);
 
 SYSCTL_NODE(_debug, OID_AUTO, dlog, CTLFLAG_RW, 0, "DLog client");
@@ -91,6 +91,7 @@ SYSCTL_UINT(_debug_dlog, OID_AUTO, open_handles, CTLFLAG_RD, &dlog_nopen, 0,
 
 SYSCTL_UINT(_debug_dlog, OID_AUTO, produce_requests, CTLFLAG_RD,
     &dlog_nproduce, 0, "Number of produce requests");
+#endif
 
 struct dlog_handle {
 	const struct dl_client_config *dlh_config;
@@ -198,15 +199,16 @@ dlog_client_close(struct dlog_handle *self)
 	dlog_nopen--;
 }
 
-#ifndef _KERNEL 
+//#ifndef _KERNEL 
+#ifdef FIX
 int
-dlog_fetch(struct dlog_handle *handle, struct sbuf *topic_name,
+dlog_fetch(struct dlog_handle *self, struct sbuf *topic_name,
     int32_t min_bytes, int32_t max_wait_time, int64_t fetch_offset,
     int32_t max_bytes)
 {
 	struct dl_bbuf *buffer;
 	struct dl_request *message;
-	nvlist_t *props = handle->dlh_config->dlcc_props;
+	nvlist_t *props = self->dlh_config->dlcc_props;
 	struct sbuf *client_id;
 	int result = 0;
 	
@@ -222,11 +224,11 @@ dlog_fetch(struct dlog_handle *handle, struct sbuf *topic_name,
 
 	DLOGTR1(PRIO_LOW,
 	    "User requested to send a message with correlation id = %d\n",
-	    dl_correlation_id_val(handle->dlh_topic->dlt_cid));
+	    dl_correlation_id_val(self->dlh_topic->dlt_cid));
 
 	/* Instantiate a new FetchRequest */
 	if (dl_fetch_request_new(&message,
-	    dl_correlation_id_val(handle->dlh_topic->dlt_cid),
+	    dl_correlation_id_val(self->dlh_topic->dlt_cid),
 	    client_id, topic_name, min_bytes,
 	    max_wait_time, fetch_offset, max_bytes) != 0)
 		return -1;
@@ -358,12 +360,6 @@ dlog_produce(struct dlog_handle *self, unsigned char *k, size_t k_len,
 	
 	
 	DLOGTR0(PRIO_LOW, "Encoded request message\n");
-
-	unsigned char *bufval = dl_bbuf_data(buffer);
-	for (int i = 0; i < dl_bbuf_pos(buffer); i++) {
-		DLOGTR1(PRIO_LOW, "<%02hhX>", bufval[i]);
-	};
-	DLOGTR0(PRIO_LOW, "\n");
 
 	/* Enqueue the MessageSet for processing */
 	if (dl_topic_produce_to(self->dlh_topic, buffer) != 0) {

@@ -348,7 +348,7 @@ dl_segment_get_message_by_offset(struct dl_segment *as, int offset,
 #endif
 	if (ret > 0) {
 		dl_bbuf_new(&idx_buf, (unsigned char *) tmp_buf,
-		    sizeof(tmp_buf), DL_BBUF_LITTLEENDIAN);
+		    sizeof(tmp_buf), DL_BBUF_BIGENDIAN);
 
 		dl_bbuf_get_int32(idx_buf, &roffset);
 		dl_bbuf_get_int32(idx_buf, &poffset);
@@ -388,8 +388,8 @@ dl_segment_get_message_by_offset(struct dl_segment *as, int offset,
 #ifdef _KERNEL
 		DLOGTR1(PRIO_HIGH, "For offset %d no message found\n", offset);
 #else
-		DLOGTR2(PRIO_HIGH, "For offset %d no message found %d.\n",
-		    offset, errno);
+		DLOGTR3(PRIO_HIGH, "For offset %d no message found %d (%d).\n",
+		    offset, ret, errno);
 #endif
 		return -1;
 	}

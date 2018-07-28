@@ -42,7 +42,6 @@ LIB:= dlog
 SRCS= dlog_client.c \
 	dl_bbuf.c \
 	dl_correlation_id.c \
-	dl_resender.c \
 	dl_utils.c \
 	dl_thread.c \
 	dl_fetch_request.c \

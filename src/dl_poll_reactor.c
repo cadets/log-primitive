@@ -181,16 +181,13 @@ dl_dispatch_signalled_handles(const struct pollfd *fds, const size_t nhandles)
 		 * Detect all signalled handles and invoke their corresponding
 		 * event handlers.
 		 */
-		printf("fd = %d\n", fds[handle].fd);
-		printf("events = %x\n", fds[handle].events);
-		printf("revents = %x\n", fds[handle].revents);
 		if (fds[handle].events & fds[handle].revents) {
 
 			signalled_handler = dl_find_handler(fds[handle].fd);
 			if (signalled_handler != NULL){
 				signalled_handler->dleh_handle_event(
 				    signalled_handler->dleh_instance,
-				    fds[handle].revents);
+				    fds[handle].fd, fds[handle].revents);
 			}
 		}
 	}
@@ -221,7 +218,7 @@ dl_poll_reactor_handle_events(void)
 		 */
 		dl_dispatch_signalled_handles(fds, nhandles);
 	} else {
-		DLOGTR0(PRIO_LOW, "Poll failure");
+		DLOGTR0(PRIO_LOW, "Poll failure\n");
 	}
 #endif
 }

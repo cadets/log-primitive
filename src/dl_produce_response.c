@@ -153,13 +153,16 @@ dl_produce_response_decode(struct dl_response **self,
 	/* Construct the Response. */
 	// TODO: what to do about the correlation id, this boils down to
 	// whether there is a necessary split between the header and payload
-	rc = dl_response_new(&response, DL_PRODUCE_API_KEY, 0);
+	//rc = dl_response_new(&response, DL_PRODUCE_API_KEY, 0);
 #ifdef _KERNEL
-	DL_ASSERT(rc == 0, ("Failed instatiate Response.\n"));
+	//DL_ASSERT(rc == 0, ("Failed instatiate Response.\n"));
 #else
-	if (rc != 0)
-		goto err_produce_response;
+	//if (rc != 0)
+	//	goto err_produce_response;
 #endif
+
+	response = (struct dl_response *) dlog_alloc(
+	    sizeof(struct dl_response));
 
 	/* Allocate and initialise the produce_response instance. */
 	response->dlrs_produce_response = produce_response =

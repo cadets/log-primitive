@@ -45,16 +45,21 @@ DLOG_SRCS= dlog_client.c \
 	dl_list_offset_request.c \
 	dl_list_offset_response.c \
 	dl_message_set.c \
+	dl_partition.c \
 	dl_primitive_types.c \
 	dl_produce_request.c \
 	dl_produce_response.c \
 	dl_request.c \
 	dl_request_queue.c \
 	dl_response.c \
+	dl_segment.c \
 	dl_transport.c \
+	dl_topic.c \
 	lookup3.c
 
-PROGS= dlog_start_broker dlog_console_producer dlog_console_consumer
+PROGS= dlog_start_broker \
+       dlog_console_producer \
+       dlog_console_consumer
 BINDIR= bin
 
 SRCS.dlog_start_broker= dlog_start_broker.c \
@@ -75,8 +80,9 @@ LDADD+= -lpthread
 LDADD+= -lm
 LDADD+= -lsbuf
 LDADD+= -lnv
-LDADD+= ${SRCTOP}/libdlog.a
+#LDADD+= ${SRCTOP}/libdlog.a
 
 CFLAGS+= -I${SRCTOP}
+CFLAGS+= -I${SRCTOP}/../dlog
 
 .include <bsd.progs.mk>

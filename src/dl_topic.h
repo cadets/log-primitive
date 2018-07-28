@@ -45,7 +45,6 @@
 #include "dl_partition.h"
 #include "dl_protocol.h"
 #include "dl_request_queue.h"
-#include "dl_resender.h"
 #include "dl_segment.h"
 
 struct dl_topic;
@@ -72,7 +71,7 @@ struct dl_topic_desc {
 };
 
 extern void dl_topic_delete(struct dl_topic *);
-extern int dl_topic_new(struct dl_topic **, struct sbuf *);
+extern int dl_topic_new(struct dl_topic **, char *);
 extern int dl_topic_as_desc(struct dl_topic *, struct dl_topic_desc **);
 extern int dl_topic_from_desc(struct dl_topic **, struct sbuf *,
     struct dl_segment_desc *);

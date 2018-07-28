@@ -47,7 +47,7 @@ typedef int dl_event_handler_handle;
  */
 
 typedef dl_event_handler_handle (*dl_get_handle_func)(void *);
-typedef void (*dl_handle_event_func)(void *, int);
+typedef void (*dl_handle_event_func)(void *, int, int);
  
 struct dl_event_handler {
 	void *dleh_instance;

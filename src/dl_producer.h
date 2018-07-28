@@ -37,15 +37,21 @@
 #ifndef _DL_PRODUCER_H
 #define _DL_PRODUCER_H
 
-#include "dl_topic.h"
+#include <sys/nv.h>
 
 struct dl_producer;
+struct dl_topic;
 
-extern int dl_producer_new(struct dl_producer **, struct dl_topic *);
+extern int dl_producer_new(struct dl_producer **, struct dl_topic *,
+    char *, int, nvlist_t *);
+extern void dl_producer_delete(struct dl_producer *);
+
+extern struct dl_topic * dl_producer_get_topic(struct dl_producer *); 
 
 extern void dl_producer_produce(struct dl_producer const * const);
 extern void dl_producer_up(struct dl_producer const * const);
 extern void dl_producer_down(struct dl_producer const * const);
 extern void dl_producer_syncd(struct dl_producer const * const);
+extern void dl_producer_reconnect(struct dl_producer const * const);
 
 #endif

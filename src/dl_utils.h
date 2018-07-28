@@ -39,11 +39,10 @@
 #define _DL_UTILS_H
 
 #include <sys/types.h>
+#include <sys/sbuf.h>
+
 #ifdef _KERNEL
-#include <sys/sbuf.h>
 #include <sys/systm.h>
-#else
-#include <sys/sbuf.h>
 #endif
 
 #ifdef _KERNEL
@@ -79,9 +78,9 @@
 #endif /* KERNEL */
 
 #ifdef _KERNEL
-#define PRIO_HIGH   3
-#define PRIO_NORMAL 6
-#define PRIO_LOW    7
+#define PRIO_HIGH   3 //LOG_DEBUG
+#define PRIO_NORMAL 6 //LOG_NOTIC
+#define PRIO_LOW    7 //LOG_ERR
 #else
 #define PRIO_HIGH   1 << 1
 #define PRIO_NORMAL 1 << 2
