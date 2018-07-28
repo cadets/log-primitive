@@ -60,6 +60,7 @@
 
 #include "dl_assert.h"
 #include "dlog_client.h"
+#include "dl_protocol.h"
 #include "dl_utils.h"
 
 MALLOC_DECLARE(M_DLKON);
@@ -85,7 +86,6 @@ struct konsumer {
 	struct proc *konsumer_pid;
 	struct dlog_handle *konsumer_dlog_handle;
 	dtrace_state_t *konsumer_state;
-	volatile uint64_t konsumer_offset;
 	int konsumer_exit;
 };
 
@@ -172,10 +172,10 @@ static void
 konsumer_thread(void *arg)
 {
 	struct dlog_handle *handle;
+	dtrace_bufdesc_t desc;
 	dtrace_buffer_t *buf;
 	dtrace_state_t *kon_state;
 	struct konsumer *k = (struct konsumer *) arg;
-	uint64_t offset, size;
 
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
 	
@@ -183,7 +183,6 @@ konsumer_thread(void *arg)
 	
 	handle = k->konsumer_dlog_handle;
 	kon_state = k->konsumer_state;
-	buf = kon_state->dts_buffer;
 
 	/* Configure the default values for the client_id, topic and
 	 * hostname.
@@ -197,38 +196,75 @@ konsumer_thread(void *arg)
 			break;
 		}
 		mtx_unlock(&k->konsumer_mtx);
+		
+		//mutex_enter(&dtrace_lock);
 
-		DL_ASSERT(k->konsumer_state->dts_buffer != NULL,
-		    ("DTrace buffer invalid whilst konsumer state is open."));
-		if (k->konsumer_exit)  {
-	 		DLOGTR0(PRIO_HIGH, "Stopping konsumer thread..\n");
-			break;
-		}
+		/* TODO: Loop for all CPUs */
+		buf = &kon_state->dts_buffer[0];
 
-		offset = atomic_load_acq_64(&buf->dtb_offset);
-		DLOGTR1(PRIO_HIGH, "Buffer dtb_offset = %lu\n", offset);
-		DLOGTR1(PRIO_HIGH, "Buffer konsumer_offset = %lu ",
-		    k->konsumer_offset);
-		if (offset > k->konsumer_offset) {
+		dtrace_xcall(0, (dtrace_xcall_t) dtrace_buffer_switch, buf);
 
-			size = offset - k->konsumer_offset;
-			DLOGTR1(PRIO_HIGH,
-			    "Buffer offset - k->konsumer_offset = %lu\n", size);
+		kon_state->dts_errors += buf->dtb_xamot_errors;
 
-			if (dlog_produce_no_key(handle, 
-			    &buf->dtb_tomax[k->konsumer_offset % buf->dtb_size],
-			    size) == 0) {
-				DLOGTR0(PRIO_LOW,
-				    "Successfully produced message to DLog\n");
+		desc.dtbd_data = buf->dtb_xamot;
+		desc.dtbd_size = buf->dtb_xamot_offset;
+		desc.dtbd_drops = buf->dtb_xamot_drops;
+		desc.dtbd_errors = buf->dtb_xamot_errors;
+		desc.dtbd_oldest = 0;
+		desc.dtbd_timestamp = buf->dtb_switched;
 
-				/* Consumed value from the DTrace ring buffer,
-				 * adjust the ring buffer consumer accordingly.
-				 */
-				atomic_store_rel_64(&k->konsumer_offset,
-				    offset);
+		//mutex_exit(&dtrace_lock);
+
+		DLOGTR1(PRIO_LOW, "desc.dtbd_size = %zu\n", desc.dtbd_size);
+
+		size_t msg_start = 0, msg_size = 0, sz = 0;
+		dtrace_epid_t epid;
+
+		while (sz < desc.dtbd_size) {
+
+			epid = (dtrace_epid_t) desc.dtbd_data[sz];
+
+			sz += dtrace_epid2size(kon_state, epid);
+		
+			DLOGTR1(PRIO_LOW, "desc.dtbd_size = %zu\n",
+			    desc.dtbd_size);
+
+			if (msg_size + dtrace_epid2size(kon_state, epid) >
+			    DL_MTU) {
+				if (dlog_produce_no_key(handle, 
+				    &desc.dtbd_data[msg_start], msg_size) ==
+				    0) {
+					DLOGTR0(PRIO_LOW,
+					    "Successfully produced message to "
+					    "DLog\n");
+				} else {
+
+					DLOGTR0(PRIO_HIGH,
+					    "Error producing message to DLog\n");
+				}
+
+				msg_start = msg_start + msg_size;
+				msg_size = 0;
 			} else {
-				DLOGTR0(PRIO_HIGH,
-				    "Error producing message to DLog\n");
+				msg_size += dtrace_epid2size(kon_state, epid);
+
+				if (msg_size == desc.dtbd_size) {
+					if (dlog_produce_no_key(handle, 
+					    &desc.dtbd_data[msg_start],
+					    msg_size) == 0) {
+						DLOGTR0(PRIO_LOW,
+						    "Successfully produced "
+						    "message to DLog\n");
+					} else {
+
+						DLOGTR0(PRIO_HIGH,
+						    "Error producing message "
+						    "to DLog\n");
+					}
+
+					msg_start = msg_start + msg_size;
+					msg_size = 0;
+				}
 			}
 		}
 	}
@@ -292,7 +328,6 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	k->konsumer_exit = 0;
 	k->konsumer_pid = NULL;
 	k->konsumer_dlog_handle = handle;
-	atomic_store_rel_64(&k->konsumer_offset, 0);
 
 	hash = murmur3_32_hash(&state, sizeof(struct dtrace_state *), 0) &
 	    konsumer_hashmask;
