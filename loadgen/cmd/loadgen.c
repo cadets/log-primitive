@@ -70,6 +70,7 @@ const dlog_malloc_func dlog_alloc = malloc;
 const dlog_free_func dlog_free = free;
 
 static char const * const DLC_DEFAULT_CLIENT_ID = "loadgen";
+static char const * const DLC_DEFAULT_TOPIC_NAME = "test";
 static char const * const DLOG = "/dev/dlog";
 static char const * const HARNESS = "/dev/harness";
 static char const * const USAGE = "%s: [-c client id] [-t topic] [-v]\n";
@@ -93,6 +94,7 @@ main(int argc, char **argv)
 	nvlist_t *props;
 	struct sbuf *tname;
 	char *client_id = (char *) DLC_DEFAULT_CLIENT_ID;
+	char *topic_name = (char *) DLC_DEFAULT_TOPIC_NAME;
 	char *line, *sep;
 	int *harg;
 	int dlog, harness, iocnt, opt, rc;
@@ -104,6 +106,9 @@ main(int argc, char **argv)
 		switch (opt) {
 		case 'c':
 			client_id = optarg;
+			break;
+		case 't':
+			topic = topic_name = optarg;
 			break;
 		case 'v':
 			PRIO_LOG = PRIO_LOW;
@@ -126,8 +131,7 @@ main(int argc, char **argv)
 	if (props == NULL)
 		goto close_dlog;
 
-	nvlist_add_string(props, DL_CONF_CLIENTID, client_id);
-	nvlist_add_string(props, DL_CONF_TOPIC, "cadets-trace-0");
+	nvlist_add_string(props, DL_CONF_TOPIC, topic_name);
 
 	conf = (struct dl_client_config_desc *) malloc(
 	    sizeof(struct dl_client_config_desc));
