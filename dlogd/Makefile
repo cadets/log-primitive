@@ -37,13 +37,27 @@ MK_AUTO_OBJ:= yes
 PROGS= dlogd
 BINDIR= bin
 
-DLOG_SRCS= lookup3.c \
-	dl_topic.c \
-	dl_bbuf.c \
+DLOG_SRCS= dl_bbuf.c \
+	dl_correlation_id.c \
+	dl_fetch_request.c \
+	dl_fetch_response.c \
+	dl_list_offset_request.c \
+	dl_list_offset_response.c \
+	dl_message_set.c \
 	dl_partition.c \
-	dl_segment.c \
 	dl_poll_reactor.c \
-	dl_utils.c
+	dl_primitive_types.c \
+	dl_producer.c \
+	dl_produce_request.c \
+	dl_produce_response.c \
+	dl_request.c \
+	dl_request_queue.c \
+	dl_response.c \
+	dl_segment.c \
+	dl_topic.c \
+	dl_transport.c \
+	dl_utils.c \
+	lookup3.c
 
 SRCS.dlogd = dlogd.c ${DLOG_SRCS}
 MAN.dlogd =
@@ -53,8 +67,11 @@ LDADD+=-lnv
 LDADD+=-lpthread
 LDADD+=-lsbuf
 LDADD+=-lz
+LDADD+=-lucl
 
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
+CFLAGS+=-L/usr/local/lib
+CFLAGS+=-I/usr/local/include
 CFLAGS+=-I${SRCTOP}
 CFLAGS+=-I${SRCTOP}/../dlog
 
