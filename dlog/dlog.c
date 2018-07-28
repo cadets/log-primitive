@@ -269,7 +269,7 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 	    (struct dl_topic_desc **) addr;
 	struct dl_topic_desc tp_desc;	
 	struct sbuf *tp_name;
-	struct dl_topic *t;
+	struct dl_topic *t, *t_tmp;
 	uint32_t h;
 
 	switch(cmd) {
@@ -305,10 +305,10 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 			    sbuf_data(t->dlt_name)) == 0) {
 
 				DLOGTR1(PRIO_HIGH,
-				    "Error topic %s is already present\n",
+				    "Topic %s is already present\n",
 				    sbuf_data(tp_name));
 				sbuf_delete(tp_name);
-				return -1;
+				return 0;
 			}
 		}
 
@@ -326,6 +326,49 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 
 		break;
 	case DLOGIOC_DELTOPICPART:
+
+		/* Copyin the description of the new topic. */
+		if (copyin((void *) *ptp_desc, &tp_desc,
+		    sizeof(struct dl_topic_desc)) != 0)
+			return EFAULT; 
+	
+		/* Copyin the topic name into a new sbuf. */	
+		tp_name = sbuf_new_auto();
+		DL_ASSERT(tp_name != NULL,
+		    ("Failed allocating memory for sbuf.")); 
+		if (sbuf_copyin(tp_name, tp_desc.dltd_name,
+		    strlen(tp_desc.dltd_name)) == -1) {
+
+			sbuf_delete(tp_name);
+			return EFAULT;
+		}
+		sbuf_finish(tp_name);
+		
+		/* Lookup the topic in the topic hashmap. */
+		h = hashlittle(sbuf_data(tp_name), sbuf_len(tp_name), 0);
+		DLOGTR4(PRIO_LOW, "topic %s (%zu) hashes to %u (%zu)\n",
+		    sbuf_data(tp_name), sbuf_len(tp_name), h,
+		    h & topic_hashmask);
+
+		LIST_FOREACH_SAFE(t, &topic_hashmap[h & topic_hashmask],
+		    dlt_entries, t_tmp) {
+			if (strcmp(sbuf_data(tp_name),
+			    sbuf_data(t->dlt_name)) == 0) {
+
+				DLOGTR1(PRIO_HIGH, "Topic %s found\n",
+				    sbuf_data(tp_name));
+
+				LIST_REMOVE(t, dlt_entries);
+				dl_topic_delete(t);
+				sbuf_delete(tp_name);
+				return 0;
+			}
+		}
+		
+		DLOGTR1(PRIO_HIGH, "Topic %s not found\n",
+		    sbuf_data(tp_name));
+		sbuf_delete(tp_name);
+
 		break;
 	case DLOGIOC_PRODUCER:
 		DLOGTR0(PRIO_LOW, "Configuring DLog producer.\n");

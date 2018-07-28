@@ -43,7 +43,6 @@ SRCS= dlog_client.c \
 	dl_produce_request.c \
 	dl_produce_response.c \
 	dl_request.c \
-	dl_request_queue.c \
 	dl_response.c \
 	dl_segment.c \
 	dl_topic.c \
