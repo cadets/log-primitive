@@ -83,9 +83,9 @@ struct konsumer {
 	struct cv konsumer_cv;
 	struct mtx konsumer_mtx;
 	struct proc *konsumer_pid;
-	dtrace_state_t *konsumer_state;
 	struct dlog_handle *konsumer_dlog_handle;
-	uint64_t konsumer_offset;
+	dtrace_state_t *konsumer_state;
+	volatile uint64_t konsumer_offset;
 	int konsumer_exit;
 };
 
@@ -118,7 +118,17 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 		 * registering the konsumer with be informed of lifecycle
 		 * events (open/close) that result from DTrace consumers.
 		 */ 
-		dtrace_konsumer_register(KONSUMER_NAME, &kops, NULL, &kid);
+		if (dtrace_konsumer_register(KONSUMER_NAME, &kops, NULL,
+		    &kid) == 0) {
+
+			DLOGTR0(PRIO_HIGH,
+			    "Successfully registered konsumer with DTrace\n");
+		} else {
+
+			DLOGTR0(PRIO_HIGH,
+			    "Failed to register konsumer with DTrace\n");
+			e = -1;
+		}
 		break;
 	case MOD_UNLOAD:
 		DLOGTR0(PRIO_LOW, "Unloading Konsumer kernel module\n");
@@ -162,6 +172,7 @@ static void
 konsumer_thread(void *arg)
 {
 	struct dlog_handle *handle;
+	dtrace_buffer_t *buf;
 	dtrace_state_t *kon_state;
 	struct konsumer *k = (struct konsumer *) arg;
 	uint64_t offset, size;
@@ -172,6 +183,7 @@ konsumer_thread(void *arg)
 	
 	handle = k->konsumer_dlog_handle;
 	kon_state = k->konsumer_state;
+	buf = kon_state->dts_buffer;
 
 	/* Configure the default values for the client_id, topic and
 	 * hostname.
@@ -193,8 +205,7 @@ konsumer_thread(void *arg)
 			break;
 		}
 
-		offset = atomic_load_acq_64(
-		    &kon_state->dts_buffer->dtb_offset);
+		offset = atomic_load_acq_64(&buf->dtb_offset);
 		DLOGTR1(PRIO_HIGH, "Buffer dtb_offset = %lu\n", offset);
 		DLOGTR1(PRIO_HIGH, "Buffer konsumer_offset = %lu ",
 		    k->konsumer_offset);
@@ -202,11 +213,11 @@ konsumer_thread(void *arg)
 
 			size = offset - k->konsumer_offset;
 			DLOGTR1(PRIO_HIGH,
-			    "Buffer offset-k->konsumer_offset = %lu\n", size);
+			    "Buffer offset - k->konsumer_offset = %lu\n", size);
 
 			if (dlog_produce_no_key(handle, 
-			    &kon_state->dts_buffer->dtb_tomax[
-			    k->konsumer_offset], size) == 0) {
+			    &buf->dtb_tomax[k->konsumer_offset % buf->dtb_size],
+			    size) == 0) {
 				DLOGTR0(PRIO_LOW,
 				    "Successfully produced message to DLog\n");
 
@@ -215,7 +226,6 @@ konsumer_thread(void *arg)
 				 */
 				atomic_store_rel_64(&k->konsumer_offset,
 				    offset);
-			
 			} else {
 				DLOGTR0(PRIO_HIGH,
 				    "Error producing message to DLog\n");
@@ -238,6 +248,9 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	dtrace_konsumer_id_t id = (dtrace_konsumer_id_t)konsumer;
 	struct konsumer *k;
 	uint32_t hash;
+	
+	DLOGTR2(PRIO_HIGH, "konsumer_open called by dtrace: %p %p\n",
+	    arg, state);
 
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
 	DL_ASSERT(konsumer != NULL,
@@ -254,8 +267,8 @@ konsumer_open(void *arg, struct dtrace_state *state)
 		FILEDESC_SUNLOCK(fdp);
 		return;
 	}
-	
 	FILEDESC_SUNLOCK(fdp);
+
 	p = fp->f_cdevpriv;
 	if (p == NULL) {
 		/* TODO: what to do if rendezvous fails? */
@@ -279,7 +292,7 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	k->konsumer_exit = 0;
 	k->konsumer_pid = NULL;
 	k->konsumer_dlog_handle = handle;
-	k->konsumer_offset = 0;
+	atomic_store_rel_64(&k->konsumer_offset, 0);
 
 	hash = murmur3_32_hash(&state, sizeof(struct dtrace_state *), 0) &
 	    konsumer_hashmask;
@@ -294,6 +307,8 @@ konsumer_close(void *arg, struct dtrace_state *state)
 {
 	struct konsumer *k, *k_tmp;
 	uint32_t hash;
+	
+	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
 
 	DLOGTR1(PRIO_HIGH, "konsumer_close called by dtrace %p\n", state);
 
