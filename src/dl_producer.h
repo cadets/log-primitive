@@ -34,34 +34,24 @@
  *
  */
 
-#ifndef _DL_BROKER_PARTITION_H
-#define _DL_BROKER_PARTITION_H
+#ifndef _DL_PRODUCER_H
+#define _DL_PRODUCER_H
 
-#ifdef KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sbuf.h>
-#endif
+#include <sys/nv.h>
 
-#include <sys/queue.h>
-#include <sys/types.h>
+struct dl_producer;
+struct dl_topic;
 
-#include "dl_broker_segment.h"
-#include "dl_broker_topic.h"
-#include "dl_event_handler.h"
+extern int dl_producer_new(struct dl_producer **, struct dl_topic *,
+    char *, int, nvlist_t *);
+extern void dl_producer_delete(struct dl_producer *);
 
-struct dl_partition {
-	SLIST_ENTRY(dl_partition) dlp_entries;
-	u_int32_t dlp_offset; /* Current offset into the log. */
-	struct dl_segments dlp_segments;
-	struct dl_segment *dlp_active_segment;
-	int _klog;
-	int _kindex;
-	struct dl_event_handler event_handler;
-};
+extern struct dl_topic * dl_producer_get_topic(struct dl_producer *); 
 
-static const int32_t DL_DEFAULT_PARTITION = 0;
-
-extern int dl_partition_new(struct dl_partition **, struct sbuf *);
+extern void dl_producer_produce(struct dl_producer const * const);
+extern void dl_producer_up(struct dl_producer const * const);
+extern void dl_producer_down(struct dl_producer const * const);
+extern void dl_producer_syncd(struct dl_producer const * const);
+extern void dl_producer_reconnect(struct dl_producer const * const);
 
 #endif

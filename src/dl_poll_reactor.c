@@ -35,10 +35,16 @@
 
 #include <sys/queue.h>
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/libkern.h>
+#include <sys/poll.h>
+#include <sys/param.h>
+#include <sys/systm.h>
+#include <sys/proc.h>
+#include <sys/kthread.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
+#include <sys/syscallsubr.h>
 #else
 #include <poll.h>
 #include <strings.h>
@@ -57,11 +63,13 @@ struct dl_handler_registry {
 	struct pollfd dlh_fd;
 };
 
-static void dl_add_to_registry(struct dl_event_handler const * const handler);
+static void dl_add_to_registry(struct dl_event_handler const * const handler,
+   int);
 static size_t dl_build_poll_array(struct pollfd *);
 static void dl_dispatch_signalled_handles(const struct pollfd *, const size_t);
 static struct dl_event_handler const * dl_find_handler(const int fd);
-static void dl_remove_from_registry(struct dl_event_handler const * const handler);
+static void dl_remove_from_registry(
+    struct dl_event_handler const * const handler);
 
 // TODO: Limit number of handles correctly
 static const size_t MAX_NO_OF_HANDLES = 10;
@@ -112,7 +120,7 @@ dl_find_handler(const int fd)
  * registeredHandlers.
  */
 static void
-dl_add_to_registry(struct dl_event_handler const * const handler)
+dl_add_to_registry(struct dl_event_handler const * const handler, int events)
 {
 	struct dl_handler_registry *registry;
 
@@ -130,7 +138,7 @@ dl_add_to_registry(struct dl_event_handler const * const handler)
 		registry->dlh_handler = handler;
 		registry->dlh_fd.fd = handler->dleh_get_handle(
 		    handler->dleh_instance);
-		registry->dlh_fd.events = POLLRDNORM;
+		registry->dlh_fd.events = events;
 
 		STAILQ_INSERT_TAIL(&handlers, registry, dlh_entries);
 	}
@@ -173,12 +181,13 @@ dl_dispatch_signalled_handles(const struct pollfd *fds, const size_t nhandles)
 		 * Detect all signalled handles and invoke their corresponding
 		 * event handlers.
 		 */
-		if ((POLLRDNORM | POLLERR) & fds[handle].revents) {
+		if (fds[handle].events & fds[handle].revents) {
 
 			signalled_handler = dl_find_handler(fds[handle].fd);
-			if (NULL != signalled_handler){
+			if (signalled_handler != NULL){
 				signalled_handler->dleh_handle_event(
-				    signalled_handler->dleh_instance);
+				    signalled_handler->dleh_instance,
+				    fds[handle].fd, fds[handle].revents);
 			}
 		}
 	}
@@ -190,33 +199,38 @@ void
 dl_poll_reactor_handle_events(void)
 {
 	struct pollfd fds[MAX_NO_OF_HANDLES];
+#ifdef _KERNEL
+	struct thread *td = curthread;
+#endif
 	size_t nhandles;
 
 	bzero(fds, MAX_NO_OF_HANDLES * sizeof(struct pollfd));
 	nhandles = dl_build_poll_array(fds);
+
 #ifdef _KERNEL
-	//sopoll();
+	kern_poll(td, fds, nhandles, NULL, NULL);
 #else
 	/* Invoke the synchronous event demultiplexer. */
-	if (0 < poll(fds, nhandles, -1)) {
+	if (poll(fds, nhandles, -1) > 0) {
 		/** 
 		 * Identify all signalled handles and invoke the event handler
 		 * associated with each one.
 		 */
 		dl_dispatch_signalled_handles(fds, nhandles);
 	} else {
-		DLOGTR0(PRIO_LOW, "Poll failure");
+		DLOGTR0(PRIO_LOW, "Poll failure\n");
 	}
 #endif
 }
 
 void
-dl_poll_reactor_register(struct dl_event_handler const * const handler)
+dl_poll_reactor_register(struct dl_event_handler const * const handler,
+    int events)
 {
 
 	DL_ASSERT(handler != NULL, "dl_event_handler cannot be NULL\n");
 
-        dl_add_to_registry(handler);
+        dl_add_to_registry(handler, events);
 }
 
 void

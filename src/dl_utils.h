@@ -38,28 +38,28 @@
 #ifndef _DL_UTILS_H
 #define _DL_UTILS_H
 
-#ifdef _KERNEL
-#include <sys/ktr.h>
+#include <sys/types.h>
 #include <sys/sbuf.h>
-#else
-#include <sbuf.h>
+
+#ifdef _KERNEL
+#include <sys/systm.h>
 #endif
 
 #ifdef _KERNEL
 #define DLOGTR0(event_mask, format) \
-	CTR0(event_mask, format)
+	log(event_mask, format)
 #define DLOGTR1(event_mask, format, p1) \
-	CTR1(event_mask, format, p1)
+	log(event_mask, format, p1)
 #define DLOGTR2(event_mask, format, p1, p2) \
-	CTR2(event_mask, format, p1, p2)
+	log(event_mask, format, p1, p2)
 #define DLOGTR3(event_mask, format, p1, p2, p3) \
-	CTR3(event_mask, format, p1, p2, p3)
+	log(event_mask, format, p1, p2, p3)
 #define DLOGTR4(event_mask, format, p1, p2, p3, p4) \
-	CTR4(event_mask, format, p1, p2, p3, p4)
+	log(event_mask, format, p1, p2, p3, p4)
 #define DLOGTR5(event_mask, format, p1, p2, p3, p4, p5) \
-	CTR5(event_mask, format, p1, p2, p3, p4, p5)
+	log(event_mask, format, p1, p2, p3, p4, p5)
 #define DLOGTR6(event_mask, format, p1, p2, p3, p4, p5, p6) \
-	CTR6(event_mask, format, p1, p2, p3, p4, p5, p6)
+	log(event_mask, format, p1, p2, p3, p4, p5, p6)
 #else
 #define DLOGTR0(event_mask, format) \
 	dl_debug(event_mask, format)
@@ -77,15 +77,25 @@
 	dl_debug(event_mask, format, p1, p2, p3, p4, p5, p6)
 #endif /* KERNEL */
 
+#ifdef _KERNEL
+#define PRIO_HIGH   3 //LOG_DEBUG
+#define PRIO_NORMAL 6 //LOG_NOTIC
+#define PRIO_LOW    7 //LOG_ERR
+#else
 #define PRIO_HIGH   1 << 1
 #define PRIO_NORMAL 1 << 2
 #define PRIO_LOW    1 << 3
+#endif
 
-extern int dl_make_folders(struct sbuf *);
+extern int dl_make_folder(struct sbuf *);
 extern int dl_del_folder(struct sbuf *);
 
 #ifndef _KERNEL
 extern void dl_debug(int, const char *, ...);
+extern int dl_alloc_big_file(int, long int, long int);
+#ifdef HAVE_POSIX_FALLOCATE
+extern int dl_call_posix_fallocate(int, Sint64, Sint64);
+#endif
 #endif
 
 #endif

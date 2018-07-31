@@ -37,4 +37,6 @@
 #ifndef _DL_THREAD_H
 #define _DL_THREAD_H
 
+extern int dl_thread_create(void); //, , ,)  
+
 #endif

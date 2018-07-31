@@ -34,7 +34,12 @@
  *
  */
 
+
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
 #include <stddef.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
@@ -43,155 +48,314 @@
 #include "dl_primitive_types.h"
 #include "dl_protocol.h"
 #include "dl_response.h"
+#include "dl_utils.h"
 
-struct dl_response *
-dl_fetch_response_decode(char *buffer)
+int
+dl_fetch_response_new(struct dl_response **self,
+    const int32_t correlation_id, struct sbuf *topic_name, int16_t error_code,
+    int64_t high_watermark, struct dl_message_set *msgset)
 {
-	struct dl_message_set *message_set;
+	struct dl_fetch_response *fetch_response;
+	struct dl_fetch_response_topic *response_topic;
+	struct dl_response *response;
+	int rc;
+	
+	DL_ASSERT(self != NULL, ("ListOffsetRequest instance cannot be NULL."));
+	DL_ASSERT(topic_name != NULL,
+	    ("ListOffsetResponse topic name cannot be NULL."));
+
+	/* Construct the Response. */
+	rc = dl_response_new(&response, DL_FETCH_API_KEY, correlation_id);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Failed to allocate Request."));
+#else
+	if (rc != 0)
+		goto err_response_ctor;
+#endif
+
+	/* Construct the ffsetResponse. */
+	fetch_response = response->dlrs_fetch_response =
+	    (struct dl_fetch_response *) dlog_alloc(
+	    sizeof(struct dl_fetch_response));
+#ifdef _KERNEL
+	DL_ASSERT(fetch_response != NULL, ("Failed to allocate Request."));
+#else
+	if (fetch_response == NULL) {
+
+		dl_response_delete(response);
+		goto err_response_ctor;
+	}
+#endif
+	
+	SLIST_INIT(&fetch_response->dlfr_topics);
+	fetch_response->dlfr_ntopics = 1;
+	fetch_response->dlfr_throttle_time = 0;
+
+	response_topic = (struct dl_fetch_response_topic *) dlog_alloc(
+	    sizeof(struct dl_fetch_response_topic) +
+	    sizeof(struct dl_fetch_response_partition));
+#ifdef _KERNEL
+	DL_ASSERT(response_topic != NULL,
+	    ("Failed allocating response topic.\n"));
+#else
+	if (response_topic == NULL ) {
+
+		dl_fetch_response_delete(fetch_response);
+		dl_response_delete(response);
+		goto err_response_ctor;
+	}
+#endif	
+	
+	response_topic->dlfrt_topic_name = topic_name;
+	response_topic->dlfrt_npartitions = 1;
+	response_topic->dlfrt_partitions[0].dlfrp_message_set = msgset;
+	response_topic->dlfrt_partitions[0].dlfrp_high_watermark =
+	    high_watermark;
+	response_topic->dlfrt_partitions[0].dlfrp_partition = 0;
+	response_topic->dlfrt_partitions[0].dlfrp_error_code = error_code;
+	
+	SLIST_INSERT_HEAD(&fetch_response->dlfr_topics, response_topic,
+	    dlfrt_entries);
+
+	*self = response;
+	return 0;
+
+#ifndef _KERNEL
+err_response_ctor:
+	DLOGTR0(PRIO_HIGH, "Failed instatiating ProduceRequest.\n");
+	*self = NULL;
+	return -1;
+#endif
+}
+
+void
+dl_fetch_response_delete(struct dl_fetch_response *self)
+{
+	struct dl_fetch_response_topic *req_topic, *req_topic_tmp;
+	struct dl_fetch_response_partition *req_part;
+	int part;
+
+	DL_ASSERT(self != NULL, ("FetchResponse instance cannot be NULL."));
+
+	SLIST_FOREACH_SAFE(req_topic, &self->dlfr_topics,
+	    dlfrt_entries, req_topic_tmp) {
+
+		req_topic = SLIST_FIRST(&self->dlfr_topics);
+		SLIST_REMOVE(&self->dlfr_topics, req_topic,
+		    dl_fetch_response_topic, dlfrt_entries);
+
+		for (part = 0; part < req_topic->dlfrt_npartitions; part++) {
+
+			req_part = &req_topic->dlfrt_partitions[part];
+
+			if (req_part->dlfrp_message_set != NULL)
+				dl_message_set_delete(
+				    req_part->dlfrp_message_set);
+		}
+		dlog_free(req_topic);
+	};
+	dlog_free(self);
+}	
+
+int
+dl_fetch_response_decode(struct dl_response **self, struct dl_bbuf *source)
+{
 	struct dl_fetch_response *fetch_response;
 	struct dl_fetch_response_topic *topic;
 	struct dl_fetch_response_partition *partition;
 	struct dl_response *response;
 	struct sbuf *topic_name;
-	int32_t partition_response, response_it;
+	int32_t part, response_it, nparts;
+	int rc = 0;
+
+	DL_ASSERT(self != NULL, ("Response cannot be NULL."));
+	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL."));
+
+	/* Construct the Response. */
+	// TODO: what to do about the correlation id, this boils down to
+	// whether there is a necessary split between the header and payload
+	rc = dl_response_new(&response, DL_PRODUCE_API_KEY, 0);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Failed instatiate Response.\n"));
+#else
+	if (rc != 0)
+		goto err_fetch_response;
+#endif
 	
 	/* Construct the FetchResponse. */
-	response = (struct dl_response *) dlog_alloc(
-		sizeof(struct dl_response));
-
-	response->dlrs_api_key = DL_FETCH_API_KEY;
-
-	/* Construct the FetchResponse. */
-	response->dlrs_message.dlrs_fetch_message = fetch_response =
+	response->dlrs_fetch_response = fetch_response =
 	    (struct dl_fetch_response *) dlog_alloc(
 		sizeof(struct dl_fetch_response));
+#ifdef _KERNEL
+	DL_ASSERT(fetch_response != NULL,
+	    ("Failed to allocate FetchResponse.\n"));
+#else
+	if (fetch_response == NULL) {
+		dl_response_delete(response);
+		goto err_fetch_response;
+	}
+#endif
 
 	/* Decode the ThrottleTime */	
-	DL_DECODE_THROTTLE_TIME(buffer, &fetch_response->dlfr_throttle_time);
+	rc |= DL_DECODE_THROTTLE_TIME(source,
+	    &fetch_response->dlfr_throttle_time);
 
         /* Decode the responses */	
 	SLIST_INIT(&fetch_response->dlfr_topics);
 
-	dl_bbuf_get_int32(buffer, &fetch_response->dlfr_ntopics);
+	rc |= dl_bbuf_get_int32(source, &fetch_response->dlfr_ntopics);
 	DL_ASSERT(fetch_response->dlfr_ntopics > 0,
 	    "Response array is not NULLABLE");
 
-	SLIST_INIT(&fetch_response->dlfr_topics);
-
 	for (response_it = 0; response_it < fetch_response->dlfr_ntopics;
 	    response_it++) {
+		
+		/* Decode the TopicName */
+		rc |= DL_DECODE_TOPIC_NAME(source, &topic_name);
+		
+		/* Decode the partition responses */	
+		rc |= dl_bbuf_get_int32(source, &nparts);
+		// TODO: need to check this to verify message is well formed
 
 		topic = (struct dl_fetch_response_topic *) dlog_alloc(
-		    sizeof(struct dl_fetch_response_topic));
-
-		/* Decode the TopicName */
-		DL_DECODE_TOPIC_NAME(buffer, &topic_name);
+		    sizeof(struct dl_fetch_response_topic) +
+		    (nparts * sizeof(struct dl_fetch_response_partition)));
+#ifdef _KERNEL
+		DL_ASSERT(topic != NULL,
+		    ("Failed to allocate FetchResponse.\n"));
+#else
+		if (topic == NULL) {
+			dl_fetch_response_delete(fetch_response);
+			dl_response_delete(response);
+			goto err_fetch_response;
+		}
+#endif
 
 		topic->dlfrt_topic_name = topic_name;
+		topic->dlfrt_npartitions = nparts;
 
-		/* Decode the partition responses */	
-		dl_bbuf_get_int32(buffer, &topic->dlfrt_npartitions);
-	
-		SLIST_INIT(&topic->dlfrt_partitions);
+		for (part = 0; part < nparts; part++) {
 
-		for (partition_response = 0;
-		    partition_response < topic->dlfrt_npartitions;
-		    partition_response++) {
-
-			partition = (struct dl_fetch_response_partition *)
-			    dlog_alloc(sizeof(
-				struct dl_fetch_response_partition));
+			partition = &topic->dlfrt_partitions[part];
 
 			/* Decode the Partition */
-			DL_DECODE_PARTITION(buffer,
-			    &partition->dlfrpr_partition);
+			rc |= DL_DECODE_PARTITION(source,
+			    &partition->dlfrp_partition);
 
 			/* Decode the ErrorCode */
-			DL_DECODE_ERROR_CODE(buffer,
-			    &partition->dlfrpr_error_code);
+			rc |= DL_DECODE_ERROR_CODE(source,
+			    &partition->dlfrp_error_code);
 
 			/* Decode the HighWatermark */
-		    	DL_DECODE_HIGH_WATERMARK(buffer,
-			    &partition->dlfrpr_high_watermark);
+		    	rc |= DL_DECODE_HIGH_WATERMARK(source,
+			    &partition->dlfrp_high_watermark);
 
 			/* Decode the MessageSet */
-			partition->dlfrp_message_set =
-			    dl_message_set_decode(buffer);
-		
-			SLIST_INSERT_HEAD(&topic->dlfrt_partitions, partition,
-			    dlfrp_entries);
+			rc |= dl_message_set_decode(
+			    &partition->dlfrp_message_set, source);
 		}
 
 		SLIST_INSERT_HEAD(&fetch_response->dlfr_topics, topic,
 		    dlfrt_entries);
 	}
-	return response;
+
+	if (rc == 0) {
+		/* FetchResponse successfully decoded. */
+		*self = response;
+		return 0;
+	}
+
+#ifndef _KERNEL
+err_fetch_response:
+#endif
+	DLOGTR0(PRIO_HIGH, "Failed decoding FetchResponse,\n");
+	*self = NULL;
+	return -1;
 }
 
 int
-dl_fetch_response_encode(struct dl_fetch_response *response,
+dl_fetch_response_encode(struct dl_fetch_response *self,
     struct dl_bbuf *target)
 {
 	struct dl_fetch_response_partition *partition;
 	struct dl_fetch_response_topic *topic;
-	int32_t response_it, partition_response, response_size = 0;
+	int32_t part;
+	int rc = 0;
+
+	DL_ASSERT(self != NULL, ("ProduceResponse cannot be NULL\n."));
+	DL_ASSERT(self->dlfr_ntopics > 0, "Response array is not NULLABLE");
+	DL_ASSERT((dl_bbuf_get_flags(target) & DL_BBUF_AUTOEXTEND) != 0,
+	    ("Target buffer must be auto-extending"));
 
 	/* Encode the ThrottleTime */	
-	DL_ENCODE_THROTTLE_TIME(target, response->dlfr_throttle_time);
+	rc |= DL_ENCODE_THROTTLE_TIME(target, self->dlfr_throttle_time);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 
-        /* Decode the responses */	
-	SLIST_INIT(&response->dlfr_topics);
+	rc |= dl_bbuf_put_int32(target, self->dlfr_ntopics);
+#ifdef _KERNEL
+	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
+#endif
 
-	DL_ASSERT(response->dlfr_ntopics > 0,
-	    "Response array is not NULLABLE");
-	dl_bbuf_put_int32(target, response->dlfr_ntopics);
-
-	SLIST_INIT(&response->dlfr_topics);
-
-	for (response_it = 0; response_it < response->dlfr_ntopics;
-	    response_it++) {
-
-		topic = (struct dl_fetch_response_topic *) dlog_alloc(
-		    sizeof(struct dl_fetch_response_topic));
+	SLIST_FOREACH(topic, &self->dlfr_topics, dlfrt_entries) {
 
 		/* Decode the TopicName */
-		DL_ENCODE_TOPIC_NAME(target, topic->dlfrt_topic_name);
+		rc |= DL_ENCODE_TOPIC_NAME(target, topic->dlfrt_topic_name);
+#ifdef _KERNEL
+		DL_ASSERT(rc == 0,
+		    ("Insert into autoextending buffer cannot fail."));
+#endif
 
 		/* Decode the partition responses */	
-		dl_bbuf_put_int32(target, topic->dlfrt_npartitions);
-	
-		SLIST_INIT(&topic->dlfrt_partitions);
+		rc |= dl_bbuf_put_int32(target, topic->dlfrt_npartitions);
+#ifdef _KERNEL
+		DL_ASSERT(rc == 0,
+		    ("Insert into autoextending buffer cannot fail."));
+#endif
 
-		for (partition_response = 0;
-		    partition_response < topic->dlfrt_npartitions;
-		    partition_response++) {
+		for (part = 0; part < topic->dlfrt_npartitions; part++) {
 
-			partition = (struct dl_fetch_response_partition *)
-			    dlog_alloc(sizeof(
-				struct dl_fetch_response_partition));
+			partition = &topic->dlfrt_partitions[part];
 
 			/* Decode the Partition */
-			DL_ENCODE_PARTITION(target,
-			    partition->dlfrpr_partition);
+			rc |= DL_ENCODE_PARTITION(target,
+			    partition->dlfrp_partition);
+#ifdef _KERNEL
+			DL_ASSERT(rc == 0,
+			    ("Insert into autoextending buffer cannot fail."));
+#endif
 
 			/* Decode the ErrorCode */
-		    	DL_ENCODE_ERROR_CODE(target,
-			    partition->dlfrpr_error_code);
+		    	rc |= DL_ENCODE_ERROR_CODE(target,
+			    partition->dlfrp_error_code);
+#ifdef _KERNEL
+			DL_ASSERT(rc == 0,
+			    ("Insert into autoextending buffer cannot fail."));
+#endif
 
 			/* Decode the HighWatermark */
-		    	DL_ENCODE_HIGH_WATERMARK(target,
-			    partition->dlfrpr_high_watermark);
+		    	rc |= DL_ENCODE_HIGH_WATERMARK(target,
+			    partition->dlfrp_high_watermark);
+
+#ifdef _KERNEL
+			DL_ASSERT(rc == 0,
+			    ("Insert into autoextending buffer cannot fail."));
+#endif
 
 			/* Encode the MessageSet */
-			dl_message_set_encode(partition->dlfrp_message_set,
-			    target);
-
-			SLIST_INSERT_HEAD(&topic->dlfrt_partitions, partition,
-			    dlfrp_entries);
+			rc |= dl_message_set_encode(
+			    partition->dlfrp_message_set, target);
+#ifdef _KERNEL
+			DL_ASSERT(rc == 0,
+			    ("Insert into autoextending buffer cannot fail."));
+#endif
 		}
-
-		SLIST_INSERT_HEAD(&response->dlfr_topics, topic,
-		    dlfrt_entries);
 	}
-	return response_size;
+
+	if (rc == 0)
+		return 0;
+
+	DLOGTR0(PRIO_HIGH, "Failed encoding FetchResponse.\n");
+	return -1;
 }

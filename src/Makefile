@@ -32,32 +32,33 @@
 .OBJDIR:= obj
 MK_AUTO_OBJ:= yes
 
+
+#dlog_broker.c \
+#	dl_broker_client.c \
+
+# dl_poll_reactor.c \
+
 LIB:= dlog
-SRCS= dlog_broker.c \
-	dlog_client.c \
-	dl_broker_client.c \
-	dl_broker_partition.c \
-	dl_broker_segment.c \
-	dl_broker_topic.c \
+SRCS= dlog_client.c \
 	dl_bbuf.c \
-	dl_config.c \
 	dl_correlation_id.c \
-	dl_resender.c \
 	dl_utils.c \
-	dl_transport.c \
 	dl_thread.c \
 	dl_fetch_request.c \
 	dl_fetch_response.c \
 	dl_list_offset_request.c \
 	dl_list_offset_response.c \
 	dl_message_set.c \
-	dl_poll_reactor.c \
+	dl_partition.c \
 	dl_primitive_types.c \
 	dl_produce_request.c \
 	dl_produce_response.c \
 	dl_request.c \
 	dl_request_queue.c \
 	dl_response.c \
+	dl_segment.c \
+	dl_transport.c \
+	dl_topic.c \
 	lookup3.c
 
 .include <bsd.lib.mk>

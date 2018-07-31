@@ -38,30 +38,50 @@
 #define _DL_REQUEST_QUEUE_H
 
 #include <sys/queue.h>
-#include <sys/tree.h>
 #include <sys/types.h>
 
 #include <stdint.h>
 
 #include "dl_bbuf.h"
 
-struct dl_request_q;
-
 STAILQ_HEAD(dl_request_queue, dl_request_element);
+
+struct dl_request_q {
+	struct dl_request_queue dlrq_requests;
+	struct dl_request_queue dlrq_unackd_requests;
+	pthread_mutex_t dlrq_mtx;
+	pthread_cond_t dlrq_cond;
+	uint32_t dlrq_len;
+	uint32_t dlrq_limit;
+};
+
+//struct dl_request_q;
+//struct dl_request_qit;
 
 struct dl_request_element {
 	STAILQ_ENTRY(dl_request_element) dlrq_entries;
-	RB_ENTRY(dl_request_element) dlrq_linkage;
-	struct dl_buffer *dlrq_buffer;
+	struct dl_bbuf *dlrq_buffer;
 	time_t dlrq_last_sent;
 	int32_t dlrq_correlation_id;
 	int16_t dlrq_api_key;
 };
 
-extern int dl_request_q_dequeue(struct dl_request_q *, struct dl_request_queue *);
-extern int dl_request_q_enqueue(struct dl_request_q *, struct dl_request_element *);
-extern int dl_request_q_enqueue_new(struct dl_request_q *, struct dl_bbuf *, int32_t, int16_t);
-extern void dl_request_q_delete(struct dl_request_q **);
-extern int dl_request_q_new(struct dl_request_q **);
+extern int dl_request_q_dequeue(struct dl_request_q *,
+    struct dl_request_element **);
+extern int dl_request_q_enqueue(struct dl_request_q *,
+    struct dl_request_element *);
+extern int dl_request_q_enqueue_new(struct dl_request_q *, struct dl_bbuf *,
+    int32_t, int16_t);
+extern int dl_request_q_new(struct dl_request_q **, uint32_t);
+extern void dl_request_q_delete(struct dl_request_q *);
+
+extern void dl_request_q_lock(struct dl_request_q *);
+extern void dl_request_q_unlock(struct dl_request_q *);
+
+//extern int dlrq_it_new(struct dl_request_q *);
+//extern int dlrq_unackid_it_new(struct dl_request_q *);
+//extern int dlrq_it_delete(struct dl_request_q *);
+//extern int dlrq_it_next(struct dl_request_q *);
+//extern int dlrq_it_has_next(struct dl_request_q *);
 
 #endif

@@ -29,6 +29,6 @@
 # SUCH DAMAGE.
 #
 
-SUBDIR= src tools tests
+SUBDIR= src konsumer tools test
 
 .include <bsd.subdir.mk>

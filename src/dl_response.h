@@ -37,32 +37,41 @@
 #ifndef _DL_RESPONSE_H
 #define _DL_RESPONSE_H
 
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
 #include <stdint.h>
+#endif
 
 #include "dl_bbuf.h"
 #include "dl_fetch_response.h"
 #include "dl_list_offset_response.h"
 #include "dl_produce_response.h"
 
-union dl_response_message {
-	struct dl_produce_response *dlrs_produce_message;
-	struct dl_fetch_response *dlrs_fetch_message;
-	struct dl_list_offset_response *dlrs_offset_message;
-};
-
+// TODO: don't think that this is really needed
 struct dl_response_header {
 	int32_t dlrsh_correlation_id;
 };
 
 struct dl_response {
-	union dl_response_message dlrs_message;
+	union {
+		struct dl_produce_response *dlrs_produce_response;
+		struct dl_fetch_response *dlrs_fetch_response;
+		struct dl_list_offset_response *dlrs_offset_response;
+	};
 	int32_t dlrs_correlation_id;
 	int16_t dlrs_api_key;
 };
 
-//extern int dl_decode_response(struct dl_response *, char *);
+/* Response createion/destruction API. */
+extern int dl_response_new(struct dl_response **, int16_t, int32_t);
+extern void dl_response_delete(struct dl_response const * const);
+
+/* Serialization/deserialization API. */
+extern int dl_response_decode(struct dl_response **,
+    struct dl_bbuf const * const);
+extern int32_t dl_response_encode(struct dl_response *, struct dl_bbuf **);
 extern int dl_response_header_decode(struct dl_response_header **,
     struct dl_bbuf *);
-extern int32_t dl_response_encode(struct dl_response *, struct dl_bbuf *);
 
 #endif

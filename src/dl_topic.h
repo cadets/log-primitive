@@ -38,31 +38,56 @@
 #define _DL_BROKER_TOPIC_H
 
 #include <sys/queue.h>
+#include <sys/sbuf.h>
 #include <sys/types.h>
 
-#ifdef KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sbuf.h>
-#endif
-
+#include "dl_bbuf.h"
+#include "dl_partition.h"
 #include "dl_protocol.h"
-#include "dl_broker_partition.h"
+#include "dl_request_queue.h"
+#include "dl_segment.h"
 
+struct dl_topic;
+
+LIST_HEAD(dl_topics, dl_topic);
+
+// TODO remove
 SLIST_HEAD(dl_partitions, dl_partition);
 
-struct dl_broker_topic {
-	LIST_ENTRY(dl_broker_topic) dlt_entries;
+struct dl_topic {
+	LIST_ENTRY(dl_topic) dlt_entries;
+// TODO remove
 	struct dl_partitions dlt_partitions;
 	u_int64_t dlt_offset; /* Current position in the log. */
-	struct sbuf *dlbt_topic_name;
-	//int dlt_npartitions;
-	//struct dl_partition dlt_partitions[1];
+	//u_int32_t dlp_offset; /* Relative offset into the log's active segment. */
+	struct sbuf *dlt_name;
+	struct dl_segments dlp_segments;
+	struct dl_segment *dlp_active_segment;
 };
 
-extern struct dl_broker_topic * dl_topic_new(struct sbuf *);
-extern void * dl_topic_hashinit(int, unsigned long *);
+struct dl_topic_desc {
+	struct dl_segment_desc dltd_active_seg;
+	char *dltd_name;
+};
 
-extern uint32_t hashlittle(const void *, size_t, uint32_t);
+extern void dl_topic_delete(struct dl_topic *);
+extern int dl_topic_new(struct dl_topic **, char *);
+extern int dl_topic_as_desc(struct dl_topic *, struct dl_topic_desc **);
+extern int dl_topic_from_desc(struct dl_topic **, struct sbuf *,
+    struct dl_segment_desc *);
+
+extern struct sbuf *dl_topic_get_name(struct dl_topic *);
+extern struct dl_segment *dl_topic_get_active_segment(struct dl_topic *);
+
+extern void dl_topic_hashmap_delete(void *);
+extern void * dl_topic_hashmap_new(int, unsigned long *);
+extern int dl_topic_hashmap_get(char const * const, struct dl_topic **);
+extern int dl_topic_hashmap_put(void *, struct dl_topic *);
+
+extern int dl_topic_produce_to(struct dl_topic *, struct dl_bbuf *); 
+
+extern unsigned long topic_hashmask;
+extern struct dl_topics *topic_hashmap;
+
 
 #endif

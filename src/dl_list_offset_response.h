@@ -38,23 +38,24 @@
 #define _DL_LIST_OFFSET_RESPONSE_H
 
 #include <sys/queue.h>
-#ifdef KERNEL
+#include <sys/types.h>
+
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
-#include <sbuf.h>
-#endif
-
+#include <sys/sbuf.h>
 #include <stdint.h>
+#endif
 
 #include "dl_bbuf.h"
 #include "dl_protocol.h"
+#include "dl_response.h"
+
+struct dl_response;
 
 SLIST_HEAD(dl_list_offset_response_topics, dl_list_offset_response_topic);
-SLIST_HEAD(dl_list_offset_response_partitions,
-    dl_list_offset_response_partition);
 
 struct dl_list_offset_response_partition {
-	SLIST_ENTRY(dl_list_offset_response_partition) dlorp_entries;
 	int32_t dlorp_partition;
 	int16_t dlorp_error_code;
 	int64_t dlorp_timestamp;
@@ -63,9 +64,9 @@ struct dl_list_offset_response_partition {
 
 struct dl_list_offset_response_topic {
 	SLIST_ENTRY(dl_list_offset_response_topic) dlort_entries;
-	struct dl_list_offset_response_partitions dlort_partitions;
-	int32_t dlort_npartitions;
 	struct sbuf *dlort_topic_name;
+	int32_t dlort_npartitions;
+	struct dl_list_offset_response_partition dlort_partitions[1];
 };
 
 struct dl_list_offset_response {
@@ -73,10 +74,13 @@ struct dl_list_offset_response {
 	int32_t dlor_ntopics;
 };
 
-extern struct dl_response * dl_list_offset_response_decode(struct dl_bbuf *);
+extern int dl_list_offset_response_new(struct dl_response **, 
+    const int32_t, struct sbuf *, int16_t, int64_t, int64_t);
+extern void dl_list_offset_response_delete(struct dl_list_offset_response *); 
+
+extern int dl_list_offset_response_decode(struct dl_response **,
+    struct dl_bbuf *);
 extern int32_t dl_list_offset_response_encode(struct dl_list_offset_response *,
     struct dl_bbuf *);
-extern struct dl_list_offset_response * dl_list_offset_response_new(char *,
-    int16_t, int64_t, int64_t);
 
 #endif

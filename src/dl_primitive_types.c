@@ -34,13 +34,13 @@
  *
  */
 
-#ifdef KERNEL
+#ifdef _KERNEL
+#include <sys/types.h>
 #include <sys/libkern.h>
 #else
+#include <stddef.h>
 #include <string.h>
 #endif
-
-#include <stddef.h>
 
 #include "dl_assert.h"
 // TODO: temporary
@@ -68,14 +68,18 @@ dl_decode_string(struct dl_bbuf *source, struct sbuf **target)
 	 */
 	if (dl_bbuf_get_int16(source, &slen) != 0)
 		return -1;
+
 	if (slen == DL_STRING_NULL) {
 		*target = NULL;
 	} else {
-		char * temp = (char *) dlog_alloc(sizeof(char) * slen);
+		int8_t * temp = (int8_t *) dlog_alloc(sizeof(int8_t) * slen);
+
 		/* TODO: Replace with bulk drain function in dl_bbuf */
 		for (int i = 0; i < slen; i++)
 			dl_bbuf_get_int8(source, &temp[i]);
-		*target = sbuf_new(NULL, temp, slen, SBUF_FIXEDLEN);
+		*target = sbuf_new(NULL, NULL, slen + 1, SBUF_FIXEDLEN);
+		sbuf_bcat(*target, temp, slen);
+		dlog_free(temp);
 	}
 	return 0;
 }
@@ -85,10 +89,11 @@ dl_decode_string(struct dl_bbuf *source, struct sbuf **target)
  * a value of -1 indicates a NULL string.
  */
 int
-dl_decode_bytes(char const * const target, int *target_len, struct dl_bbuf *source)
+dl_decode_bytes(unsigned char ** const target, int *target_len,
+    struct dl_bbuf *source)
 {
-	int bytes_len, decoded_len = 0;
 	int32_t nbytes;
+	int rc;
 
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
@@ -96,17 +101,30 @@ dl_decode_bytes(char const * const target, int *target_len, struct dl_bbuf *sour
 	/* Bytes are NULLABLE.
 	 * therefore first check whether there is a value to decode.
 	 */
-	dl_bbuf_get_int32(source, &nbytes);
+	rc = dl_bbuf_get_int32(source, &nbytes);
+	if (rc != 0)
+		return -1;
+
 	if (nbytes == DL_BYTES_NULL) {
 		*target_len = 0;
+		*target = NULL;
 		return 0;
-	} else {
-		*target_len = nbytes;
-		for (int i = 0; i < nbytes; i++) {
-			dl_bbuf_get_int8(source, target[i]);
-		}
 	}
-	return decoded_len;
+
+	*target = (int8_t *) dlog_alloc(nbytes * sizeof(int8_t));
+#ifdef _KERNEL
+	DL_ASSERT(*target != NULL, ("Failed allocating target buffer."));
+#else
+	if (*target == NULL)
+		return -1;
+#endif
+	*target_len = nbytes;
+
+	/* TODO: Replace with bulk drain function in dl_bbuf */
+	for (int i = 0; i < nbytes; i++) {
+		dl_bbuf_get_int8(source, target[i]);
+	}
+	return 0;
 }
 
 /**
@@ -115,18 +133,17 @@ dl_decode_bytes(char const * const target, int *target_len, struct dl_bbuf *sour
 int32_t
 dl_encode_string(struct dl_bbuf *target, struct sbuf *source)
 {
-	char *sval;
+
+	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 
 	if (source == NULL) {
-		dl_bbuf_put_int32(target, DL_BYTES_NULL);
+		dl_bbuf_put_int16(target, DL_STRING_NULL);
 	} else {
 		/* Prepended a 16bit value indicating the length (in bytes). */
 		if (dl_bbuf_put_int16(target, sbuf_len(source)) == 0) {
 
-			sval = sbuf_data(source);
-			for (int i = 0; i < sbuf_len(source); i++) {
-				dl_bbuf_put_int8(target, sval[i]);
-			}
+			/* Copy source bytes into the target buffer. */
+			dl_bbuf_scat(target, source);
 		} else {
 			return -1;
 		}
@@ -138,19 +155,19 @@ dl_encode_string(struct dl_bbuf *target, struct sbuf *source)
  * Encoded byte arrays are prefixed with their length (int32).
  */
 int
-dl_encode_bytes(char const * const source, const int32_t source_len,
+dl_encode_bytes(unsigned char const * const source, const int32_t source_len,
     struct dl_bbuf * target)
 {
 
 	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
 
-	if (source == NULL) 
+	if (source == NULL) {
 		dl_bbuf_put_int32(target, DL_BYTES_NULL);
-	else {
+	} else {
 		/* Prepend a 32bit value indicating the length (in bytes). */
 		dl_bbuf_put_int32(target, source_len);
 
-		/* Copy source_len bytes into the target buffer. */
+		/* Copy source_len bytes from source into the target buffer. */
 		dl_bbuf_bcat(target, source, source_len);
 	}
 	return 0;

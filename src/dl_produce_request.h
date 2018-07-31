@@ -40,10 +40,10 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
-#include <sbuf.h>
+#include <sys/sbuf.h>
 #endif
 
 #include "dl_bbuf.h"
@@ -72,10 +72,10 @@ struct dl_produce_request {
 };
 
 extern int dl_produce_request_new(struct dl_request **, const int32_t,
-    struct sbuf *, struct sbuf *, struct dl_message_set *);
-extern int dl_produce_request_new_empty(struct dl_request **, const int32_t,
-    struct sbuf *, struct sbuf *);
-extern void dl_produce_request_delete(struct dl_request *);
+    struct sbuf *, int16_t, int32_t, struct sbuf *, struct dl_message_set *);
+extern int dl_produce_request_new_nomsg(struct dl_request **,
+    const int32_t, struct sbuf *, int16_t, int32_t, struct sbuf *);
+extern void dl_produce_request_delete(struct dl_produce_request *);
 
 extern int dl_produce_request_decode(struct dl_produce_request **,
     struct dl_bbuf *);

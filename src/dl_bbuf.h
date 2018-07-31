@@ -37,28 +37,35 @@
 #ifndef _DL_BBUF_H
 #define _DL_BBUF_H
 
+#include <sys/types.h>
+#include <sys/sbuf.h>
+
+#ifndef _KERNEL
 #include <stdint.h>
+#endif
 
 enum dl_bbuf_flags {
-	DL_BBUF_AUTOEXTEND,
-	DL_BBUF_FIXEDLEN,
-	DL_BBUF_EXTERNBUF,
-	DL_BBUF_BIGENDIAN,
-	DL_BBUF_LITTLEENDIAN,
+	DL_BBUF_AUTOEXTEND = 0x01 << 0,
+	DL_BBUF_FIXEDLEN = 0x01 << 1,
+	DL_BBUF_EXTERNBUF = 0x01 << 2,
+	DL_BBUF_BIGENDIAN = 0x01 << 3,
+	DL_BBUF_LITTLEENDIAN = 0x01 << 4
 };
 typedef enum dl_bbuf_flags dl_bbuf_flags;
 
 struct dl_bbuf;
 
+extern void dl_bbuf_delete(struct dl_bbuf *);
 extern int dl_bbuf_new(struct dl_bbuf **, unsigned char *, int, int);
 extern int dl_bbuf_new_auto(struct dl_bbuf **);
-extern int dl_bbuf_bcat(struct dl_bbuf *, char * const, int);
+extern int dl_bbuf_bcat(struct dl_bbuf *, unsigned char const * const, int);
+extern int dl_bbuf_scat(struct dl_bbuf *, struct sbuf *);
 extern void dl_bbuf_clear(struct dl_bbuf *);
 extern int dl_bbuf_concat(struct dl_bbuf *, struct dl_bbuf *);
 extern unsigned char * dl_bbuf_data(struct dl_bbuf *);
 extern dl_bbuf_flags dl_bbuf_get_flags(struct dl_bbuf *);
 extern int dl_bbuf_flip(struct dl_bbuf *);
-extern int dl_bbuf_get_int8(struct dl_bbuf *, int8_t *);
+extern int dl_bbuf_get_int8(struct dl_bbuf *, int8_t * const);
 extern int dl_bbuf_get_int16(struct dl_bbuf *, int16_t *);
 extern int dl_bbuf_get_int32(struct dl_bbuf *, int32_t *);
 extern int dl_bbuf_get_int64(struct dl_bbuf *, int64_t *);

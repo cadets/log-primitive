@@ -38,13 +38,13 @@
 #define _DL_FETCH_REQUEST_H
 
 #include <sys/queue.h>
-#ifdef KERNEL
+#include <sys/types.h>
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
-#include <sbuf.h>
-#endif
-
 #include <stdint.h>
+#include <sys/sbuf.h>
+#endif
 
 #include "dl_bbuf.h"
 
@@ -62,7 +62,7 @@ struct dl_fetch_request_topic {
 	SLIST_ENTRY(dl_fetch_request_topic) dlfrt_entries;
 	struct sbuf *dlfrt_topic_name;
 	int32_t dlfrt_npartitions;
-	struct dl_fetch_request_partition dlfrt_partitions[1];
+	struct dl_fetch_request_partition dlfrt_partitions[];
 };
 
 struct dl_fetch_request {
@@ -73,9 +73,9 @@ struct dl_fetch_request {
 	int32_t dlfr_min_bytes;
 };
 
-extern struct dl_request * dl_fetch_request_new(const int32_t, struct sbuf *,
-    struct sbuf *, const int32_t, const int32_t,  const int64_t,
-    const int32_t);
+extern int dl_fetch_request_new(struct dl_request **, const int32_t,
+    struct sbuf *, struct sbuf *, const int32_t, const int32_t,
+    const int64_t, const int32_t);
 extern void dl_fetch_request_delete(struct dl_fetch_request *);
 
 extern int dl_fetch_request_decode(struct dl_fetch_request **, struct dl_bbuf *);

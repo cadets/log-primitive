@@ -44,20 +44,22 @@
 
 #include "dl_bbuf.h"
 
-struct dl_transport {
-#ifdef _KERNEL
-	struct socket *dlt_sock;
-#else
-	int dlt_sock;
-#endif
-};
+struct dl_transport;
+
+extern int dl_transport_new(struct dl_transport **);
+extern void dl_transport_delete(struct dl_transport *);
 
 extern int dl_transport_connect(struct dl_transport *,
     const char * const, const int);
+extern int dl_transport_reconnect(struct dl_transport *,
+    const char * const, const int);
+
 extern int dl_transport_read_msg(struct dl_transport *, struct dl_bbuf **);
 extern int dl_transport_send_request(struct dl_transport const *,
     struct dl_bbuf const *);
-extern int dl_transport_poll(struct dl_transport const *, int);
-extern int dl_transport_close();
+extern int dl_transport_poll(struct dl_transport const *, int, int);
+extern int dl_transport_close(void);
+
+extern int dl_transport_get_fd(struct dl_transport *);
 
 #endif

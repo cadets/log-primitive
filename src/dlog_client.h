@@ -38,53 +38,21 @@
 #ifndef _DLOG_CLIENT_H
 #define _DLOG_CLIENT_H
 
-#include <sys/queue.h>
-#include <sys/tree.h>
-#ifdef KERNEL
-#include <sys/sbuf.h>
 #include <sys/types.h>
-#else
-#include <sbuf.h>
-#include <stdbool.h>
-#endif
 
-#include "dl_response.h" 
-#include "dl_request.h"
 #include "dl_config.h"
 
 struct dlog_handle;
 
-/**
- * This function is invoked as a callback in case a disconnect on
- * TCP level is detected.
- */
-typedef void (*dl_on_server_closed_func)(void *, void *);
-
-struct dl_client_event_notifier {
-	/** An instance of the server owning the client.
-	 *  This instance shall be passed as an argument to the callbacks.
-	 */
-	void *server;
-
-	/** Specifies a callback to be used by the client to
-	 *  inform its server about a closed connection.
-	 */
-	dl_on_server_closed_func on_client_closed;
-
-	struct broker_configuration *dlben_conf;
-};
-
-extern int dlog_client_init();
-extern int dlog_client_fini();
-
-extern struct dlog_handle * dlog_client_open(struct sbuf *,
-    const int, struct dl_client_configuration const * const);
-extern int dlog_client_close(struct dlog_handle *);
+extern int dlog_client_open(struct dlog_handle **, 
+    struct dl_client_config const * const);
+extern void dlog_client_close(struct dlog_handle *);
 
 extern int dlog_fetch(struct dlog_handle *, struct sbuf *, 
     const int32_t, const int32_t,  const int64_t, const int32_t);
 extern int dlog_list_offset(struct dlog_handle *, struct sbuf *, int64_t);
-extern int dlog_produce(struct dlog_handle *, struct sbuf *, char *, int,
-    char *, int); 
+extern int dlog_produce(struct dlog_handle *, unsigned char *, size_t,
+    unsigned char *, size_t); 
+extern int dlog_produce_no_key(struct dlog_handle *, unsigned char *, size_t); 
 
 #endif

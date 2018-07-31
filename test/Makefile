@@ -29,9 +29,12 @@
 # SUCH DAMAGE.
 #
 
-ATF_TESTS_C= atf_dl_fetch_request
+PACKAGE=tests
+
+TESTSDIR=${TESTBASE}
+
 KYUAFILE= yes
 
-CFLAGS+= -I${SRCTOP}
+SUBDIR+=bbuf protocol
 
 .include <bsd.test.mk>

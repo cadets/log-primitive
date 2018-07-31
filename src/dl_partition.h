@@ -34,38 +34,30 @@
  *
  */
 
-#ifndef _DL_BROKER_SEGMENT_H
-#define _DL_BROKER_SEGMENT_H
-
-#ifdef KERNEL
-#include <sys/sbuf.h>
-#else
-#include <sbuf.h>
-#endif
+#ifndef _DL_BROKER_PARTITION_H
+#define _DL_BROKER_PARTITION_H
 
 #include <sys/types.h>
+#include <sys/sbuf.h>
 #include <sys/queue.h>
 
-SLIST_HEAD(dl_segments, dl_segment);
+#include "dl_event_handler.h"
+#include "dl_segment.h"
+#include "dl_topic.h"
 
-struct dl_segment {
-	SLIST_ENTRY(segment) dls_entries;
-	pthread_mutex_t mtx; /* Lock for segemnt whilst updating its log/index. */
-	u_int64_t base_offset; /* Start offset of the log. */
-	u_int32_t segment_size;
-	u_int64_t offset; /* Current position in the log. TODO remove */
-	int _log; /* Segement's log file descriptor. */
-	int _index; /* Segment's index file descriptor. */
-	off_t last_sync_pos;
+struct dl_partition {
+	SLIST_ENTRY(dl_partition) dlp_entries;
+	u_int32_t dlp_offset; /* Relative offset into the log's active segment. */
+	struct dl_segments dlp_segments;
+	struct dl_segment *dlp_active_segment;
+	int _klog;
+	struct dl_event_handler event_handler;
 };
 
-extern struct dl_segment * dl_segment_new_default(struct sbuf *);
-extern struct dl_segment * dl_segment_new_default_sized(long int, struct sbuf *);
-extern struct dl_segment * dl_segment_new(long int, long int, struct sbuf *);
-extern void dl_segment_close(struct dl_segment *);
-extern int dl_segment_insert_message(struct dl_segment *, char *, int);
-extern int dl_segment_get_message_by_offset(struct dl_segment *, int, void *);
-extern void dl_segment_lock(struct dl_segment *);
-extern void dl_segment_unlock(struct dl_segment *);
+static const int32_t DL_DEFAULT_PARTITION = 0;
+
+extern void dl_partition_delete(struct dl_partition *);
+extern int dl_partition_new(struct dl_partition **, struct sbuf *);
+extern int dl_partition_new2(struct dl_partition **, struct dl_segment_desc *);
 
 #endif

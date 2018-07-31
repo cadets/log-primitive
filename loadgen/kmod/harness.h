@@ -34,73 +34,11 @@
  *
  */
 
-#ifdef KERNEL
-#include <sys/hash.h>
+#ifndef _HARNESS_H
+#define _HARNESS_H
+
+#include <sys/ioccom.h>
+	
+#define HARNESSIOC_REGDLOG _IOWR('d', 1, struct dl_client_config)
+
 #endif
-
-#include <stddef.h>
-
-#include "dl_assert.h"
-#include "dl_broker_topic.h"
-#include "dl_memory.h"
-#include "dl_utils.h"
-
-void *
-dl_topic_hashinit(int elements, unsigned long *hashmask)
-{
-	long hashsize;
-	LIST_HEAD(dl_broker_topics, dl_broker_topic) *hashtbl;
-	int i;
-
-	DL_ASSERT(elements > 0, ("Elements in hash table must be > 0."));
-
-	for (hashsize = 1; hashsize <= elements; hashsize <<= 1)
-		continue;
-	hashsize >>= 1;
-
-	hashtbl = dlog_alloc((unsigned long) hashsize * sizeof(*hashtbl));
-	if (hashtbl != NULL) {
-		for (i = 0; i < hashsize; i++)
-			LIST_INIT(&hashtbl[i]);
-		*hashmask = hashsize -1;
-	}
-
-	return hashtbl;
-}
-
-struct dl_broker_topic *
-dl_topic_new(struct sbuf *topic_name)
-{
-	struct dl_partition *partition;
-	struct dl_broker_topic *topic;
-	struct sbuf *tname;
-		
-	topic = (struct dl_broker_topic *) dlog_alloc(
-	    sizeof(struct dl_broker_topic));
-#ifdef KERNEL
-	DL_ASSERT(partition != NULL, ("Failed allocating topic."));
-	{
-#else
-	if (topic != NULL) {
-#endif
-		tname = sbuf_new_auto();
-		sbuf_cpy(tname, sbuf_data(topic_name));
-
-		SLIST_INIT(&topic->dlt_partitions);
-		topic->dlbt_topic_name = topic_name;
-
-		if (dl_partition_new(&partition, topic_name) == 0) {
-
-			topic->dlt_offset = 0;
-			SLIST_INSERT_HEAD(&topic->dlt_partitions, partition,
-			    dlp_entries);
-
-		} else {
-			DLOGTR0(PRIO_HIGH,
-			    "Error instantiating default partition\n");
-			dlog_free(topic);
-			topic = NULL;
-		}
-	}
-	return topic;
-}

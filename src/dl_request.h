@@ -37,13 +37,12 @@
 #ifndef _DL_REQUEST_H
 #define _DL_REQUEST_H
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
-#include <sbuf.h>
-#endif
-
+#include <sys/sbuf.h>
 #include <stdint.h>
+#endif
 
 #include "dl_bbuf.h"
 #include "dl_fetch_request.h"

@@ -36,16 +36,15 @@
 #include <sys/socket.h>
 #include <sys/queue.h>
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/libkern.h>
 #else
 #include <string.h>
-#endif
-
 #include <netinet/in.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_broker_client.h"

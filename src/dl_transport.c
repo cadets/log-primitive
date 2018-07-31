@@ -40,11 +40,24 @@
 #include <sys/uio.h>
 
 #ifdef _KERNEL
+#include <netinet/in.h>
+#include <sys/param.h>
+#include <sys/lock.h>
+#include <sys/mutex.h>
+#include <sys/socket.h>
+#include <sys/socketvar.h>
+#include <sys/systm.h>
+#include <sys/types.h>
+#include <sys/uio.h>
 #include <sys/sbuf.h>
+#include <sys/proc.h>
+#include <sys/kthread.h>
 #else
 #include <arpa/inet.h>
+#include <netinet/in.h>
 #include <netinet/ip.h>
 #include <strings.h>
+#include <stddef.h>
 #endif
 
 #include "dl_assert.h"
@@ -54,14 +67,56 @@
 #include "dl_transport.h"
 #include "dl_utils.h"
 
+struct dl_transport {
+	int dlt_fd;
+};
+
+int
+dl_transport_new(struct dl_transport **self)
+{
+	struct dl_transport *transport;
+
+	DL_ASSERT(self != NULL, ("Transport instance cannot be NULL"));
+       
+	transport = (struct dl_transport *) dlog_alloc(
+	    sizeof(struct dl_transport));
+#ifdef _KERNEL
+	DL_ASSERT(transport != NULL ,
+	    ("Failed to allocate transport instance"));
+#else
+	if (transport == NULL) {
+
+		DLOGTR0(PRIO_HIGH, "Failed to allocate transport instance\n");
+		return -1;
+	}
+#endif
+	bzero(transport, sizeof(struct dl_transport));
+#ifdef _KERNEL
+	transport->dlt_fd = NULL;
+#else
+	transport->dlt_fd = -1;
+#endif
+
+	*self = transport;
+	return 0;
+}
+
+void dl_transport_delete(struct dl_transport *self)
+{
+	DL_ASSERT(self != NULL, ("Transport instance cannot be NULL"));
+
+	// Disconnect and free?
+	dlog_free(self);
+}
+
 int
 dl_transport_connect(struct dl_transport *self,
     const char * const hostname, const int portnumber)
 {
 	struct sockaddr_in dest;
-	int sockfd = -1;
+	int rc;
 
-	DL_ASSERT(self != NULL, "Transport instance cannot be NULL\n");
+	DL_ASSERT(self != NULL, ("Transport instance cannot be NULL"));
 
 	bzero(&dest, sizeof(dest));
 	dest.sin_family = AF_INET;
@@ -70,31 +125,34 @@ dl_transport_connect(struct dl_transport *self,
 #ifdef _KERNEL
 	struct thread *td = curthread;
 
- 	socreate(AF_INET, &transport->dlt_sock, SOCK_STREAM, IPPROTO_TCP, td->td_ucred, td);
+ 	rc = socreate(AF_INET, &self->dlt_fd, SOCK_STREAM, IPPROTO_TCP,
+	    td->td_ucred, td);
+	DLOGTR1(PRIO_LOW, "socreate = %d\n", rc);
 	// TODO: error checking
-	
-	// soconnect(int dom, struct socket **aso, int	type, int proto,
-	// 	 struct	ucred *cred, struct thread *td);
+
+	dest.sin_len = sizeof(struct sockaddr_in);	
+	//dest.sin_addr.s_addr = htonl((((((127 << 8) | 0) << 8) | 0) << 8) | 1);
+	dest.sin_addr.s_addr = htonl((((((192 << 8) | 168) << 8) | 100) << 8) | 11);
+	rc = soconnect(self->dlt_fd, (struct sockaddr *) &dest, td);
+	DLOGTR1(PRIO_LOW, "soconnect = %d\n", rc);
 	// TODO: error checking
 #else
-	self->dlt_sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (self->dlt_sock == -1)
+	self->dlt_fd = socket(AF_INET, SOCK_STREAM|SOCK_NONBLOCK, 0);
+	if (self->dlt_fd == -1)
 		return -1;
 
 	if (inet_pton(AF_INET, hostname, &(dest.sin_addr)) == 0)
 		return -2;
 
-	if (connect(self->dlt_sock, (struct sockaddr *) &dest,
-	    sizeof(dest)) < 0)
-		return -3;
+	rc = connect(self->dlt_fd, (struct sockaddr *) &dest, sizeof(dest));
 #endif
-	return sockfd;
+	return rc;
 }
 
 int
 dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 {
-	struct dl_request_or_response *req_or_res;
+	const unsigned char *buffer;
 	int ret, total = 0;
 	int32_t msg_size;
 	
@@ -103,35 +161,63 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 
 	/* Read the size of the request or response to process. */
 #ifdef _KERNEL
-	//soreceive
+	struct thread *td = curthread;
+	struct iovec iov[1];
+	struct uio u;
+
+	iov[0].iov_base = &msg_size;
+	iov[0].iov_len = sizeof(int32_t);
+
+	bzero(&u, sizeof(struct uio));
+	u.uio_iov = iov;
+	u.uio_iovcnt = 1;
+	u.uio_offset = 0;
+        u.uio_resid = sizeof(int32_t);
+        u.uio_segflg  = UIO_SYSSPACE;
+        u.uio_rw = UIO_READ;
+        u.uio_td = td;
+
+	ret = soreceive(self->dlt_fd, NULL, &u, NULL, NULL, NULL);
 #else
-	ret = recv(self->dlt_sock, &msg_size, sizeof(int32_t), 0);
-	msg_size = be32toh(msg_size);
+	ret = recv(self->dlt_fd, &msg_size, sizeof(int32_t), 0);
 #endif
-	DLOGTR2(PRIO_LOW, "Read %d bytes (%p)...\n", ret, msg_size);
+	msg_size = be32toh(msg_size);
+	DLOGTR2(PRIO_LOW, "Read %d bytes (%d)...\n", ret, msg_size);
 	if (ret == 0) {
 		/* Peer has closed connection */
 	} else if (ret > 0) {
 		DLOGTR1(PRIO_LOW, "\tNumber of bytes: %d\n", msg_size);
 
-		char *buffer = dlog_alloc(sizeof(char) * msg_size);
+		buffer = dlog_alloc(sizeof(char) * msg_size);
+		// TODO: error handling
 		dl_bbuf_new(target, NULL, msg_size,
 			DL_BBUF_FIXEDLEN | DL_BBUF_BIGENDIAN);
 
 		while (total < msg_size) {
-			total += ret = recv(self->dlt_sock, buffer,
+#ifdef _KERNEL
+			iov[0].iov_base = buffer;
+			iov[0].iov_len = msg_size-total;
+
+			bzero(&u, sizeof(struct uio));
+			u.uio_iov = iov;
+			u.uio_iovcnt = 1;
+			u.uio_offset = 0;
+			u.uio_resid = sizeof(int32_t);
+			u.uio_segflg  = UIO_SYSSPACE;
+			u.uio_rw = UIO_READ;
+			u.uio_td = td;
+
+			total += ret = soreceive(self->dlt_fd, NULL, &u,
+			    NULL, NULL, NULL);
+#else
+			total += ret = recv(self->dlt_fd, buffer,
 				msg_size-total, 0);
-			DLOGTR2(PRIO_LOW,
-				"\tRead %d characters; expected %d\n",
-				ret, msg_size);
+#endif
+			DLOGTR2(PRIO_LOW, "\tRead %d characters; expected %d\n",
+			    ret, msg_size);
 			dl_bbuf_bcat(*target, buffer, ret);
 		}
 		dlog_free(buffer);
-
-		for (int b = 0; b < msg_size; b++) {
-			DLOGTR1(PRIO_LOW, "<0x%02hhX>", buffer[b]);
-		}
-		DLOGTR0(PRIO_LOW, "\n");
 
 		return 0;
 	} else {
@@ -160,7 +246,7 @@ dl_transport_send_request(const struct dl_transport *self,
 
 #ifdef _KERNEL
 	struct thread *td = curthread;
-	struct uio *u;
+	struct uio u;
 
 	bzero(&u, sizeof(struct uio));
 	u.uio_iov = iov;
@@ -171,29 +257,35 @@ dl_transport_send_request(const struct dl_transport *self,
         u.uio_rw = UIO_WRITE;
         u.uio_td = td;
 
-	return sosend(self->dlt_sock, NULL, u, NULL, NULL, 0, td);
+	return sosend(self->dlt_fd, NULL, &u, NULL, NULL, 0, td);
 #else
-	return writev(self->dlt_sock, iov, 2);
+	return writev(self->dlt_fd, iov, 2);
 #endif
 }
 
 int
-dl_transport_poll(const struct dl_transport *self, int timeout)
+dl_transport_poll(const struct dl_transport *self, int events, int timeout)
 {
 #ifdef _KERNEL
+	struct thread *td = curthread;
 #else
 	struct pollfd ufd;
+
+	ufd.fd = self->dlt_fd;
+	ufd.events = events;
 #endif
 
 	DL_ASSERT(self != NULL, "Transport instance cannot be NULL");
 
 #ifdef _KERNEL
-	//return sopoll(struct socket *so, int events, struct ucred
-	//*active_cred, structthread *td);
+	return sopoll(self->dlt_fd, events, td->td_ucred, td);
 #else
-	ufd.fd = self->dlt_sock;
-	ufd.events = POLLIN;
-
 	return poll(&ufd, 1, timeout);
 #endif
+}
+
+int
+dl_transport_get_fd(struct dl_transport *self)
+{
+	return self->dlt_fd;
 }

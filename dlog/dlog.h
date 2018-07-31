@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017 (Ilia Shumailov)
+ * Copyright (c) 2018 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,15 +34,15 @@
  *
  */
 
-#include <stdio.h>
+#ifndef _DLOG_H
+#define _DLOG_H
 
-#include "dl_config.h"
+#include <sys/ioccom.h>
+	
+#define DLOGIOC_PRODUCER _IOWR('d', 1, struct dl_client_config)
+#define DLOGIOC_ADDTOPICPART _IOWR('d', 2, struct dl_client_config)
+#define DLOGIOC_DELTOPICPART _IOWR('d', 3, struct dl_client_config)
+#define DLOGIOC_ADDSEG _IOWR('d', 4, struct dl_client_config)
+#define DLOGIOC_DELSEG _IOWR('d', 5, struct dl_client_config)
 
-void
-print_configuration(struct broker_configuration *bc)
-{
-	printf("Fsync thread sleep len:\t%d\n"
-	    "Proc thread sleep len:\t%d\nVal:\t%d\n",
-	    bc->fsync_thread_sleep_length,
-	    bc->processor_thread_sleep_length, bc->val);
-}
+#endif

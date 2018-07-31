@@ -38,15 +38,16 @@
 #define _DL_LIST_OFFSET_REQUEST_H
 
 #include <sys/queue.h>
-#ifdef KERNEL
+#include <sys/types.h>
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
-#include <sbuf.h>
+#include <sys/sbuf.h>
+#include <stdint.h>
 #endif
 
-#include <stdint.h>
-
 #include "dl_bbuf.h"
+#include "dl_request.h"
 
 struct dl_request;
 
@@ -70,9 +71,9 @@ struct dl_list_offset_request {
 	int32_t dlor_replica_id;
 };
 
-extern struct dl_request * dl_list_offset_request_new(int32_t, struct sbuf *,
-    struct sbuf *, int64_t);
-extern void dl_list_offset_request_delete(struct dl_request *);
+extern int dl_list_offset_request_new(struct dl_request **, int32_t,
+    struct sbuf *, struct sbuf *, int64_t);
+extern void dl_list_offset_request_delete(struct dl_list_offset_request *);
 
 extern int dl_list_offset_request_decode(struct dl_list_offset_request **, 
     struct dl_bbuf *);

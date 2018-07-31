@@ -38,14 +38,15 @@
 #define _DL_PRODUCE_RESPONSE_H
 
 #include <sys/queue.h>
+#include <sys/types.h>
 
-#ifdef KERNEL
+#ifdef _KERNEL
 #include <sys/sbuf.h>
 #else
-#include <sbuf.h>
-#endif
-
+#include <sys/sbuf.h>
+#include <stddef.h>
 #include <stdint.h>
+#endif
 
 #include "dl_bbuf.h"
 #include "dl_response.h"
@@ -60,8 +61,8 @@ struct dl_produce_response_partition {
 
 struct dl_produce_response_topic {
 	SLIST_ENTRY(dl_produce_response_topic) dlprt_entries;
-	int32_t dlprt_npartitions;
 	struct sbuf* dlprt_topic_name;
+	int32_t dlprt_npartitions;
 	struct dl_produce_response_partition dlprt_partitions[1];
 };	
 
@@ -74,7 +75,8 @@ struct dl_produce_response {
 extern int dl_produce_response_decode(struct dl_response **, struct dl_bbuf *);
 extern int32_t dl_produce_response_encode(struct dl_produce_response *,
     struct dl_bbuf *);
-struct dl_produce_response * dl_produce_response_new(char *, int32_t, int64_t,
-    int16_t);
+extern int dl_produce_response_new(struct dl_response **, int32_t,
+    struct sbuf *, int32_t, int64_t, int16_t);
+extern void dl_produce_response_delete(struct dl_produce_response *);
 
 #endif

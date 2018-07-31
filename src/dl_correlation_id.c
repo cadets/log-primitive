@@ -42,38 +42,58 @@
 #include <machine/atomic.h>
 #endif
 
+#ifdef _KERNEL
+#include <sys/types.h>
+#else
+#include <stddef.h>
 #include <stdint.h>
+#endif
 
 #include "dl_assert.h"
 #include "dl_correlation_id.h"
 #include "dl_memory.h"
+#include "dl_utils.h"
 
 struct dl_correlation_id
 {
 #ifdef __APPLE__
 	atomic_int_least32_t val;
 #else
-	int32_t val;
+	volatile uint32_t val;
 #endif
 };
 
-struct dl_correlation_id *
-dl_correlation_id_new()
+int
+dl_correlation_id_new(struct dl_correlation_id **self)
 {
-	struct dl_correlation_id *cid = (struct dl_correlation_id *)
+	struct dl_correlation_id *cid;
+	
+	DL_ASSERT(self != NULL, ("Correlation ID cannot be NULL"));
+       
+	cid = (struct dl_correlation_id *)
 	    dlog_alloc(sizeof(struct dl_correlation_id));
-#ifdef __APPLE__
-	atomic_init(&cid->val, 0);
+#ifdef _KERNEL
+	DL_ASSERT(cid != NULL, ("Failed to allocate Correlation Id."));
+	{
 #else
-	cid->val = 0;
+	if (cid != NULL) {
 #endif
-	return cid;
+#ifdef __APPLE__
+		atomic_init(&cid->val, 0);
+#else
+		cid->val = 0;
+#endif
+		*self = cid;
+		return 0;
+	}
+	DLOGTR0(PRIO_HIGH, "Failed to allocate Correlation Id\n.");
+	return -1;
 }
 
 int32_t
 dl_correlation_id_inc(struct dl_correlation_id * self)
 {
-	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
+	DL_ASSERT(self != NULL, ("Correlation ID cannot be NULL"));
 
 #ifdef __APPLE__
 	return atomic_fetch_add(&self->val, 1);
@@ -86,7 +106,7 @@ dl_correlation_id_inc(struct dl_correlation_id * self)
 int32_t
 dl_correlation_id_val(struct dl_correlation_id *self)
 {
-	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
+	DL_ASSERT(self != NULL, ("Correlation ID cannot be NULL"));
 
 #ifdef __APPLE__
 	return atomic_load(&self->val);
@@ -96,9 +116,9 @@ dl_correlation_id_val(struct dl_correlation_id *self)
 }
 
 void
-dl_correlation_id_fini(struct dl_correlation_id *self)
+dl_correlation_id_delete(struct dl_correlation_id *self)
 {
-	DL_ASSERT(self != NULL, "Correlation ID cannot be NULL");
+	DL_ASSERT(self != NULL, ("Correlation ID cannot be NULL"));
 
 	dlog_free(self);
 }
