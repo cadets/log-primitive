@@ -80,17 +80,17 @@ dl_partition_handle_kq(void *instance, int revents)
 		    errno);
 	else {
 		dl_segment_lock(segment);
-		log_position = lseek(segment->_log, 0, SEEK_END);
+		log_position = lseek(dl_segment_get_log(segment), 0, SEEK_END);
 		DLOGTR2(PRIO_LOW, "log_position = %d, last_sync_pos = %d\n",
-		    log_position, segment->last_sync_pos);
-		if (log_position - segment->last_sync_pos >
+		    log_position, dl_segment_get_last_sync_pos(segment));
+		if (log_position - dl_segment_get_last_sync_pos(segment) >
 		    DL_FSYNC_DEFAULT_CHARS) {
 
 			DLOGTR0(PRIO_NORMAL, "Syncing the index and log...\n");
 
-			fsync(segment->_log);
-			fsync(segment->_index);
-			segment->last_sync_pos = log_position;
+			fsync(dl_segment_get_log(segment));
+			//fsync(dl_segment_get_idx(segment));
+			dl_segment_set_last_sync_pos(segment, log_position);
 		}
 		dl_segment_unlock(segment);
 	}
@@ -113,6 +113,7 @@ dl_partition_delete(struct dl_partition *self)
 	dlog_free(self);
 }
 
+#ifndef _KERNEL
 int
 dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 {
@@ -144,8 +145,8 @@ dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 		dl_del_folder(partition_name);
 		dl_make_folder(partition_name);
 
-		partition->dlp_active_segment =
-		    dl_segment_new_default(partition_name);
+		dl_segment_new_default(&partition->dlp_active_segment,
+		    partition_name);
 #ifdef _KERNEL
 		DL_ASSERT(partition->dlp_active_segment != NULL,
 		    ("Failed allocating partition segment."));
@@ -166,7 +167,8 @@ dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 #ifndef _KERNEL
 			partition->_klog = kqueue();
 // TODO error handling
-			EV_SET(&event, partition->dlp_active_segment->_log,
+			EV_SET(&event,
+			    dl_segment_get_log(partition->dlp_active_segment),
 			    EVFILT_VNODE, EV_ADD | EV_CLEAR, NOTE_WRITE, 0,
 			    NULL);
 			kevent(partition->_klog, &event, 1, NULL, 0, NULL); 
@@ -183,6 +185,7 @@ dl_partition_new(struct dl_partition **self, struct sbuf *topic_name)
 	DLOGTR0(PRIO_HIGH, "Failed allocating partition.\n");
 	return -1;
 }
+#endif
 
 int
 dl_partition_new2(struct dl_partition **self,
@@ -204,7 +207,7 @@ dl_partition_new2(struct dl_partition **self,
 #endif
 		SLIST_INIT(&partition->dlp_segments);
 
-		dl_segment_new_from_desc(&partition->dlp_active_segment,
+		dl_segment_from_desc(&partition->dlp_active_segment,
 		    seg_desc);
 #ifdef _KERNEL
 		DL_ASSERT(partition->dlp_active_segment != NULL,
@@ -226,20 +229,11 @@ dl_partition_new2(struct dl_partition **self,
 #ifndef _KERNEL
 			partition->_klog = kqueue();
 // TODO error handling
-			EV_SET(&event, partition->dlp_active_segment->_log,
-			    EVFILT_VNODE, EV_ADD | EV_CLEAR, NOTE_WRITE, 0,
+			EV_SET(&event,
+			    dl_segment_get_log(partition->dlp_active_segment),
+			   EVFILT_VNODE, EV_ADD | EV_CLEAR, NOTE_WRITE, 0,
 			    NULL);
 			kevent(partition->_klog, &event, 1, NULL, 0, NULL); 
-// TODO error handling
-			partition->event_handler.dleh_instance = partition;
-			partition->event_handler.dleh_get_handle =
-			    dl_partition_get_kq;
-			partition->event_handler.dleh_handle_event =
-			    dl_partition_handle_kq;
-
-			/* Register the topic's active partition with the poll reactor. */
-			//dl_poll_reactor_register(&partition->event_handler);
-// TODO error handling
 #endif
 
 			*self = partition;

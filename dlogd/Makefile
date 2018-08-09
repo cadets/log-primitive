@@ -41,6 +41,7 @@ DLOG_SRCS= dl_bbuf.c \
 	dl_correlation_id.c \
 	dl_fetch_request.c \
 	dl_fetch_response.c \
+	dl_index.c \
 	dl_list_offset_request.c \
 	dl_list_offset_response.c \
 	dl_message_set.c \

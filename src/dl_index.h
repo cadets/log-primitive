@@ -37,12 +37,15 @@
 #ifndef _DL_INDEX_H
 #define _DL_INDEX_H
 
+#include <sys/sbuf.h>
+
 struct dl_index;
 struct dl_segment;
 
-extern int dl_index_new(struct dl_index **, struct dl_segment *);
+extern int dl_index_new(struct dl_index **, struct dl_segment *, struct sbuf *);
 extern void dl_index_delete(struct dl_index *);
 
 extern void dl_index_update(struct dl_index *); 
+extern off_t dl_index_lookup(struct dl_index *, int); 
 
 #endif

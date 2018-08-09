@@ -318,8 +318,10 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 
 			LIST_INSERT_HEAD(&topic_hashmap[h & topic_hashmask], t,
 			    dlt_entries); 
+			// TODO maybe taken ownership of the sbuf
 			sbuf_delete(tp_name);
 		} else {
+			// TODO maybe taken ownership of the sbuf
 			sbuf_delete(tp_name);
 			return -1;
 		}
@@ -432,6 +434,8 @@ dl_client_close(void *arg)
 	struct dlog_handle *handle = (struct dlog_handle *) arg;
 
 	DL_ASSERT(handle != NULL, ("DLog client handle cannot be NULL."));
+
+	DLOGTR0(PRIO_LOW, "Closing DLog producer.\n");
 	dlog_client_close(handle);
 }
 

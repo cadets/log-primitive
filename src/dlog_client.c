@@ -190,7 +190,7 @@ dlog_client_close(struct dlog_handle *self)
 	nvlist_destroy(props);
 
 	/* Free the client configuration. */
-	dlog_free( self->dlh_config);
+	dlog_free(self->dlh_config);
 
 	/* Free all the memory associated with the client handle. */
 	dlog_free(self);	

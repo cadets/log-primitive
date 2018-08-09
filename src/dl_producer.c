@@ -109,7 +109,7 @@ static void dl_producer_timer_handler(void *instance, int, int);
 static void *dlp_produce_thread(void *vargp);
 static void *dlp_resender_thread(void *vargp);
 
-static const off_t DL_FSYNC_DEFAULT_CHARS = 100;
+static const off_t DL_FSYNC_DEFAULT_CHARS = 1024*1024;
 static const int NOTIFY_IDENT = 1337;
 static const int DLP_MINRECONN_MS = 1000;
 static const int DLP_MAXRECONN_MS = 60000;
@@ -117,6 +117,7 @@ static const int DLP_MAXRECONN_MS = 60000;
 static inline void 
 dl_producer_check_integrity(struct dl_producer const * const self)
 {
+
 	DL_ASSERT(self != NULL, ("Producer instance cannot be NULL."));
 	DL_ASSERT(self->dlp_cid != NULL,
 	    ("Producer correlation id cannot be NULL."));
@@ -126,55 +127,6 @@ dl_producer_check_integrity(struct dl_producer const * const self)
 	    ("Producer topic cannot be NULL."));
 	DL_ASSERT(self->dlp_name != NULL,
 	    ("Producer instance cannot be NULL."));
-}
-
-// TODO: Create an abstraction for creating the log index
-static void
-dlp_update_index(struct dl_producer *self)
-{
-	struct dl_segment *seg;
-	struct iovec index_bufs[2];
-	uint32_t o, s, t, x, tmp;
-	off_t log_end;
-	int rc;
-	
-	dl_producer_check_integrity(self);
-	
-	seg = dl_topic_get_active_segment(self->dlp_topic);
-	DL_ASSERT(seg != NULL, ("Topic's active segment cannot be NULL"));
-
-	/* Create the index. */
-	log_end = lseek(seg->_log, 0, SEEK_END);
-
-	lseek(seg->_index, 0, SEEK_END);
-	tmp = seg->last_sync_pos;
-	while (tmp < log_end) {
-		DLOGTR2(PRIO_NORMAL, "tmp = %zu log end =%zu\n", tmp, log_end);
-		lseek(seg->_log, tmp, SEEK_SET);
-
-		index_bufs[0].iov_base = &o;
-		index_bufs[0].iov_len = sizeof(uint32_t);
-
-		index_bufs[1].iov_base = &s;
-		index_bufs[1].iov_len = sizeof(uint32_t);
-
-		rc = readv(seg->_log, index_bufs, 2);	
-		DLOGTR2(PRIO_NORMAL, "o = %zu s =%zu\n",
-		    be32toh(o), be32toh(s));
-
-		index_bufs[0].iov_base = &o;
-		index_bufs[0].iov_len = sizeof(uint32_t);
-
-		t = htobe32(tmp);
-		index_bufs[1].iov_base = &t;
-		index_bufs[1].iov_len = sizeof(uint32_t);
-
-		writev(seg->_index, index_bufs, 2);	
-		
-		tmp += 2 * sizeof(uint32_t);
-		tmp += be32toh(s);
-	}
-	seg->last_sync_pos = log_end;
 }
 
 static dl_event_handler_handle
@@ -273,6 +225,7 @@ dlp_transport_hdlr(void *instance, int fd, int revents)
 					STAILQ_REMOVE_HEAD(
 					    &self->dlp_request_q->dlrq_unackd_requests,
 					    dlrq_entries);
+					self->dlp_request_q->dlrq_len--;
 					dlog_free(request);
 
 					/* Invoke the client callback. */
@@ -376,15 +329,14 @@ dl_producer_kq_handler(void *instance, int fd, int revents)
 		if (log_position - seg->last_sync_pos >
 		    DL_FSYNC_DEFAULT_CHARS) {
 
-			DLOGTR0(PRIO_NORMAL, "Syncing the index and log...\n");
-			DLOGTR2(PRIO_LOW,
-			    "log_position = %d, last_sync_pos = %d\n",
-			    log_position, seg->last_sync_pos);
+			//DLOGTR0(PRIO_NORMAL, "Syncing the index and log...\n");
+			//DLOGTR2(PRIO_LOW,
+			//    "log_position = %d, last_sync_pos = %d\n",
+			//    log_position, seg->last_sync_pos);
 
 			dl_segment_lock(seg);
-			dlp_update_index(instance);
+			dl_index_update(seg->dls_idx);
 			fsync(seg->_log);
-			fsync(seg->_index);
 			dl_segment_unlock(seg);
 
 			dl_producer_produce(p);
@@ -525,6 +477,11 @@ dlp_produce_thread(void *vargp)
 			    self->dlp_transport, request->dlrq_buffer);
 			if (nbytes != -1) {
 
+				DLOGTR2(PRIO_LOW,
+				    "Successfully sent request "
+				    "(nbytes = %zu, bytes = %zu)\n",
+				    nbytes, dl_bbuf_pos(request->dlrq_buffer));
+
 				DLOGTR1(PRIO_LOW,
 				    "Successfully sent request (id = %d)\n",
 				    request->dlrq_correlation_id);
@@ -544,7 +501,8 @@ dlp_produce_thread(void *vargp)
 
 			} else {
 				// TODO: proper errro handling is necessary
-				DLOGTR0(PRIO_NORMAL, "socket send error\n");
+				DLOGTR1(PRIO_NORMAL,
+				    "Transport send error (%d)\n", errno);
 
 				// TODO: Don't think I need to do this
 				// as the poll reactor is handling errors?
@@ -682,24 +640,33 @@ dl_producer_syncing(struct dl_producer * const self)
 		    dl_topic_get_name(self->dlp_topic)) == 0) {
 
 			rc = dl_request_encode(message, &buffer);
-
-			DLOGTR0(PRIO_LOW, "MessageSet\n");
+			if (rc != 0) {
+				// TODO
+			}
+#ifdef DEBUG
+			DLOGTR1(PRIO_LOW, "MessageSet (%zu bytes)\n",
+			    dl_bbuf_pos(msg_buffer));
 			unsigned char *bufval = dl_bbuf_data(msg_buffer);
 			for (int i = 0; i < dl_bbuf_pos(msg_buffer); i++) {
 				DLOGTR1(PRIO_LOW, "<%02hhX>", bufval[i]);
 			};
 			DLOGTR0(PRIO_LOW, "\n");
+#endif
 
 			// Concat the buffers together?
 			rc = dl_bbuf_concat(buffer, msg_buffer);
-
+			if (rc != 0) {
+				// TODO
+			}
+#ifdef DEBUG
+			DLOGTR1(PRIO_LOW, "ProduceRequest (%zu bytes)\n",
+			    dl_bbuf_pos(buffer));
 			bufval = dl_bbuf_data(buffer);
-			DLOGTR0(PRIO_LOW, "ProduceRequest\n");
 			for (int i = 0; i < dl_bbuf_pos(buffer); i++) {
 				DLOGTR1(PRIO_LOW, "<%02hhX>", bufval[i]);
 			};
 			DLOGTR0(PRIO_LOW, "\n");
-
+#endif
 			rc = dl_request_q_enqueue_new(self->dlp_request_q,
 			    buffer, dl_correlation_id_val(self->dlp_cid),
 			    DL_PRODUCE_API_KEY);
@@ -709,11 +676,10 @@ dl_producer_syncing(struct dl_producer * const self)
 
 			/* Increment the monotonic correlation id. */
 			dl_correlation_id_inc(self->dlp_cid);
-
 		} else {
+
 			DLOGTR0(PRIO_HIGH, "Failed creating ProduceRequest\n");
 			// what to do?
-
 		}
 	}
 	
@@ -735,7 +701,7 @@ dl_producer_offline(struct dl_producer * const self)
 	pthread_mutex_lock(&self->dlp_mtx);
     	self->dlp_suspend = 1;
 	pthread_mutex_unlock(&self->dlp_mtx);
-
+	
 	/* The transport connection with the broker is offline, thus unregister
 	 * the transport file descriptor.
 	 */
@@ -1023,13 +989,12 @@ dl_producer_syncd(struct dl_producer const * const self)
 	DLOGTR0(PRIO_LOW, "Producer event = sync()\n");
 
 	switch(self->dlp_state) {
-	case DLP_OFFLINE:
-		/* offline -> offline */
-		dl_producer_offline(self);
-		break;
 	case DLP_SYNCING:
 		/* recover->idle */
 		dl_producer_idle(self);
+	case DLP_OFFLINE:
+		/* IGNORE */ /* NEed to fix up the suspending of threads */
+		break;
 	case DLP_CONNECTING:
 		/* FALLTHROUGH */
 	case DLP_IDLE:

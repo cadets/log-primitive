@@ -56,7 +56,7 @@ struct dl_request_q {
 };
 
 //struct dl_request_q;
-//struct dl_request_qit;
+//struct dl_request_q_it;
 
 struct dl_request_element {
 	STAILQ_ENTRY(dl_request_element) dlrq_entries;

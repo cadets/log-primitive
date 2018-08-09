@@ -108,7 +108,7 @@ dl_bbuf_extend(struct dl_bbuf *self, int addlen)
 	
 	dl_bbuf_assert_integrity(__func__, self);
 
-	newlen = dl_bbuf_extendsize(self->dlb_pos + addlen);
+	newlen = dl_bbuf_extendsize(self->dlb_capacity + addlen);
 	newbuf = (unsigned char *) dlog_alloc(newlen);
 #ifdef _KERNEL
 	DL_ASSERT(newbuf != NULL, ("Failed to reallocate dl_bbuf.\n"));
@@ -117,6 +117,8 @@ dl_bbuf_extend(struct dl_bbuf *self, int addlen)
 	if (newbuf != NULL) {
 #endif
 		bcopy(self->dlb_data, newbuf, self->dlb_capacity);
+		dlog_free(self->dlb_data);
+		self->dlb_data = newbuf;
 		self->dlb_capacity = newlen;
 		self->dlb_limit = newlen;
 		dl_bbuf_assert_integrity(__func__, self);
@@ -249,7 +251,6 @@ dl_bbuf_clear(struct dl_bbuf *self)
 int
 dl_bbuf_concat(struct dl_bbuf *self, struct dl_bbuf *source)
 {
-	int add_len;
 
 	dl_bbuf_assert_integrity(__func__, self);
 	dl_bbuf_assert_integrity(__func__, source);
@@ -259,9 +260,7 @@ dl_bbuf_concat(struct dl_bbuf *self, struct dl_bbuf *source)
 
 		if (self->dlb_flags & DL_BBUF_AUTOEXTEND) {
 
-			add_len = (self->dlb_pos + source->dlb_pos) -
-			    self->dlb_capacity;
-			if (dl_bbuf_extend(self, add_len) != 0)
+			if (dl_bbuf_extend(self, source->dlb_capacity) != 0)
 				return -1;
 		} else {
 			return -1;

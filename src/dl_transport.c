@@ -71,6 +71,13 @@ struct dl_transport {
 	int dlt_fd;
 };
 
+static inline void
+dl_transport_check_integrity(struct dl_transport *self)
+{
+
+	DL_ASSERT(self != NULL, ("Transport instance cannot be NULL"));
+}
+
 int
 dl_transport_new(struct dl_transport **self)
 {
@@ -80,30 +87,23 @@ dl_transport_new(struct dl_transport **self)
        
 	transport = (struct dl_transport *) dlog_alloc(
 	    sizeof(struct dl_transport));
-#ifdef _KERNEL
-	DL_ASSERT(transport != NULL ,
-	    ("Failed to allocate transport instance"));
-#else
 	if (transport == NULL) {
 
 		DLOGTR0(PRIO_HIGH, "Failed to allocate transport instance\n");
 		return -1;
 	}
-#endif
 	bzero(transport, sizeof(struct dl_transport));
-#ifdef _KERNEL
-	transport->dlt_fd = NULL;
-#else
 	transport->dlt_fd = -1;
-#endif
 
 	*self = transport;
+	dl_transport_check_integrity(*self);
 	return 0;
 }
 
 void dl_transport_delete(struct dl_transport *self)
 {
-	DL_ASSERT(self != NULL, ("Transport instance cannot be NULL"));
+
+	dl_transport_check_integrity(self);
 
 	// Disconnect and free?
 	dlog_free(self);
@@ -116,36 +116,26 @@ dl_transport_connect(struct dl_transport *self,
 	struct sockaddr_in dest;
 	int rc;
 
-	DL_ASSERT(self != NULL, ("Transport instance cannot be NULL"));
+	dl_transport_check_integrity(self);
 
 	bzero(&dest, sizeof(dest));
 	dest.sin_family = AF_INET;
 	dest.sin_port = htons(portnumber);
 
-#ifdef _KERNEL
-	struct thread *td = curthread;
-
- 	rc = socreate(AF_INET, &self->dlt_fd, SOCK_STREAM, IPPROTO_TCP,
-	    td->td_ucred, td);
-	DLOGTR1(PRIO_LOW, "socreate = %d\n", rc);
-	// TODO: error checking
-
-	dest.sin_len = sizeof(struct sockaddr_in);	
-	//dest.sin_addr.s_addr = htonl((((((127 << 8) | 0) << 8) | 0) << 8) | 1);
-	dest.sin_addr.s_addr = htonl((((((192 << 8) | 168) << 8) | 100) << 8) | 11);
-	rc = soconnect(self->dlt_fd, (struct sockaddr *) &dest, td);
-	DLOGTR1(PRIO_LOW, "soconnect = %d\n", rc);
-	// TODO: error checking
-#else
 	self->dlt_fd = socket(AF_INET, SOCK_STREAM|SOCK_NONBLOCK, 0);
 	if (self->dlt_fd == -1)
 		return -1;
+
+	 /* TODO: MTU * maximum outstanding requests */
+	int sendbuf = 100*1024*20;
+	rc = setsockopt(self->dlt_fd, SOL_SOCKET, SO_SNDBUF, &sendbuf,
+	    sizeof(sendbuf));
+	DLOGTR1(PRIO_LOW, "setsockopt = %d\n", rc);
 
 	if (inet_pton(AF_INET, hostname, &(dest.sin_addr)) == 0)
 		return -2;
 
 	rc = connect(self->dlt_fd, (struct sockaddr *) &dest, sizeof(dest));
-#endif
 	return rc;
 }
 
@@ -156,31 +146,11 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 	int ret, total = 0;
 	int32_t msg_size;
 	
-	DL_ASSERT(self != NULL, "Transport instance cannot be NULL");
+	dl_transport_check_integrity(self);
 	DL_ASSERT(self != NULL, "Target buffer  cannot be NULL");
 
 	/* Read the size of the request or response to process. */
-#ifdef _KERNEL
-	struct thread *td = curthread;
-	struct iovec iov[1];
-	struct uio u;
-
-	iov[0].iov_base = &msg_size;
-	iov[0].iov_len = sizeof(int32_t);
-
-	bzero(&u, sizeof(struct uio));
-	u.uio_iov = iov;
-	u.uio_iovcnt = 1;
-	u.uio_offset = 0;
-        u.uio_resid = sizeof(int32_t);
-        u.uio_segflg  = UIO_SYSSPACE;
-        u.uio_rw = UIO_READ;
-        u.uio_td = td;
-
-	ret = soreceive(self->dlt_fd, NULL, &u, NULL, NULL, NULL);
-#else
 	ret = recv(self->dlt_fd, &msg_size, sizeof(int32_t), 0);
-#endif
 	msg_size = be32toh(msg_size);
 	DLOGTR2(PRIO_LOW, "Read %d bytes (%d)...\n", ret, msg_size);
 	if (ret == 0) {
@@ -194,25 +164,8 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 			DL_BBUF_FIXEDLEN | DL_BBUF_BIGENDIAN);
 
 		while (total < msg_size) {
-#ifdef _KERNEL
-			iov[0].iov_base = buffer;
-			iov[0].iov_len = msg_size-total;
-
-			bzero(&u, sizeof(struct uio));
-			u.uio_iov = iov;
-			u.uio_iovcnt = 1;
-			u.uio_offset = 0;
-			u.uio_resid = sizeof(int32_t);
-			u.uio_segflg  = UIO_SYSSPACE;
-			u.uio_rw = UIO_READ;
-			u.uio_td = td;
-
-			total += ret = soreceive(self->dlt_fd, NULL, &u,
-			    NULL, NULL, NULL);
-#else
 			total += ret = recv(self->dlt_fd, buffer,
 				msg_size-total, 0);
-#endif
 			DLOGTR2(PRIO_LOW, "\tRead %d characters; expected %d\n",
 			    ret, msg_size);
 			dl_bbuf_bcat(*target, buffer, ret);
@@ -233,7 +186,7 @@ dl_transport_send_request(const struct dl_transport *self,
 	struct iovec iov[2];
 	int32_t buflen;
 
-	DL_ASSERT(self != NULL, "Transport instance cannot be NULL");
+	dl_transport_check_integrity(self);
 	DL_ASSERT(buffer != NULL, "Buffer to send cannot be NULL");
 
 	buflen = htobe32(dl_bbuf_pos(buffer));
@@ -244,44 +197,23 @@ dl_transport_send_request(const struct dl_transport *self,
 	iov[1].iov_base = dl_bbuf_data(buffer);
 	iov[1].iov_len = dl_bbuf_pos(buffer);
 
-#ifdef _KERNEL
-	struct thread *td = curthread;
-	struct uio u;
-
-	bzero(&u, sizeof(struct uio));
-	u.uio_iov = iov;
-	u.uio_iovcnt = 2;
-	u.uio_offset = 0;
-        u.uio_resid = iov[0].iov_len + iov[1].iov_len;
-        u.uio_segflg  = UIO_SYSSPACE;
-        u.uio_rw = UIO_WRITE;
-        u.uio_td = td;
-
-	return sosend(self->dlt_fd, NULL, &u, NULL, NULL, 0, td);
-#else
-	return writev(self->dlt_fd, iov, 2);
+#ifdef DEBUG
+	DLOGTR1(PRIO_LOW, "Sending request (bytes= %d)\n", iov[1].iov_len);
 #endif
+	return writev(self->dlt_fd, iov, 2);
 }
 
 int
 dl_transport_poll(const struct dl_transport *self, int events, int timeout)
 {
-#ifdef _KERNEL
-	struct thread *td = curthread;
-#else
 	struct pollfd ufd;
+
+	dl_transport_check_integrity(self);
 
 	ufd.fd = self->dlt_fd;
 	ufd.events = events;
-#endif
 
-	DL_ASSERT(self != NULL, "Transport instance cannot be NULL");
-
-#ifdef _KERNEL
-	return sopoll(self->dlt_fd, events, td->td_ucred, td);
-#else
 	return poll(&ufd, 1, timeout);
-#endif
 }
 
 int

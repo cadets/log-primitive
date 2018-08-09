@@ -52,7 +52,7 @@
 // don't exceed the maximum allowable path length
 #define DL_MAX_TOPIC_NAME_LEN 249
 #define DL_MAX_CLIENT_ID_LEN 249
-#define DL_MTU 2048
+#define DL_MTU 102400
 
 #define DL_DECODE_ATTRIBUTES(source, value) dl_bbuf_get_int8(source, value)
 #define DL_DECODE_API_KEY(target, value) dl_bbuf_get_int16(target, value)

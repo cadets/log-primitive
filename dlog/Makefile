@@ -38,7 +38,6 @@ SRCS= dlog_client.c \
 	dl_utils.c \
 	dl_thread.c \
 	dl_message_set.c \
-	dl_partition.c \
 	dl_primitive_types.c \
 	dl_produce_request.c \
 	dl_produce_response.c \
@@ -49,6 +48,7 @@ SRCS= dlog_client.c \
 	dlog.c \
 	lookup3.c \
 	vnode_if.h
+	#dl_partition.c \
 
 CFLAGS+=-D_KERNEL
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers

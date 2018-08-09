@@ -65,13 +65,16 @@ dl_request_q_enqueue(struct dl_request_q *self,
 
 	/* Check whether the queue's bounds are exceeded. */
 	if (self->dlrq_len >= self->dlrq_limit) {
+		//pthread_cond_wait();
 		pthread_mutex_unlock(&self->dlrq_mtx);
 		return -1;
 	}
+	pthread_mutex_unlock(&self->dlrq_mtx);
 
 	STAILQ_INSERT_TAIL(&self->dlrq_requests, request, dlrq_entries);
 	pthread_cond_signal(&self->dlrq_cond);
 	pthread_mutex_unlock(&self->dlrq_mtx);
+	self->dlrq_len++;
 
 	return 0;
 }
@@ -147,13 +150,14 @@ dl_request_q_enqueue_new(struct dl_request_q *self, struct dl_bbuf *buffer,
 		request->dlrq_correlation_id = correlation_id;
 		request->dlrq_api_key = api_key;
 
-		if (dl_request_q_enqueue(self, request) == 0) {
+		if (dl_request_q_enqueue(self, request) != 0) {
 
-			DLOGTR0(PRIO_LOW, "Enqueued request message..\n");
-			return 0;
+			DLOGTR0(PRIO_HIGH,
+			    "Failed enqueuing request message..\n");
+			dlog_free(request);
+			return -1;
 		}
-		dlog_free(request);
-		return -1;
+		return 0;
 	} 
 
 	DLOGTR0(PRIO_HIGH, "Failed allocating request.\n");

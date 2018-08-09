@@ -64,6 +64,13 @@ extern uint32_t hashlittle(const void *, size_t, uint32_t);
 unsigned long topic_hashmask;
 struct dl_topics *topic_hashmap;
 
+static void inline
+dl_topic_check_integrity(struct dl_topic *self)
+{
+
+	DL_ASSERT(self != NULL, ("Topic instance cannot be NULL."));
+}
+
 void
 dl_topic_hashmap_delete(void *self)
 {
@@ -148,9 +155,9 @@ dl_topic_new(struct dl_topic **self, char *topic_name)
 		dl_make_folder(topic->dlt_name);
 
 		SLIST_INIT(&topic->dlp_segments);
-		topic->dlp_active_segment =
-		    dl_segment_new_default(topic->dlt_name);
-		if (topic->dlp_active_segment != NULL) {
+		rc = dl_segment_new_default(&topic->dlp_active_segment,
+		    topic->dlt_name);
+		if (rc == 0) {
 			SLIST_INSERT_HEAD(&topic->dlp_segments,
 			    topic->dlp_active_segment, dls_entries);
 
@@ -180,6 +187,7 @@ dl_topic_new(struct dl_topic **self, char *topic_name)
 				printf("error\n");
 
 			*self = topic;
+			dl_topic_check_integrity(*self);
 			return 0;
 		}
 		dlog_free(topic);
@@ -195,7 +203,8 @@ dl_topic_as_desc(struct dl_topic *self, struct dl_topic_desc **desc)
 {
 	struct dl_topic_desc *temp;
 	
-	DL_ASSERT(self != NULL, ("Topic instance cannot be NULL."));
+	dl_topic_check_integrity(self);
+	DL_ASSERT(desc != NULL, ("Topic description instance cannot be NULL."));
 
 	temp = (struct dl_topic_desc *) dlog_alloc(
 	    sizeof(struct dl_topic_desc));
@@ -206,7 +215,6 @@ dl_topic_as_desc(struct dl_topic *self, struct dl_topic_desc **desc)
 	temp->dltd_active_seg.dlsd_seg_size =
 	    self->dlp_active_segment->segment_size;
 	temp->dltd_active_seg.dlsd_log = self->dlp_active_segment->_log;
-	temp->dltd_active_seg.dlsd_index = self->dlp_active_segment->_index;
 
 	*desc = temp;
 	return 0;
@@ -218,15 +226,15 @@ dl_topic_from_desc(struct dl_topic **self, struct sbuf *topic_name,
     struct dl_segment_desc *seg_desc)
 {
 	struct dl_topic *topic;
-	struct dl_partition *partition;
+	//struct dl_partition *partition;
 	struct sbuf *tname;
-	
+	int rc;
+
 	DL_ASSERT(self != NULL, ("Topic instance cannot be NULL."));
 	DL_ASSERT(topic_name != NULL, ("Topic name cannot be NULL."));
 	DL_ASSERT(seg_desc != NULL, ("Segment description cannot be NULL."));
 		
-	topic = (struct dl_topic *) dlog_alloc(
-	    sizeof(struct dl_topic));
+	topic = (struct dl_topic *) dlog_alloc(sizeof(struct dl_topic));
 #ifdef KERNEL
 	DL_ASSERT(partition != NULL, ("Failed allocating topic."));
 #else
@@ -235,12 +243,29 @@ dl_topic_from_desc(struct dl_topic **self, struct sbuf *topic_name,
 #endif
 	bzero(topic, sizeof(struct dl_topic));
 
+	/* Take a defensive copy of the topic name. */
+	// TODO. I'm not sure I need to do this as the value came from the
+	// dlog kernel module, how do I know that sbuf finish has been called
+	// //sbuf_finish(topic_name);
+	//topic->dlt_name = topic_name;
 	tname = sbuf_new_auto();
 	sbuf_cpy(tname, sbuf_data(topic_name));
 	sbuf_finish(tname);
-
-	SLIST_INIT(&topic->dlt_partitions);
 	topic->dlt_name = tname;
+
+	// TODO: Decide whether the sperate partition data type is needed
+	SLIST_INIT(&topic->dlp_segments);
+
+	rc = dl_segment_from_desc(&topic->dlp_active_segment, seg_desc);
+	if (rc != 0) {
+		// TODO
+		DLOGTR0(PRIO_HIGH, "Failed instantiating Segment instance\n");
+	}
+
+	SLIST_INSERT_HEAD(&topic->dlp_segments,
+	    topic->dlp_active_segment, dls_entries);
+/*
+	SLIST_INIT(&topic->dlt_partitions);
 	
 	if (dl_partition_new2(&partition, seg_desc) == 0) {
 
@@ -254,8 +279,9 @@ dl_topic_from_desc(struct dl_topic **self, struct sbuf *topic_name,
 		dlog_free(topic);
 		topic = NULL;
 	}
-
+*/
 	*self = topic;
+	dl_topic_check_integrity(*self);
 	return 0;
 
 err_topic:
@@ -267,11 +293,21 @@ err_topic:
 void
 dl_topic_delete(struct dl_topic *self)
 {
+	struct dl_segment *seg, *seg_tmp;
 
-	DL_ASSERT(self!= NULL, ("Topic instance cannot be NULL."));
-	
-	dl_segment_delete(self->dlp_active_segment);
+	dl_topic_check_integrity(self);
+
+	/* Delete the segments within the partition. */
+	SLIST_FOREACH_SAFE(seg, &self->dlp_segments, dls_entries, seg_tmp) {
+
+		dl_segment_delete(seg);
+	};
+	//dl_partition_delete(SLIST_FIRST(&self->dlt_partitions));
+
+	/* Delete the topic name. */
 	sbuf_delete(self->dlt_name);
+
+	/* Free the memory used by this topic instance. */
 	dlog_free(self);
 }
 
@@ -279,6 +315,7 @@ struct sbuf *
 dl_topic_get_name(struct dl_topic *self)
 {
 
+	dl_topic_check_integrity(self);
 	return self->dlt_name;
 }
 
@@ -286,21 +323,22 @@ struct dl_segment *
 dl_topic_get_active_segment(struct dl_topic *self)
 {
 
+	dl_topic_check_integrity(self);
 	return self->dlp_active_segment;
 }
 
 int
 dl_topic_produce_to(struct dl_topic *self, struct dl_bbuf *buffer)
 {
-	struct dl_partition *request_partition;
+	//struct dl_partition *request_partition;
 
-	DL_ASSERT(self != NULL, ("Topic instance cannot be NULL."));
+	dl_topic_check_integrity(self);
 	DL_ASSERT(buffer != NULL, ("Buffer to produce cannot be NULL."));
 
 	/* Produce the Message into the topic. */
-	request_partition = SLIST_FIRST(&self->dlt_partitions);
+	//request_partition = SLIST_FIRST(&self->dlt_partitions);
 	
 	return dl_segment_insert_message(
-	    request_partition->dlp_active_segment,
-	    dl_bbuf_data(buffer), dl_bbuf_pos(buffer));
+	    self->dlp_active_segment, buffer);
+	    //request_partition->dlp_active_segment,
 }	

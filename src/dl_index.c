@@ -47,6 +47,7 @@
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "dl_assert.h"
 #include "dl_index.h"
@@ -57,6 +58,12 @@
 
 struct dl_index {
 	struct dl_segment *dli_seg;
+	int dli_fd;
+};
+
+struct dl_index_record {
+	uint32_t dlir_offset;
+	uint32_t dlir_poffset;
 };
 
 static inline void 
@@ -68,9 +75,12 @@ dl_index_check_integrity(struct dl_index const * const self)
 }
 
 int
-dl_index_new(struct dl_index **self, struct dl_segment *seg)
+dl_index_new(struct dl_index **self, struct dl_segment *seg,
+    struct sbuf *part_name)
 {
 	struct dl_index *idx;
+	struct sbuf *idx_name;
+	int fd;
 
 	DL_ASSERT(self != NULL, ("Index instance cannot be NULL."));
 	DL_ASSERT(seg != NULL, ("Index segment cannot be NULL."));
@@ -83,6 +93,25 @@ dl_index_new(struct dl_index **self, struct dl_segment *seg)
 	}
 
 	idx->dli_seg = seg;
+
+	idx_name = sbuf_new_auto();
+	sbuf_printf(idx_name, "%s/%.*ld.index",
+	    sbuf_data(part_name), 20, dl_segment_get_base_offset(seg));
+	sbuf_finish(idx_name);
+	fd = open(sbuf_data(idx_name), O_RDWR | O_APPEND | O_CREAT, 0666);
+
+	/* Memory map the index file to perform efficient fecthing;
+	 * binary search based on requested offset.
+	 */
+#ifdef _KERNEL
+#else
+	//mmap(NULL, length, PROT_READ|PROT_WRITE, MAP_SHARED, index_file, 0);
+#endif
+
+	//if (fd)
+	//dl_alloc_big_file(idx->dli_fd, 0,  length);
+	sbuf_delete(idx_name);
+	idx->dli_fd = fd;
 
 	*self = idx;
 	dl_index_check_integrity(*self);
@@ -101,20 +130,20 @@ void
 dl_index_update(struct dl_index *self)
 {
 	struct iovec index_bufs[2];
-	uint32_t o, s, t, x, tmp;
+	uint32_t o, s, t, x, last_sync;
 	off_t log_end;
 	int rc;
 	
 	dl_index_check_integrity(self);
 	
 	/* Create the index. */
-	log_end = lseek(self->dli_seg->_log, 0, SEEK_END);
+	log_end = lseek(dl_segment_get_log(self->dli_seg), 0, SEEK_END);
 
-	lseek(self->dli_seg->_index, 0, SEEK_END);
-	tmp = self->dli_seg->last_sync_pos;
-	while (tmp < log_end) {
-		DLOGTR2(PRIO_NORMAL, "tmp = %zu log end =%zu\n", tmp, log_end);
-		lseek(self->dli_seg->_log, tmp, SEEK_SET);
+	lseek(self->dli_fd, 0, SEEK_END);
+	last_sync = dl_segment_get_last_sync_pos(self->dli_seg);
+	while (last_sync < log_end) {
+		//DLOGTR2(PRIO_NORMAL, "last_sync = %zu log end =%zu\n", last_sync, log_end);
+		lseek(dl_segment_get_log(self->dli_seg), last_sync, SEEK_SET);
 
 		index_bufs[0].iov_base = &o;
 		index_bufs[0].iov_len = sizeof(uint32_t);
@@ -122,21 +151,53 @@ dl_index_update(struct dl_index *self)
 		index_bufs[1].iov_base = &s;
 		index_bufs[1].iov_len = sizeof(uint32_t);
 
-		rc = readv(self->dli_seg->_log, index_bufs, 2);	
-		DLOGTR2(PRIO_NORMAL, "o = %zu s =%zu\n",
-		    be32toh(o), be32toh(s));
+		rc = readv(dl_segment_get_log(self->dli_seg), index_bufs, 2);	
+		//DLOGTR2(PRIO_NORMAL, "o = %zu s =%zu\n",
+		//    be32toh(o), be32toh(s));
 
 		index_bufs[0].iov_base = &o;
 		index_bufs[0].iov_len = sizeof(uint32_t);
 
-		t = htobe32(tmp);
+		t = htobe32(last_sync);
 		index_bufs[1].iov_base = &t;
 		index_bufs[1].iov_len = sizeof(uint32_t);
 
-		writev(self->dli_seg->_index, index_bufs, 2);	
+		writev(self->dli_fd, index_bufs, 2);	
 		
-		tmp += 2 * sizeof(uint32_t);
-		tmp += be32toh(s);
+		last_sync += 2 * sizeof(uint32_t);
+		last_sync += be32toh(s);
 	}
-	self->dli_seg->last_sync_pos = log_end;
+
+	fsync(self->dli_fd);
+	dl_segment_set_last_sync_pos(self->dli_seg, log_end);
+}
+
+
+off_t
+dl_index_lookup(struct dl_index *self, int offset)
+{
+	struct dl_index_record record;
+	struct dl_bbuf *idx_buf, *t;
+	int32_t roffset, poffset;
+	int ret;
+	
+	dl_index_check_integrity(self);
+
+	// TODO: Error checking on the lseek
+	lseek(self->dli_fd, offset * sizeof(struct dl_index_record), SEEK_SET);
+
+	ret = read(self->dli_fd, &record, sizeof(record));
+	if (ret > 0) {
+		dl_bbuf_new(&idx_buf, (unsigned char *) &record,
+		    sizeof(record), DL_BBUF_BIGENDIAN);
+
+		dl_bbuf_get_int32(idx_buf, &roffset);
+		DL_ASSERT(offset == roffset,
+		    ("Request offset doesn't match that it index."));
+		dl_bbuf_get_int32(idx_buf, &poffset);
+		dl_bbuf_delete(idx_buf);
+
+		return poffset;
+	}
+	return -1;
 }
