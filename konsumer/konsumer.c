@@ -260,12 +260,12 @@ konsumer_thread(void *arg)
 		}
 		mtx_unlock(&k->konsumer_mtx);
 
-		/* TODO: Mimic the userpsace status ioctl. */
+		/* Mimic the userpsace status ioctl. */
 		nanouptime(&curtime);
 		k->konsumer_state->dts_laststatus =
 		    curtime.tv_sec * 1000000000UL + curtime.tv_nsec;
 
-		/* Switch the buffer and write the contetnts to DLog. */ 
+		/* Switch the buffer and write the contents to DLog. */ 
 		konsumer_buffer_switch_locked(k->konsumer_state,
 		    k->konsumer_dlog_handle);
 	}
