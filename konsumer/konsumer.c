@@ -63,6 +63,8 @@
 #include "dl_protocol.h"
 #include "dl_utils.h"
 
+extern hrtime_t dtrace_gethrtime(void);
+
 MALLOC_DECLARE(M_DLKON);
 MALLOC_DEFINE(M_DLKON, "dlkon", "DLog konsumer memory");
 
@@ -256,6 +258,8 @@ konsumer_buffer_switch(dtrace_state_t *state,
 	}
 }
 
+extern hrtime_t dtrace_deadman_user;
+
 static void
 konsumer_thread(void *arg)
 {
@@ -263,7 +267,8 @@ konsumer_thread(void *arg)
 	struct timespec curtime;
 
 	konsumer_assert_integrity(__func__, k);
-	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
+	DL_ASSERT(k->konsumer_state != NULL,
+	    ("DTrace state cannot be NULL\n"));
 	
 	for (;;) {
 
@@ -278,13 +283,13 @@ konsumer_thread(void *arg)
 		mtx_unlock(&k->konsumer_mtx);
 
 		/* Mimic the userpsace STATUS ioctl.
-		 * Without updating the dts_laststatus field the DTrace
-		 * deadman timer with result in a transition to the
-		 * KILLED state.
+		 * Without updating the dts_alive field DTrace
+		 * will transition to the KILLED state.
 		 */
 		nanouptime(&curtime);
-		k->konsumer_state->dts_laststatus =
-		    curtime.tv_sec * 1000000000UL + curtime.tv_nsec;
+		k->konsumer_state->dts_alive = INT64_MAX;
+		dtrace_membar_producer();
+		k->konsumer_state->dts_alive = dtrace_gethrtime();
 
 		/* Switch the buffer and write the contents to DLog. */ 
 		konsumer_buffer_switch(k->konsumer_state,
