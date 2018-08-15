@@ -39,6 +39,8 @@
 #include <sys/nv.h>
 #include <sys/queue.h>
 #include <sys/event.h>
+#include <sys/types.h>
+#include <sys/sysctl.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -123,6 +125,9 @@ main(int argc, char *argv[])
 	int nelements = DLOGD_NELEMENTS_DEFAULT;
 	uint32_t h;
 	struct dl_producer_elem *elem;
+	size_t old_maxsockbuf, old_maxsockbuf_size;
+	size_t new_maxsockbuf  = 20 * DL_MTU;
+	size_t new_maxsockbuf_size = sizeof(size_t);
 
 	dlogd_name = basename(argv[0]); 	
 
@@ -143,6 +148,11 @@ main(int argc, char *argv[])
 	}
 	
 	signal(SIGINT, dlogd_stop);
+
+	/* Configure the maxsockbuf based on the DLog MTU. */
+	sysctlbyname("kern.ipc.maxsockbuf",
+	    &old_maxsockbuf, &old_maxsockbuf_size,
+	    &new_maxsockbuf, new_maxsockbuf_size);
 
 	/* Create a new nvlist to store producer configuration. */
 	props = nvlist_create(0);
@@ -341,6 +351,14 @@ main(int argc, char *argv[])
 	rc = close(dlog);
 	if (rc != 0)
 		DLOGTR1(PRIO_HIGH, "Error closing distributed log %d\n", errno);
+
+	/* Restore the maxsockbuf. */
+	new_maxsockbuf = old_maxsockbuf;
+	new_maxsockbuf_size = sizeof(size_t);
+
+	sysctlbyname("kern.ipc.maxsockbuf",
+	    &old_maxsockbuf, &old_maxsockbuf_size,
+	    &new_maxsockbuf, new_maxsockbuf_size);
 
 	DLOGTR1(PRIO_LOW, "%s daemon stopped.\n", dlogd_name);
 
