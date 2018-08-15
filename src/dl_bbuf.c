@@ -134,7 +134,7 @@ dl_bbuf_delete(struct dl_bbuf *self)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
-        if (!(self->dlb_flags & DL_BBUF_EXTERNBUF))
+        if ((self->dlb_flags & DL_BBUF_EXTERNBUF) == 0)
 		dlog_free(self->dlb_data);
 	dlog_free(self);
 }
@@ -142,7 +142,7 @@ dl_bbuf_delete(struct dl_bbuf *self)
 int
 dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, int capacity, int flags)
 {
-	struct dl_bbuf *newbuf = *self;
+	struct dl_bbuf *newbuf;
 
 	DL_ASSERT(capacity >= 0,
 	    ("attempt to create a dl_buf of negative length (%d)", length));
@@ -180,7 +180,7 @@ dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, int capacity, int flags)
 		} else {
 			newbuf->dlb_data = buf;
 			newbuf->dlb_flags |=
-			    (DL_BBUF_EXTERNBUF & DL_BBUF_FIXEDLEN);
+			    (DL_BBUF_EXTERNBUF | DL_BBUF_FIXEDLEN);
 		}
 			
 		/* dl_bbuf constructed successfully. */
