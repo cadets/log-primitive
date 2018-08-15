@@ -158,7 +158,7 @@ dlog_init()
 static void 
 dlog_fini()
 {
-	int t;
+	int t, rc;
 	struct dl_topic *topic, *tmp;
 
 	DLOGTR1(PRIO_LOW, "Stoping %s process...\n", DLOG_NAME);
@@ -169,7 +169,11 @@ dlog_fini()
 	mtx_assert(dlog_mtx, MA_OWNED);
 	mtx_unlock(&dlog_mtx);
 	cv_broadcast(&dlog_cv);
-	tsleep(&dlog_client_proc, 0, "dlog terminating...", 0);
+
+	/* Attempt to stop the DLog process. */
+	rc = tsleep(dlog_client_proc, 0, "DLog terminating...",
+	    60 * hz / 9);
+	DL_ASSERT(rc == 0, ("Failed to stop %d process.", DLOG_NAME));
 
 	DLOGTR1(PRIO_NORMAL, "%s process stopped successfully\n",
 	    DLOG_NAME);
