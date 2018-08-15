@@ -329,14 +329,10 @@ dl_producer_kq_handler(void *instance, int fd, int revents)
 		if (log_position - seg->last_sync_pos >
 		    DL_FSYNC_DEFAULT_CHARS) {
 
-			//DLOGTR0(PRIO_NORMAL, "Syncing the index and log...\n");
-			//DLOGTR2(PRIO_LOW,
-			//    "log_position = %d, last_sync_pos = %d\n",
-			//    log_position, seg->last_sync_pos);
-
 			dl_segment_lock(seg);
 			dl_index_update(seg->dls_idx);
 			fsync(seg->_log);
+			dl_segment_set_last_sync_pos(seg, log_position);
 			dl_segment_unlock(seg);
 
 			dl_producer_produce(p);
@@ -572,34 +568,6 @@ dl_producer_idle(struct dl_producer * const self)
 
 	self->dlp_state = DLP_IDLE;
 	DLOGTR1(PRIO_LOW, "Producer state = IDLE (%d)\n", self->dlp_state);
-/*	
-	seg = dl_topic_get_active_segment(self->dlp_topic);
-	DL_ASSERT(seg != NULL, ("Topic's active segment cannot be NULL"));
-
-	if (self->offset != 0) {
-		dl_segment_lock(seg);
-		rc = lseek(seg->_index, self->offset * 2 * sizeof(int32_t),
-		    SEEK_SET);
-		DLOGTR2(PRIO_LOW, "offset = %d, rc = %d\n", self->offset, rc);
-		rc = read(seg->_index, tmp_buf, sizeof(tmp_buf));
-		DLOGTR2(PRIO_LOW, "offset = %d, rc = %d\n", self->offset, rc);
-		dl_segment_unlock(seg);
-		if (rc != -1) {
-			dl_bbuf_new(&idx_buf, (unsigned char *) tmp_buf,
-			    sizeof(tmp_buf), DL_BBUF_BIGENDIAN);
-
-			dl_bbuf_get_int32(idx_buf, &roffset);
-			dl_bbuf_get_int32(idx_buf, &poffset);
-
-			DLOGTR2(PRIO_LOW, "offset = %d, poffset = %d\n", self->offset,
-			    poffset);
-			if (seg->last_sync_pos - poffset > DL_FSYNC_DEFAULT_CHARS) {
-
-				dl_producer_produce(self);
-			}
-		}
-	}
-*/
 }
 
 static void
@@ -933,8 +901,8 @@ dl_producer_up(struct dl_producer const * const self)
 
 	switch(self->dlp_state) {
 	case DLP_CONNECTING:
-		/* connecting -> idle */
-		dl_producer_idle(self);
+		/* connecting -> syncing */
+		dl_producer_syncing(self);
 		break;
 	case DLP_OFFLINE:
 		/* FALLTHROUGH */
