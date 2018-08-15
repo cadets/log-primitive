@@ -125,7 +125,7 @@ static int
 konsumer_event_handler(struct module *module, int event, void *arg)
 {
 	struct konsumer *k, *k_tmp;
-	int e = 0, i;
+	int e = 0, i, rc;
 
 	switch(event) {
 	case MOD_LOAD:
@@ -166,8 +166,11 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 				k->konsumer_exit = 1;
 				mtx_unlock(&k->konsumer_mtx);
 				cv_broadcast(&k->konsumer_cv);
-				tsleep(k->konsumer_pid, 0,
-				    "waiting for konsumer process", 0);
+				rc = tsleep(k->konsumer_pid, 0,
+				    "waiting for konsumer process",
+				    60 * hz / 9);
+				DL_ASSERT(rc == 0,
+				   ("Failed to stop konsumer thread"));
 
 				/* Remove the konsumer and destroy. */
 				DLOGTR0(PRIO_LOW,
