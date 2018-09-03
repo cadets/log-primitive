@@ -53,6 +53,7 @@
 #include <sys/hash.h>
 #include <sys/nv.h>
 #include <sys/conf.h>
+#include <sys/sysctl.h>
 #include <fs/devfs/devfs_int.h>
 
 #include <dtrace.h>
@@ -70,7 +71,7 @@ static int konsumer_event_handler(struct module *, int, void *);
 static void konsumer_thread(void *);
 
 static void konsumer_buffer_switch(dtrace_state_t *, struct dlog_handle *);
-static void konsumer_buffer_switch_locked(dtrace_state_t *,
+static void konsumer_buffer_switch(dtrace_state_t *,
     struct dlog_handle *);
 static void konsumer_persist_trace(dtrace_state_t *, struct dlog_handle *,
     dtrace_bufdesc_t *);
@@ -109,6 +110,13 @@ static dtrace_konsumer_id_t kid;
 static LIST_HEAD(konsumers, konsumer) *konsumer_hashtbl = NULL;
 static u_long konsumer_hashmask;
 
+static uint32_t konsumer_poll_ms = 1000;
+
+SYSCTL_NODE(_debug, OID_AUTO, konsumer, CTLFLAG_RW, 0, "Konsumer");
+
+SYSCTL_U32(_debug_konsumer, OID_AUTO, poll_period_ms, CTLFLAG_RD,
+    &konsumer_poll_ms, 0,  "Konsumer poll period (ms)");
+
 static inline void
 konsumer_assert_integrity(const char *func, struct konsumer *self)
 {
@@ -135,6 +143,8 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 		/* Initialise the hash table of konsumer instances. */
 		konsumer_hashtbl = hashinit(KON_NHASH_BUCKETS, M_DLKON,
 		    &konsumer_hashmask);
+		DL_ASSERT(k != NULL,
+		    ("Failed to allocate new konsumer hash table instance."));
 
 		/* Register the konsumer with DTrace. After successfully
 		 * registering the konsumer with be informed of lifecycle
@@ -168,7 +178,7 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 				mtx_unlock(&k->konsumer_mtx);
 				cv_broadcast(&k->konsumer_cv);
 				tsleep(k->konsumer_pid, 0,
-				    "waiting for konsumer process", 0);
+				    "Waiting for konsumer process to stop", 0);
 
 				/* Remove the konsumer and destroy. */
 				DLOGTR0(PRIO_LOW,
@@ -180,6 +190,7 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 			}
 		}
 		
+		/* Destroy the hash table of konsumer instances. */
 		hashdestroy(konsumer_hashtbl, M_DLKON, konsumer_hashmask);
 	
 		/* Unregister the Konsumer with DTrace. */	
@@ -194,7 +205,7 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 }
 
 static void
-konsumer_buffer_switch_locked(dtrace_state_t *state, struct dlog_handle *handle)
+konsumer_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 {
 	caddr_t cached;
 	dtrace_bufdesc_t desc;
@@ -202,8 +213,6 @@ konsumer_buffer_switch_locked(dtrace_state_t *state, struct dlog_handle *handle)
 
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
 	DL_ASSERT(handle != NULL, ("DLog handle cannot be NULL\n"));
-	DL_ASSERT(MUTEX_HELD(&dtrace_lock),
-	    ("dtrace_lock should be held in dtrace_state_stop"));
 
 	/* Switch and process the trace buffers for each CPU. */
 	for (int cpu = 0; cpu < mp_ncpus; cpu++) {
@@ -220,12 +229,16 @@ konsumer_buffer_switch_locked(dtrace_state_t *state, struct dlog_handle *handle)
 		DL_ASSERT(!(buf->drb & DTRACEBUF_NOSWITCH),
 		    ("DTrace buffer no switch flag set."));
 
+		/* Perform xcall to swap the CPU's DTrace buffers. */
 		dtrace_xcall(cpu, (dtrace_xcall_t) dtrace_buffer_switch, buf);
 
-		state->dts_errors += buf->dtb_xamot_errors;
-
+		/* Check whether the xcall was successful in swapping the
+		 * DTrace buffers.
+		 */
 		if (buf->dtb_tomax == cached)
 			break;
+		
+		state->dts_errors += buf->dtb_xamot_errors;
 
 		desc.dtbd_data = buf->dtb_xamot;
 		desc.dtbd_size = buf->dtb_xamot_offset;
@@ -251,22 +264,23 @@ konsumer_thread(void *arg)
 	for (;;) {
 
 		mtx_lock(&k->konsumer_mtx);
-		cv_timedwait(&k->konsumer_cv, &k->konsumer_mtx, 10 * hz / 9);
+		cv_timedwait_sbt(&k->konsumer_cv, &k->konsumer_mtx,
+		    SBT_1MS * konsumer_poll_ms, SBT_1MS, 0);
 		if (k->konsumer_exit)  {
 
 			mtx_unlock(&k->konsumer_mtx);
-	 		DLOGTR0(PRIO_LOW, "Stopping konsumer thread..\n");
+	 		DLOGTR0(PRIO_LOW, "Stopping konsumer thread...\n");
 			break;
 		}
 		mtx_unlock(&k->konsumer_mtx);
 
-		/* Mimic the userpsace status ioctl. */
+		/* Mimic the userpsace STATUS ioctl. */
 		nanouptime(&curtime);
 		k->konsumer_state->dts_laststatus =
 		    curtime.tv_sec * 1000000000UL + curtime.tv_nsec;
 
 		/* Switch the buffer and write the contents to DLog. */ 
-		konsumer_buffer_switch_locked(k->konsumer_state,
+		konsumer_buffer_switch(k->konsumer_state,
 		    k->konsumer_dlog_handle);
 	}
 
@@ -274,7 +288,7 @@ konsumer_thread(void *arg)
 	 * This ensure that the userspace DTrace process recieves an
 	 * empty buffer on termination.
 	 */ 
-	konsumer_buffer_switch_locked(k->konsumer_state,
+	konsumer_buffer_switch(k->konsumer_state,
 	     k->konsumer_dlog_handle);
 
 	DLOGTR0(PRIO_NORMAL, "Konsumer thread exited successfully.\n");
@@ -347,8 +361,6 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	struct dlog_handle *handle;
 	struct file *fp;
 	struct filedesc *fdp = curproc->p_fd;
-	dtrace_konsumer_t *konsumer = (dtrace_konsumer_t *)arg;
-	dtrace_konsumer_id_t id = (dtrace_konsumer_id_t)konsumer;
 	struct konsumer *k;
 	uint32_t hash;
 	int rc;
@@ -356,9 +368,6 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
 	DL_ASSERT(konsumer != NULL,
 	    ("DTrace konsumer instance cannot be NULL\n"));
-
-	DLOGTR3(PRIO_LOW, "konsumer_open called by dtrace: %s %lu %p\n",
-	    konsumer->dtk_name, id, state);
 
 	/* Confirm that the DTrace buffer policy is "switch". */
 	if (state->dts_options[DTRACEOPT_BUFPOLICY] !=
@@ -424,8 +433,6 @@ konsumer_open(void *arg, struct dtrace_state *state)
 static void
 konsumer_close(void *arg, struct dtrace_state *state)
 {
-	dtrace_konsumer_t *konsumer = (dtrace_konsumer_t *)arg;
-	dtrace_konsumer_id_t id = (dtrace_konsumer_id_t)konsumer;
 	struct konsumer *k, *k_tmp;
 	uint32_t hash;
 	
@@ -433,10 +440,7 @@ konsumer_close(void *arg, struct dtrace_state *state)
 	DL_ASSERT(MUTEX_HELD(&dtrace_lock),
 	    ("dtrace_lock should be held in dtrace_state_stop()"));
 
-	DLOGTR3(PRIO_LOW, "konsumer_close called by dtrace: %s %lu %p\n",
-	    konsumer->dtk_name, id, state);
-
-	/* Lookup the Konsumer instance based on the Dtrace state passed into
+	/* Lookup the Konsumer instance based on the DTrace state passed into
 	 * konsumer_close.
 	 */
 	hash = murmur3_32_hash(&state, sizeof(struct dtrace_state *), 0) &
@@ -454,7 +458,7 @@ konsumer_close(void *arg, struct dtrace_state *state)
 			mtx_unlock(&k->konsumer_mtx);
 			cv_broadcast(&k->konsumer_cv);
 			tsleep(k->konsumer_pid, 0,
-			     "waiting for konsumer thread", 0);
+			     "Waiting for konsumer thread to stop", 0);
 
 			/* Remove the konsumer instance from the hash map
 			 * and destroy it.
@@ -465,11 +469,11 @@ konsumer_close(void *arg, struct dtrace_state *state)
 			mtx_destroy(&k->konsumer_mtx);
 			cv_destroy(&k->konsumer_cv);
 			free(k, M_DLKON);
-			break;
+			return;
 		}
 	}
 
-	DL_ASSERT(0, ("konsumer_close called with invalid DTrace state."));
+	DL_ASSERT(1, ("konsumer_close called with invalid DTrace state."));
 }
 
 DECLARE_MODULE(konsumer, konsumer_conf, SI_SUB_DRIVERS, SI_ORDER_MIDDLE);
