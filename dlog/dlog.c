@@ -83,8 +83,6 @@ static char const * const DLOG_NAME = "dlog";
 const dlog_malloc_func dlog_alloc = dl_alloc;
 const dlog_free_func dlog_free = dl_free;
 
-struct proc *dlog_client_proc;
-
 static d_open_t dlog_open;
 static d_close_t dlog_close;
 static d_read_t dlog_read;
@@ -100,7 +98,7 @@ static struct cdevsw dlog_cdevsw = {
 };
 static struct cdev *dlog_dev;
 
-struct proc *dlog_client_proc;
+static struct proc *dlog_client_proc;
 
 static struct mtx dlog_mtx;
 static struct cv dlog_cv;
@@ -112,18 +110,24 @@ dlog_init()
 	struct make_dev_args dlog_args;
 	int rc, e;
 
+	/* Allocate the topic hashmap. */
+	topic_hashmap = dl_topic_hashmap_new(10, &topic_hashmask);
+	DL_ASSERT(topic_hashmap != NULL,
+	    ("DLog failed instiating new topic hashmap."));
+	if (topic_hashmap == NULL)
+		return -1;
+
 	mtx_init(&dlog_mtx, "dlog mtx", DLOG_NAME, MTX_DEF);
 	mtx_assert(dlog_mtx, MA_NOTOWNED);
 
 	cv_init(&dlog_cv, "dlog cv");
 
-	/* Allocate the topic hashmap. */
-	topic_hashmap = dl_topic_hashmap_new(10, &topic_hashmask);
-
 	/* Create a kernel process, each topic creates threads 
 	 * within this process.
 	 */
-	rc = kproc_create(dlog_main, NULL, &dlog_client_proc, 0, 0, DLOG_NAME);
+	rc = kproc_create(dlog_main, NULL, &dlog_client_proc, 0, 0,
+	    DLOG_NAME);
+	DL_ASSERT(rc != 0, ("DLog kproc_create failed %d", rc));
 	if (rc != 0) {
 
 		dl_topic_hashmap_delete(topic_hashmap);
@@ -141,14 +145,20 @@ dlog_init()
 
 	e = make_dev_s(&dlog_args, &dlog_dev, DLOG_NAME);
 	DL_ASSERT(e != 0, ("Failed to create dlog device"));
+	if (e != 0) {
 
-	return 0;
+		dl_topic_hashmap_delete(topic_hashmap);
+		cv_destroy(&dlog_cv);
+		mtx_destroy(&dlog_mtx);
+	}
+
+	return e;
 }
 
 static void 
 dlog_fini()
 {
-	int t;
+	int t, rc;
 	struct dl_topic *topic, *tmp;
 
 	DLOGTR1(PRIO_LOW, "Stoping %s process...\n", DLOG_NAME);
@@ -156,11 +166,17 @@ dlog_fini()
 	mtx_assert(dlog_mtx, MA_NOTOWNED);
 	mtx_lock(&dlog_mtx);
 	dlog_exit = 1;
-	cv_broadcast(&dlog_cv);
 	mtx_assert(dlog_mtx, MA_OWNED);
 	mtx_unlock(&dlog_mtx);
-	tsleep(&dlog_client_proc, 0, "dlog terminating...", 10 * hz / 9);
+	cv_broadcast(&dlog_cv);
 
+	/* Attempt to stop the DLog process. */
+	rc = tsleep(dlog_client_proc, 0, "DLog terminating...",
+	    60 * hz / 9);
+	DL_ASSERT(rc == 0, ("Failed to stop %d process.", DLOG_NAME));
+
+	DLOGTR1(PRIO_NORMAL, "%s process stopped successfully\n",
+	    DLOG_NAME);
 	cv_destroy(&dlog_cv);
 	mtx_destroy(&dlog_mtx);
 
@@ -251,6 +267,7 @@ dlog_close(struct cdev *dev, int fflag, int devtype, struct thread *td)
 static int 
 dlog_read(struct cdev *dev, struct uio *uio, int flag)
 {
+
 	return 0;
 }
 
@@ -280,11 +297,14 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 		if (copyin((void *) *ptp_desc, &tp_desc,
 		    sizeof(struct dl_topic_desc)) != 0)
 			return EFAULT; 
+		
+		if (tp_desc.dltd_name == NULL)
+			return EINVAL;
 	
 		/* Copyin the topic name into a new sbuf. */	
 		tp_name = sbuf_new_auto();
 		DL_ASSERT(tp_name != NULL,
-		    ("Failed allocating memory for sbuf.")); 
+		    ("Failed creating sbuf instance.")); 
 		if (sbuf_copyin(tp_name, tp_desc.dltd_name,
 		    strlen(tp_desc.dltd_name)) == -1) {
 
@@ -318,26 +338,27 @@ dlog_ioctl(struct cdev *dev, u_long cmd, caddr_t addr, int flags,
 
 			LIST_INSERT_HEAD(&topic_hashmap[h & topic_hashmask], t,
 			    dlt_entries); 
-			// TODO maybe taken ownership of the sbuf
-			sbuf_delete(tp_name);
 		} else {
-			// TODO maybe taken ownership of the sbuf
 			sbuf_delete(tp_name);
 			return -1;
 		}
 
 		break;
 	case DLOGIOC_DELTOPICPART:
+		DLOGTR0(PRIO_LOW, "Deleting Topic/Partition.\n");
 
 		/* Copyin the description of the new topic. */
 		if (copyin((void *) *ptp_desc, &tp_desc,
 		    sizeof(struct dl_topic_desc)) != 0)
 			return EFAULT; 
+		
+		if (tp_desc.dltd_name == NULL)
+			return EINVAL;
 	
 		/* Copyin the topic name into a new sbuf. */	
 		tp_name = sbuf_new_auto();
 		DL_ASSERT(tp_name != NULL,
-		    ("Failed allocating memory for sbuf.")); 
+		    ("Failed creating sbuf instance.")); 
 		if (sbuf_copyin(tp_name, tp_desc.dltd_name,
 		    strlen(tp_desc.dltd_name)) == -1) {
 

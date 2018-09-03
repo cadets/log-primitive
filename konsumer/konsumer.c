@@ -71,8 +71,6 @@ static int konsumer_event_handler(struct module *, int, void *);
 static void konsumer_thread(void *);
 
 static void konsumer_buffer_switch(dtrace_state_t *, struct dlog_handle *);
-static void konsumer_buffer_switch(dtrace_state_t *,
-    struct dlog_handle *);
 static void konsumer_persist_trace(dtrace_state_t *, struct dlog_handle *,
     dtrace_bufdesc_t *);
 
@@ -97,15 +95,15 @@ struct konsumer {
 	int konsumer_exit;
 };
 
-extern kmutex_t dtrace_lock;
-
-static const int KON_NHASH_BUCKETS = 16;
-
 static dtrace_kops_t kops = {
 	.dtkops_open = konsumer_open,
 	.dtkops_close = konsumer_close,
 };
 static dtrace_konsumer_id_t kid;
+
+extern kmutex_t dtrace_lock;
+
+static const int KON_NHASH_BUCKETS = 16;
 
 static LIST_HEAD(konsumers, konsumer) *konsumer_hashtbl = NULL;
 static u_long konsumer_hashmask;
@@ -134,7 +132,7 @@ static int
 konsumer_event_handler(struct module *module, int event, void *arg)
 {
 	struct konsumer *k, *k_tmp;
-	int e = 0, i;
+	int e = 0, i, rc;
 
 	switch(event) {
 	case MOD_LOAD:
@@ -177,8 +175,11 @@ konsumer_event_handler(struct module *module, int event, void *arg)
 				k->konsumer_exit = 1;
 				mtx_unlock(&k->konsumer_mtx);
 				cv_broadcast(&k->konsumer_cv);
-				tsleep(k->konsumer_pid, 0,
-				    "Waiting for konsumer process to stop", 0);
+				rc = tsleep(k->konsumer_pid, 0,
+				    "Waiting for konsumer process to stop",
+				    60 * hz / 9);
+				DL_ASSERT(rc == 0,
+				   ("Failed to stop konsumer thread"));
 
 				/* Remove the konsumer and destroy. */
 				DLOGTR0(PRIO_LOW,
@@ -217,6 +218,10 @@ konsumer_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 	/* Switch and process the trace buffers for each CPU. */
 	for (int cpu = 0; cpu < mp_ncpus; cpu++) {
 
+		/* Note: Unlike in the BUFSNAP ioctl it is unnecessary to
+		 * acquire the dtrace_lock.
+		 */
+
 		buf = &state->dts_buffer[cpu];
 		DL_ASSERT(
 		    (buf->dtb_flags & (DTRACEBUF_RING | DTRACEBUF_FILL)) == 0,
@@ -232,11 +237,16 @@ konsumer_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 		/* Perform xcall to swap the CPU's DTrace buffers. */
 		dtrace_xcall(cpu, (dtrace_xcall_t) dtrace_buffer_switch, buf);
 
-		/* Check whether the xcall was successful in swapping the
-		 * DTrace buffers.
-		 */
-		if (buf->dtb_tomax == cached)
-			break;
+		/* Check that xcall of dtrace_buffer_switch succeeded. */
+		if (buf->dtb_tomax == cached) {
+
+			DL_ASSERT(buf->dtb_xomat != cached,
+			   ("DTrace buffers pointers are inconsistent"));
+			continue;
+		}
+
+		DL_ASSERT(cached == buf->dtb_xomat,
+			("DTrace buffers pointers are inconsistent"));
 		
 		state->dts_errors += buf->dtb_xamot_errors;
 
@@ -247,6 +257,9 @@ konsumer_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 		desc.dtbd_oldest = 0;
 		desc.dtbd_timestamp = buf->dtb_switched;
 
+		/* If the buffer contains records persist them to the
+		 * distributed log.
+		 */
 		if (desc.dtbd_size != 0)
 			konsumer_persist_trace(state, handle, &desc);
 	}
@@ -255,7 +268,7 @@ konsumer_buffer_switch(dtrace_state_t *state, struct dlog_handle *handle)
 static void
 konsumer_thread(void *arg)
 {
-	struct konsumer *k = (struct konsumer *) arg;
+	struct konsumer *k = (struct konsumer *)arg;
 	struct timespec curtime;
 
 	konsumer_assert_integrity(__func__, k);
@@ -274,7 +287,11 @@ konsumer_thread(void *arg)
 		}
 		mtx_unlock(&k->konsumer_mtx);
 
-		/* Mimic the userpsace STATUS ioctl. */
+		/* Mimic the userpsace STATUS ioctl.
+		 * Without updating the dts_laststatus field the DTrace
+		 * deadman timer with result in a transition to the
+		 * KILLED state.
+		 */
 		nanouptime(&curtime);
 		k->konsumer_state->dts_laststatus =
 		    curtime.tv_sec * 1000000000UL + curtime.tv_nsec;
@@ -302,6 +319,10 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 	dtrace_epid_t epid;
 	size_t msg_start = 0, msg_size = 0, size = 0;
 	
+	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
+	DL_ASSERT(hdl != NULL, ("DLog handle cannot be NULL."));
+	DL_ASSERT(desc != NULL,
+	    ("DTrace buffer description cannot be NULL."));
 	DL_ASSERT(desc->dtbd_data != NULL,
 	    ("konsumer_persist_trace called with NULL buffer."));
 	DL_ASSERT(desc->dtbd_size != 0,
@@ -319,12 +340,27 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 		if (dtrace_epid2size(state, epid) == 0) {
 
 			DLOGTR1(PRIO_HIGH,
-			    "Error payload size is 0 for epid = %u\n", epid);
+			    "Error payload size is 0 for epid = %u\n",
+			    epid);
 			break;
 		}
-		size += dtrace_epid2size(state, epid);
 
+
+		/* Check whether the record would take the msg_size
+		 * over the MTU configured for the distributed log.
+		 */
 		if (msg_size + dtrace_epid2size(state, epid) > DL_MTU) {
+
+			/* The umsg_size is zero this occurs when the
+			 * DTrace record size is greater than the log
+			 * MTU. This should have been checked during 
+			 * konsumer_open().
+			 */
+			DL_ASSERT(msg_size != 0,
+			    ("Error DTrace record size %zu is greater "
+			     "than log MTU %d\n",
+			     dtrace_epid2size(state, epid), DL_MTU));
+
 			if (dlog_produce_no_key(hdl, 
 			    &desc->dtbd_data[msg_start], msg_size) != 0) {
 
@@ -332,11 +368,23 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 				    "Error producing message to DLog\n");
 			}
 
+			/* Reset the msg_size and set the msg_start
+			 * to the location in the buffer at which the
+			 * next message starts.
+			 */
 			msg_start += msg_size;
 			msg_size = 0;
 		} else {
 
+			/* Increment the message and total size by the
+			 * payload of the current record.
+			 */
+			size += dtrace_epid2size(state, epid);
 			msg_size += dtrace_epid2size(state, epid);
+
+			/* Check whether the record is the last in the
+			 * buffer.
+			 */
 			if (msg_size == desc->dtbd_size) {
 				if (dlog_produce_no_key(hdl, 
 				    &desc->dtbd_data[msg_start],
@@ -347,6 +395,10 @@ konsumer_persist_trace(dtrace_state_t *state, struct dlog_handle *hdl,
 					    "DLog\n");
 				}
 
+				/* Reset the msg_size and set the msg_start
+				 * to the location in the buffer at which
+				 * the next message starts.
+				 */
 				msg_start += msg_size;
 				msg_size = 0;
 			}
@@ -362,39 +414,69 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	struct file *fp;
 	struct filedesc *fdp = curproc->p_fd;
 	struct konsumer *k;
+	dtrace_epid_t epid;
+	dtrace_konsumer_t *konsumer = (dtrace_konsumer_t *)arg;
 	uint32_t hash;
 	int rc;
 	
-	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL\n"));
+	DL_ASSERT(state != NULL, ("DTrace state cannot be NULL."));
 	DL_ASSERT(konsumer != NULL,
-	    ("DTrace konsumer instance cannot be NULL\n"));
+	    ("DTrace konsumer instance cannot be NULL."));
+
+       	/* Check the the payload of the enabled probes is less than the
+	 * configured MTU of the distributed log.
+	 */
+	for (epid  = 1; epid < state->dts_epid; epid++) {
+		if (dtrace_epid2size(state, epid) > DL_MTU) {
+			DLOGTR3(PRIO_HIGH,
+			    "Konsumer (%s) rendezvous with DLog state "
+			    "DTrace record size %zu is greater "
+			    "than log MTU %d\n",
+			    konsumer->dtk_name,
+			    dtrace_epid2size(state, epid), DL_MTU);
+			return;
+		}
+	}
 
 	/* Confirm that the DTrace buffer policy is "switch". */
 	if (state->dts_options[DTRACEOPT_BUFPOLICY] !=
 	    DTRACEOPT_BUFPOLICY_SWITCH) {
 	
 		DLOGTR1(PRIO_HIGH,
-		    "Rendezvous with DLog state failed (%p)\n", state);
+		    "Konsumer (%s) rendezvous with DLog state failed "
+		    "DTrace bufpolicy must be switch\n",
+		    konsumer->dtk_name);
+		return;
+	}
+	
+	/* Convert the DLog file descriptor into a struct dlog_handle */
+	if (state->dts_options[DTRACEOPT_KONSUMERARG] == DTRACEOPT_UNSET) {
+
+		DLOGTR1(PRIO_HIGH,
+		    "Konsumer (%s) rendezvous with DLog state failed "
+		    "DTrace konarg option is unset\n", konsumer->dtk_name);
 		return;
 	}
 
-	/* Convert the DLog file descriptor into a struct dlog_handle * */
 	FILEDESC_SLOCK(fdp);
 	fp = fget_locked(fdp, state->dts_options[DTRACEOPT_KONSUMERARG]);
+	FILEDESC_SUNLOCK(fdp);
 	if (fp == NULL) {
 
 		DLOGTR1(PRIO_HIGH,
-		    "Rendezvous with DLog state failed (%p)\n", state);
-		FILEDESC_SUNLOCK(fdp);
+		    "Konsumer (%s) rendezvous with DLog state failed "
+		    "DTrace konarg is not a valid file secriptor\n",
+		    konsumer->dtk_name);
 		return;
 	}
-	FILEDESC_SUNLOCK(fdp);
 
 	p = fp->f_cdevpriv;
 	if (p == NULL) {
 
 		DLOGTR1(PRIO_HIGH,
-		    "Rendezvous with DLog state failed (%p)\n", state);
+		    "Konsumer (%s) rendezvous with DLog state failed "
+		    "DTrace konarg file secriptor is not associated with "
+		    "dlog handle\n", konsumer->dtk_name);
 		return;
 	}
 
@@ -402,10 +484,13 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	if (handle == NULL) {
 
 		DLOGTR1(PRIO_HIGH,
-		    "Rendezvous with DLog state failed (%p)\n", state);
+		    "Konsumer (%s) rendezvous with DLog state failed "
+		    "DTrace konarg file secriptor is not associated with "
+		    "dlog handle\n", konsumer->dtk_name);
 		return;
 	}
-	
+
+	/* ALlocate a new Konsumer instance. */
 	k = (struct konsumer *) malloc(sizeof(struct konsumer), M_DLKON,
 	    M_NOWAIT);
 	DL_ASSERT(k != NULL, ("Failed to allocate new konsumer instance."));
@@ -423,7 +508,8 @@ konsumer_open(void *arg, struct dtrace_state *state)
 	konsumer_assert_integrity(__func__, k);
 
 	/* Added the new konsumer instance into the hashmap, index by the
-	 * dtrace_state pointer.
+	 * dtrace_state pointer(the pointer is hashed as the state itself
+	 * changes over the execution).
 	 */
 	hash = murmur3_32_hash(&state, sizeof(struct dtrace_state *), 0) &
 	    konsumer_hashmask;
