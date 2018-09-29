@@ -65,8 +65,8 @@ dl_response_header_encode(struct dl_response const * const response,
     struct dl_bbuf * const target)
 {
 
-	DL_ASSERT(response != NULL, "Response cannot be NULL");
-	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
+	DL_ASSERT(response != NULL, ("Response cannot be NULL"));
+	DL_ASSERT(target != NULL, ("Target buffer cannot be NULL"));
 
 	/* Encode the Response CorrelationId into the buffer. */
 	return DL_ENCODE_CORRELATION_ID(target, response->dlrs_correlation_id);
@@ -192,8 +192,8 @@ int32_t
 dl_response_encode(struct dl_response *response, struct dl_bbuf **target)
 {
 
-	DL_ASSERT(response != NULL, "Response message cannot be NULL\n");
-	DL_ASSERT(target != NULL, "Target buffer cannot be NULL\n");
+	DL_ASSERT(response != NULL, ("Response message cannot be NULL"));
+	DL_ASSERT(target != NULL, ("Target buffer cannot be NULL"));
 
 	/* Allocate and initialise a buffer to encode the response.
 	 * An AUTOEXTEND buffer should only fail when the reallocation of
@@ -241,7 +241,7 @@ dl_response_header_decode(struct dl_response_header **self,
 	struct dl_response_header *header;
 	int rc = 0;
 
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL\n");
+	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
 
 	header = (struct dl_response_header *) dlog_alloc(
 	    sizeof(struct dl_response_header));
@@ -265,5 +265,3 @@ dl_response_header_decode(struct dl_response_header **self,
 
 	return -1;
 }
-
-

@@ -35,13 +35,8 @@ TESTSDIR= ${TESTBASE}/index
 
 ATF_TESTS_C+= atf_dl_index
 
-#SRCS = dl_bbuf.c \
-#       dl_index.c \
-#       dl_segment.c \
-#       dl_utils.c
-
 LDADD+= -lprivateatf-c
 LDADD+= -lsbuf
-LDADD+= ${SRCTOP}/libdlog.a
+LDADD+= ../../libdlog/libdlog.a
 
 .include <bsd.test.mk>

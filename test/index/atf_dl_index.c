@@ -117,7 +117,7 @@ ATF_TC_BODY(test2, tc)
 	ATF_REQUIRE(rc == 0);
 	dl_bbuf_delete(buf);
 
-	dl_index_update(idx);
+	dl_index_update(idx, 0);
 	ATF_REQUIRE(rc == 0);
 
 	dl_segment_delete(seg);
@@ -164,7 +164,7 @@ ATF_TC_BODY(test3, tc)
 	ATF_REQUIRE(rc == 0);
 	dl_bbuf_delete(buf);
 
-	dl_index_update(idx);
+	dl_index_update(idx, 0);
 	
 	poffset = dl_index_lookup(seg->dls_idx, 0);
 	ATF_REQUIRE(poffset == 0);
@@ -217,7 +217,7 @@ ATF_TC_BODY(test4, tc)
 
 	dl_bbuf_delete(buf);
 
-	dl_index_update(idx);
+	dl_index_update(idx, 0);
 	
 	poffset = dl_index_lookup(seg->dls_idx, 0);
 	ATF_REQUIRE(poffset == 0);
@@ -269,7 +269,7 @@ ATF_TC_BODY(test5, tc)
 	ATF_REQUIRE(rc == 0);
 	dl_bbuf_delete(buf);
 
-	dl_index_update(idx);
+	dl_index_update(idx, 0);
 	
 	rc = dl_segment_get_message_by_offset(seg, 0, &buf);
 	ATF_REQUIRE(rc == 0);

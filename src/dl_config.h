@@ -71,7 +71,7 @@ struct dl_client_config_desc {
 #define DL_DEFAULT_BROKER "127.0.0.1"
 #define DL_DEFAULT_BROKER_PORT 9092
 #define DL_DEFAULT_TORESEND true 
-#define DL_DEFAULT_RESENDTIMEOUT 2 
+#define DL_DEFAULT_RESENDTIMEOUT 30
 #define DL_DEFAULT_RESENDPERIOD 2
 #define DL_DEFAULT_TOPIC "test" 
 

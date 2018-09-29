@@ -58,6 +58,7 @@
 #include <netinet/ip.h>
 #include <strings.h>
 #include <stddef.h>
+#include <unistd.h>
 #endif
 
 #include "dl_assert.h"
@@ -105,7 +106,7 @@ void dl_transport_delete(struct dl_transport *self)
 
 	dl_transport_check_integrity(self);
 
-	// Disconnect and free?
+	close(self->dlt_fd);
 	dlog_free(self);
 }
 
@@ -152,11 +153,18 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 	/* Read the size of the request or response to process. */
 	ret = recv(self->dlt_fd, &msg_size, sizeof(int32_t), 0);
 	msg_size = be32toh(msg_size);
+#ifdef DEBUG
 	DLOGTR2(PRIO_LOW, "Read %d bytes (%d)...\n", ret, msg_size);
+#endif
 	if (ret == 0) {
+
 		/* Peer has closed connection */
+		return -1;
 	} else if (ret > 0) {
+
+#ifdef DEBUG
 		DLOGTR1(PRIO_LOW, "\tNumber of bytes: %d\n", msg_size);
+#endif
 
 		buffer = dlog_alloc(sizeof(char) * msg_size);
 		// TODO: error handling
@@ -172,11 +180,15 @@ dl_transport_read_msg(struct dl_transport *self, struct dl_bbuf **target)
 		}
 		dlog_free(buffer);
 
+		/* Flip the target buffer as clients are reading values
+		 * from it.
+		*/
+		dl_bbuf_flip(*target);
+
 		return 0;
 	} else {
 		return -1;
 	}
-	return -1;
 }
 
 int

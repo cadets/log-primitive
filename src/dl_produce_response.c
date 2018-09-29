@@ -276,7 +276,7 @@ dl_produce_response_encode(struct dl_produce_response *self,
 	SLIST_FOREACH(topic_response, &self->dlpr_topics, dlprt_entries) {
 
 		DL_ASSERT(topic_response->dlprt_npartitions > 0,
-		    "Non-primitive [response_data] array is not NULLABLE");
+		    ("Non-primitive [response_data] array is not NULLABLE"));
 
 		/* Encode the TopicName. */
 		rc |= DL_ENCODE_TOPIC_NAME(target,

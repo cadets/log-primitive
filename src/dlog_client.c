@@ -64,18 +64,13 @@
 
 #include "dl_assert.h"
 #include "dl_bbuf.h"
-#include "dl_broker_client.h"
 #include "dl_correlation_id.h"
-#include "dl_event_handler.h"
 #include "dl_memory.h"
-#include "dl_poll_reactor.h"
 #include "dl_topic.h"
 #include "dl_request.h"
 #include "dl_response.h"
-#include "dl_request_queue.h"
 #include "dl_transport.h"
 #include "dl_utils.h"
-#include "dlog_broker.h"
 #include "dlog_client.h"
 
 static unsigned int dlog_nopen = 0;
@@ -119,7 +114,7 @@ dlog_client_open(struct dlog_handle **self,
 	struct dl_topic *topic;
 	const char *topic_name;
 	
-	DL_ASSERT(config != NULL, "Client configuration cannot be NULL");
+	DL_ASSERT(config != NULL, ("Client configuration cannot be NULL"));
 	DLOGTR0(PRIO_NORMAL, "Opening the Dlog client...\n");
 
 	if (!nvlist_exists_string(props, DL_CONF_TOPIC)) {
@@ -352,15 +347,13 @@ dlog_produce(struct dlog_handle *self, unsigned char *k, size_t k_len,
 	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN) != 0)
 		goto err_free_msgset;
 
-	if (dl_message_set_encode(message_set, buffer) != 0) {
+	if (dl_message_set_encode_compressed(message_set, buffer) != 0) {
 
 		DLOGTR0(PRIO_HIGH, "Error encoding MessageSet\n");
 		goto err_free_bbuf;
 	}
 	
 	
-	DLOGTR0(PRIO_LOW, "Encoded request message\n");
-
 	/* Enqueue the MessageSet for processing */
 	if (dl_topic_produce_to(self->dlh_topic, buffer) != 0) {
 
@@ -373,8 +366,6 @@ dlog_produce(struct dlog_handle *self, unsigned char *k, size_t k_len,
 
 	/* Increment the SYSCTL count of produced records */
 	dlog_nproduce++;
-
-	DLOGTR0(PRIO_LOW, "Produced request to log\n");
 	return 0;
 
 err_free_bbuf:

@@ -38,5 +38,3 @@ CFLAGS+= -Wno-unused-variable
 CFLAGS+= -Wno-unused-parameter
 CFLAGS+= -Wno-unused-command-line-argument
 CFLAGS+= -Wno-sign-compare
-
-#.include <srctop.mk>

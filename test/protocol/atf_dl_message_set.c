@@ -58,8 +58,8 @@ ATF_TC_WITHOUT_HEAD(test1);
 ATF_TC_BODY(test1, tc)
 {
 	struct dl_message_set *message_set;
-	int rc;
 	char *key = "key", *value = "value";
+	int rc;
 
 	rc = dl_message_set_new(&message_set, key, strlen(key), value,
 	    strlen(value));
@@ -88,8 +88,6 @@ ATF_TC_BODY(test2, tc)
 ATF_TC_WITHOUT_HEAD(test3);
 ATF_TC_BODY(test3, tc)
 {
-	int rc;
-	char *key = "key", *value = "value";
 
 	atf_tc_expect_signal(6, "NULL value passed to request.");
 	dl_message_set_delete(NULL);
@@ -132,9 +130,9 @@ ATF_TC_BODY(test5, tc)
 	struct dl_bbuf *buf;
 	struct dl_message_set *msgset, *decoded_msgset;
 	int rc;
-	char *key = "key", *value = "value";
+	char *value = "Tets";
 
-	rc = dl_message_set_new(&msgset, key, strlen(key), value,
+	rc = dl_message_set_new(&msgset, NULL, 0, value,
 	    strlen(value));
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(msgset != NULL);
@@ -147,14 +145,57 @@ ATF_TC_BODY(test5, tc)
 	rc = dl_message_set_encode(msgset, buf);
 	ATF_REQUIRE(rc == 0);
 
+	unsigned char *bufval = dl_bbuf_data(buf);
+	for (int i = 0; i < dl_bbuf_pos(buf); i++) {
+		DLOGTR1(PRIO_LOW, "<%02hhX>", bufval[i]);
+	};
+	DLOGTR0(PRIO_LOW, "\n");
+
 	dl_bbuf_flip(buf);	
 	rc = dl_message_set_decode(&decoded_msgset, buf);
 	ATF_REQUIRE(rc == 0);
 
+
 	dl_bbuf_delete(buf);
-	dl_message_set_delete(decoded_msgset);
 	dl_message_set_delete(msgset);
 }
+
+/* Test 6 
+ * dl_message_set_encode_compressed() - valid params. 
+ */
+ATF_TC_WITHOUT_HEAD(test6);
+ATF_TC_BODY(test6, tc)
+{
+	struct dl_bbuf *target;
+	struct dl_message_set *msgset;
+	int rc;
+	char *value = "Tets";
+
+	rc = dl_message_set_new(&msgset, NULL, 0, value,
+	    strlen(value));
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(msgset != NULL);
+
+	rc = dl_bbuf_new(&target, NULL, DL_MTU,
+	    (DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN));
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(msgset != NULL);
+
+	rc = dl_message_set_encode_compressed(msgset, target);
+	ATF_REQUIRE(rc == 0);
+
+	unsigned char *bufval = dl_bbuf_data(target);
+	for (int i = 0; i < dl_bbuf_pos(target); i++) {
+		DLOGTR1(PRIO_LOW, "<%02hhX>", bufval[i]);
+	};
+	DLOGTR0(PRIO_LOW, "\n");
+
+	DLOGTR0(PRIO_LOW, "Encoded request message\n");
+
+	dl_message_set_delete(msgset);
+	dl_bbuf_delete(target);
+}
+
 
 ATF_TP_ADD_TCS(tp)
 {
@@ -163,6 +204,7 @@ ATF_TP_ADD_TCS(tp)
 	ATF_TP_ADD_TC(tp, test3);
 	ATF_TP_ADD_TC(tp, test4);
 	ATF_TP_ADD_TC(tp, test5);
+	ATF_TP_ADD_TC(tp, test6);
 
 	return atf_no_error();
 }

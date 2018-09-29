@@ -97,6 +97,7 @@ ATF_TC_BODY(test2, tc)
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(request != NULL);
 
+	dl_request_delete(request);
 	sbuf_delete(topic);
 }
 
@@ -159,6 +160,7 @@ ATF_TC_BODY(test4, tc)
 	key_len = strlen(key);
 	value_len = strlen(value);
 	rc = dl_message_set_new(&msg_set, key, key_len, value, value_len);
+	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(msg_set != NULL);
 
 	atf_tc_expect_signal(6, "NULL value passed to request.");
@@ -326,8 +328,8 @@ ATF_TC_BODY(test10, tc)
 	ATF_REQUIRE(buffer != NULL);
 
 	dl_bbuf_flip(buffer);	
-	rc = dl_request_decode(&decoded_request, buffer);
-	ATF_REQUIRE_MSG(rc == 0, "rc = %d\n", rc);
+	rc = dl_produce_request_decode(&decoded_request, buffer);
+	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(decoded_request != NULL);
 
 	dl_request_delete(request);

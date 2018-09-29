@@ -29,7 +29,7 @@
 # SUCH DAMAGE.
 #
 
-.PATH : ../src
+.PATH : ../../src
 
 .OBJDIR:= obj
 MK_AUTO_OBJ:= yes
@@ -45,7 +45,7 @@ DLOG_SRCS= dl_bbuf.c \
 	dl_list_offset_request.c \
 	dl_list_offset_response.c \
 	dl_message_set.c \
-	dl_partition.c \
+	dl_offset.c \
 	dl_poll_reactor.c \
 	dl_primitive_types.c \
 	dl_producer.c \
@@ -54,6 +54,7 @@ DLOG_SRCS= dl_bbuf.c \
 	dl_request.c \
 	dl_request_queue.c \
 	dl_response.c \
+	dl_user_segment.c \
 	dl_segment.c \
 	dl_topic.c \
 	dl_transport.c \
@@ -63,6 +64,7 @@ DLOG_SRCS= dl_bbuf.c \
 SRCS.dlogd = dlogd.c ${DLOG_SRCS}
 MAN.dlogd =
 
+LDADD+=-lc
 LDADD+=-lcrypto
 LDADD+=-lnv
 LDADD+=-lpthread
@@ -70,10 +72,14 @@ LDADD+=-lsbuf
 LDADD+=-lz
 LDADD+=-lucl
 
+#CFLAGS+=-DNDEBUG
+CFLAGS+=-g
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
-CFLAGS+=-I${SRCTOP}
+CFLAGS+=-I../../src
 CFLAGS+=-I${SRCTOP}/../dlog
+#CFLAGS+=-fsanitize=address
+#CFLAGS+=-fno-omit-frame-pointer
 
 .include <bsd.progs.mk>

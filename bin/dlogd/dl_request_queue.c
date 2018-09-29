@@ -46,11 +46,10 @@
 #include "dl_utils.h"
 
 static inline void
-dlr_check_integrity(struct dl_request_q *self)
+dlrq_check_integrity(struct dl_request_q *self)
 {
+
 	DL_ASSERT(self != NULL, ("Request queue inst cannot be NULL."));
-	DL_ASSERT(self->dlrq_len <= self->dlrq_limit,
-	    ("Request queue inst cannot be NULL."));
 }
 
 int 
@@ -58,23 +57,14 @@ dl_request_q_enqueue(struct dl_request_q *self,
     struct dl_request_element *request)
 {
 
-	dlr_check_integrity(self);
+	dlrq_check_integrity(self);
 	DL_ASSERT(request != NULL, ("Request instance cannot be NULL"));
 
+	sem_wait(&self->dlrq_spaces);
 	pthread_mutex_lock(&self->dlrq_mtx);
-
-	/* Check whether the queue's bounds are exceeded. */
-	if (self->dlrq_len >= self->dlrq_limit) {
-		//pthread_cond_wait();
-		pthread_mutex_unlock(&self->dlrq_mtx);
-		return -1;
-	}
-	pthread_mutex_unlock(&self->dlrq_mtx);
-
 	STAILQ_INSERT_TAIL(&self->dlrq_requests, request, dlrq_entries);
-	pthread_cond_signal(&self->dlrq_cond);
 	pthread_mutex_unlock(&self->dlrq_mtx);
-	self->dlrq_len++;
+	sem_post(&self->dlrq_items);
 
 	return 0;
 }
@@ -84,45 +74,22 @@ dl_request_q_dequeue(struct dl_request_q *self,
     struct dl_request_element **elem)
 {
 	struct dl_request_element *request;
-	struct timespec ts;
-	struct timeval now;
-	int rc;
 
-	dlr_check_integrity(self);
-	DL_ASSERT(elem != NULL, ("Request element inst cannot be NULL."));
+	dlrq_check_integrity(self);
+	DL_ASSERT(elem != NULL,
+	    ("Request element instance cannot be NULL."));
 
-	/* Wait for elements to be added to the reader's queue. */
+	sem_wait(&self->dlrq_items);
 	pthread_mutex_lock(&self->dlrq_mtx);		
-	if (STAILQ_EMPTY(&self->dlrq_requests) != 0) {
-
-		rc = gettimeofday(&now, NULL);
-		if (rc != 0) {
-			DLOGTR1(PRIO_HIGH,
-			    "gettimeofday failed %d\n", rc);
-			pthread_mutex_unlock(&self->dlrq_mtx);
-			return -1;
-		}
-	
-		ts.tv_sec = now.tv_sec + 1;
-		ts.tv_nsec = 0;
-		rc = pthread_cond_timedwait(&self->dlrq_cond, &self->dlrq_mtx,
-		    &ts);
-		if (rc != 0) {
-			pthread_mutex_unlock(&self->dlrq_mtx);
-			return -1;
-		}
-	}
-
 	if (STAILQ_EMPTY(&self->dlrq_requests) == 0) {
 
 		request = STAILQ_FIRST(&self->dlrq_requests);
 		STAILQ_REMOVE_HEAD(&self->dlrq_requests, dlrq_entries);
 
-		STAILQ_INSERT_TAIL(&self->dlrq_unackd_requests,
-		    request, dlrq_entries);
 		*elem = request;
 	}
 	pthread_mutex_unlock(&self->dlrq_mtx);
+	sem_post(&self->dlrq_spaces);
 
 	return 0;
 }
@@ -133,7 +100,7 @@ dl_request_q_enqueue_new(struct dl_request_q *self, struct dl_bbuf *buffer,
 {
 	struct dl_request_element *request;
 	
-	dlr_check_integrity(self);
+	dlrq_check_integrity(self);
 	DL_ASSERT(buffer != NULL, ("Buffer cannot be NULL"));
 
 	/* Allocate a new request; this stores the encoded request
@@ -143,6 +110,7 @@ dl_request_q_enqueue_new(struct dl_request_q *self, struct dl_bbuf *buffer,
 	request = (struct dl_request_element *) dlog_alloc(
 	    sizeof(struct dl_request_element));
 	if (request != NULL) {
+
 		/* Construct the request */
 		bzero(request, sizeof(struct dl_request_element));
 
@@ -177,27 +145,34 @@ dl_request_q_new(struct dl_request_q **self, uint32_t qlimit)
 		goto err_queue_ctor;
 
 	bzero(queue, sizeof(struct dl_request_q));
-	queue->dlrq_len = 0;
-	queue->dlrq_limit = qlimit;
 
 	STAILQ_INIT(&queue->dlrq_requests);
-	STAILQ_INIT(&queue->dlrq_unackd_requests);
 
-	rc = pthread_mutex_init(&queue->dlrq_mtx, NULL);
+	rc = sem_init(&queue->dlrq_items, 0, 0);
 	if (rc != 0) {
+
 		dlog_free(queue);
 		goto err_queue_ctor;
 	}
 
-	rc = pthread_cond_init(&queue->dlrq_cond, NULL);
+	rc = sem_init(&queue->dlrq_spaces, 0, qlimit);
 	if (rc != 0) {
-		pthread_mutex_destroy(&queue->dlrq_mtx);
+
+		sem_destroy(&queue->dlrq_items);
+		dlog_free(queue);
+		goto err_queue_ctor;
+	}
+	rc = pthread_mutex_init(&queue->dlrq_mtx, NULL);
+	if (rc != 0) {
+
+		sem_destroy(&queue->dlrq_spaces);
+		sem_destroy(&queue->dlrq_items);
 		dlog_free(queue);
 		goto err_queue_ctor;
 	}
 
 	*self = queue;
-	dlr_check_integrity(*self);
+	dlrq_check_integrity(*self);
 	return 0;
 
 err_queue_ctor:
@@ -211,27 +186,26 @@ void
 dl_request_q_delete(struct dl_request_q *self)
 {
 
-	dlr_check_integrity(self);
-	DL_ASSERT(STAILQ_EMPTY(&self->dlrq_requests) != 0,
-	    ("Request queue is not emprty!"));
+	dlrq_check_integrity(self);
 
 	pthread_mutex_destroy(&self->dlrq_mtx);
-	pthread_cond_destroy(&self->dlrq_cond);
+	sem_destroy(&self->dlrq_spaces);
+	sem_destroy(&self->dlrq_items);
 	dlog_free(self);
 }
 
 void
-dl_request_q_lock(struct dl_request_q *self)
+dl_request_q_lock(struct dl_request_q *self) __attribute((no_thread_safety_analysis))
 {
 
-	dlr_check_integrity(self);
+	dlrq_check_integrity(self);
 	pthread_mutex_lock(&self->dlrq_mtx);
 }
 
 void
-dl_request_q_unlock(struct dl_request_q *self)
+dl_request_q_unlock(struct dl_request_q *self) __attribute((no_thread_safety_analysis))
 {
 
-	dlr_check_integrity(self);
+	dlrq_check_integrity(self);
 	pthread_mutex_unlock(&self->dlrq_mtx);
 }

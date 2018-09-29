@@ -43,6 +43,9 @@
 
 #ifdef _KERNEL
 #include <sys/systm.h>
+#else
+#include <syslog.h>
+#include <stdarg.h>
 #endif
 
 #ifdef _KERNEL
@@ -62,30 +65,32 @@
 	log(event_mask, format, p1, p2, p3, p4, p5, p6)
 #else
 #define DLOGTR0(event_mask, format) \
-	dl_debug(event_mask, format)
+	syslog(event_mask, format)
 #define DLOGTR1(event_mask, format, p1) \
-	dl_debug(event_mask, format, p1)
+	syslog(event_mask, format, p1)
 #define DLOGTR2(event_mask, format, p1, p2) \
-	dl_debug(event_mask, format, p1, p2)
+	syslog(event_mask, format, p1, p2)
 #define DLOGTR3(event_mask, format, p1, p2, p3) \
-	dl_debug(event_mask, format, p1, p2, p3)
+	syslog(event_mask, format, p1, p2, p3)
 #define DLOGTR4(event_mask, format, p1, p2, p3, p4) \
-	dl_debug(event_mask, format, p1, p2, p3, p4)
+	syslog(event_mask, format, p1, p2, p3, p4)
 #define DLOGTR5(event_mask, format, p1, p2, p3, p4, p5) \
-	dl_debug(event_mask, format, p1, p2, p3, p4, p5)
+	syslog(event_mask, format, p1, p2, p3, p4, p5)
 #define DLOGTR6(event_mask, format, p1, p2, p3, p4, p5, p6) \
-	dl_debug(event_mask, format, p1, p2, p3, p4, p5, p6)
+	syslog(event_mask, format, p1, p2, p3, p4, p5, p6)
 #endif /* KERNEL */
 
-#ifdef _KERNEL
-#define PRIO_HIGH   3 //LOG_DEBUG
-#define PRIO_NORMAL 6 //LOG_NOTIC
-#define PRIO_LOW    7 //LOG_ERR
-#else
-#define PRIO_HIGH   1 << 1
-#define PRIO_NORMAL 1 << 2
-#define PRIO_LOW    1 << 3
-#endif
+//#ifdef _KERNEL
+#define PRIO_HIGH   3 //LOG_ERR
+#define PRIO_NORMAL 5 //LOG_NOTICE
+#define PRIO_LOW    7 //LOG_DEBUG
+//#else
+//#define PRIO_HIGH   1 << 1
+//#define PRIO_NORMAL 1 << 2
+//#define PRIO_LOW    1 << 3
+//#endif
+
+extern unsigned short PRIO_LOG;
 
 extern int dl_make_folder(struct sbuf *);
 extern int dl_del_folder(struct sbuf *);

@@ -70,12 +70,13 @@ dl_del_folder(struct sbuf *path)
 }
 
 #else /* !KERNEL */
-extern unsigned short PRIO_LOG;
 
 // Adopted from http://www.doc.ic.ac.uk/~rn710/Installs/otp_src_17.0/erts/emulator/drivers/unix/unix_efile.c
 //
 extern int
-dl_alloc_big_file(int fd, long int offset, long int length)
+dl_alloc_big_file(int fd __attribute((unused)),
+    long int offset __attribute((unused)),
+    long int length __attribute((unused)))
 {
 #if defined HAVE_FALLOCATE
 	/* Linux specific, more efficient than posix_fallocate. */
@@ -123,7 +124,7 @@ dl_alloc_big_file(int fd, long int offset, long int length)
 
 	return ret < 0 ? 0 : 1;
 #elif defined HAVE_POSIX_FALLOCATE
-	/* Other Unixes, use posix_fallocate if available. */
+	/* Other Unixes, use posix_fmake_dirallocate if available. */
 	return dl_call_posix_fallocate(fd, offset, length) < 0 ? 0 : 1;
 #else
 	return -1;
@@ -206,14 +207,15 @@ int
 dl_make_folder(struct sbuf *path)
 {
 	struct stat st;
-	
+
 	DL_ASSERT(path != NULL, ("File path to create cannot be NULL."));
 
 	if (stat(sbuf_data(path), &st) == -1) {
+
 		return mkdir(sbuf_data(path), 0777);
 	}
 
-	return -1;
+	return 0;
 }
 
 int

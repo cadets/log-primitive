@@ -61,24 +61,30 @@ struct dl_bbuf {
 	int dlb_capacity;
 };
 
-const int DL_BBUF_USRFLAGMASK = (DL_BBUF_AUTOEXTEND | DL_BBUF_FIXEDLEN |  DL_BBUF_BIGENDIAN | DL_BBUF_LITTLEENDIAN);
-const int DL_BBUF_MINEXTENDSIZE = 16;
-const int DL_BBUF_MAXEXTENDSIZE = PAGE_SIZE;
-const int DL_BBUF_MAXEXTENDINC = PAGE_SIZE;
+static const int DL_BBUF_USRFLAGMASK = (DL_BBUF_AUTOEXTEND | DL_BBUF_FIXEDLEN |  DL_BBUF_BIGENDIAN | DL_BBUF_LITTLEENDIAN);
+static const int DL_BBUF_MINEXTENDSIZE = 16;
+static const int DL_BBUF_MAXEXTENDSIZE = PAGE_SIZE;
+static const int DL_BBUF_MAXEXTENDINC = PAGE_SIZE;
 
 static void dl_bbuf_assert_integrity(const char *, struct dl_bbuf *);
 static int dl_bbuf_extend(struct dl_bbuf *, int);
 static int dl_bbuf_extendsize(int);
 
+#ifdef _KERNEL
 static inline void
 dl_bbuf_assert_integrity(const char *func, struct dl_bbuf *self)
+#else
+static inline void
+dl_bbuf_assert_integrity(const char *func __attribute((unused)),
+    struct dl_bbuf *self)
+#endif
 {
 
 	DL_ASSERT(self != NULL, ("%s called with NULL dl_buf instance", func)); 
 	DL_ASSERT(self->dlb_data != NULL,
 	    ("%s called with unititialised of corrupt dl_buf", func)); 
 	DL_ASSERT(self->dlb_pos <= self->dlb_capacity,
-	    ("wrote past the end of the dl_buf (&d >= %d)",
+	    ("wrote past the end of the dl_buf (%d >= %d)",
 	    self->dlb_pos, self->dlb_capacity)); 
 }
 
@@ -145,7 +151,8 @@ dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, int capacity, int flags)
 	struct dl_bbuf *newbuf;
 
 	DL_ASSERT(capacity >= 0,
-	    ("attempt to create a dl_buf of negative length (%d)", length));
+	    ("attempt to create a dl_buf of negative length (%d)",
+	    capacity));
 	DL_ASSERT((flags & ~DL_BBUF_USRFLAGMASK) == 0,
 	    ("%s called with invalid flags", __func__));
 
@@ -439,6 +446,39 @@ dl_bbuf_put_int8_at(struct dl_bbuf *self, int8_t value, int pos)
 
 int
 dl_bbuf_put_int8(struct dl_bbuf *self, int8_t value)
+{
+
+	dl_bbuf_assert_integrity(__func__, self);
+	if (dl_bbuf_put_int8_at(self, value, self->dlb_pos) == 0) {
+
+		self->dlb_pos += sizeof(int8_t);	
+		return 0;
+	}
+	return -1;
+}
+
+int
+dl_bbuf_put_uint8_at(struct dl_bbuf *self, uint8_t value, int pos)
+{
+
+	dl_bbuf_assert_integrity(__func__, self);
+	if (self != NULL &&
+	    (int) (pos + sizeof(uint8_t)) > self->dlb_capacity) {
+
+		if (self->dlb_flags & DL_BBUF_AUTOEXTEND) {
+
+			if (dl_bbuf_extend(self, (int) sizeof(uint8_t)) != 0)
+				return -1;
+		} else {
+			return -1;
+		}
+	}
+	self->dlb_data[pos++] = value;
+	return 0;
+}
+
+int
+dl_bbuf_put_uint8(struct dl_bbuf *self, uint8_t value)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);

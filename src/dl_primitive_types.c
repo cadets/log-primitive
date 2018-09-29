@@ -60,8 +60,8 @@ dl_decode_string(struct dl_bbuf *source, struct sbuf **target)
 {
 	int16_t slen;
 
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
-	DL_ASSERT(target != NULL, "Traget sbuf cannot be NULL");
+	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
+	DL_ASSERT(target != NULL, ("Traget sbuf cannot be NULL"));
 
 	/* Strings are NULLABLE.
 	 * Therefore first check whether there is a value to decode.
@@ -95,8 +95,8 @@ dl_decode_bytes(unsigned char ** const target, int *target_len,
 	int32_t nbytes;
 	int rc;
 
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
-	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
+	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
+	DL_ASSERT(target != NULL, ("Target buffer cannot be NULL"));
 
 	/* Bytes are NULLABLE.
 	 * therefore first check whether there is a value to decode.
@@ -122,7 +122,7 @@ dl_decode_bytes(unsigned char ** const target, int *target_len,
 
 	/* TODO: Replace with bulk drain function in dl_bbuf */
 	for (int i = 0; i < nbytes; i++) {
-		dl_bbuf_get_int8(source, target[i]);
+		dl_bbuf_get_int8(source, (* target) + i);
 	}
 	return 0;
 }
@@ -134,7 +134,7 @@ int32_t
 dl_encode_string(struct dl_bbuf *target, struct sbuf *source)
 {
 
-	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
+	DL_ASSERT(target != NULL, ("Target buffer cannot be NULL"));
 
 	if (source == NULL) {
 		dl_bbuf_put_int16(target, DL_STRING_NULL);
@@ -159,7 +159,7 @@ dl_encode_bytes(unsigned char const * const source, const int32_t source_len,
     struct dl_bbuf * target)
 {
 
-	DL_ASSERT(target != NULL, "Target buffer cannot be NULL");
+	DL_ASSERT(target != NULL, ("Target buffer cannot be NULL"));
 
 	if (source == NULL) {
 		dl_bbuf_put_int32(target, DL_BYTES_NULL);

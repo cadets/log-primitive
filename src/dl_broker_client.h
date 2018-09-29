@@ -38,7 +38,6 @@
 #define _DL_BROKER_CLIENT_H
 
 #include "dlog_broker.h"
-#include "dl_event_handler.h"
 #include "dl_request.h"
 
 struct dl_broker_client 

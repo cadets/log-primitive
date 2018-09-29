@@ -42,27 +42,20 @@
 #include <sys/types.h>
 
 #include "dl_bbuf.h"
-#include "dl_partition.h"
 #include "dl_protocol.h"
-#include "dl_request_queue.h"
 #include "dl_segment.h"
 
 struct dl_topic;
 
 LIST_HEAD(dl_topics, dl_topic);
 
-// TODO remove
-SLIST_HEAD(dl_partitions, dl_partition);
-
 struct dl_topic {
 	LIST_ENTRY(dl_topic) dlt_entries;
-// TODO remove
-	struct dl_partitions dlt_partitions;
 	u_int64_t dlt_offset; /* Current position in the log. */
-	//u_int32_t dlp_offset; /* Relative offset into the log's active segment. */
 	struct sbuf *dlt_name;
 	struct dl_segments dlp_segments;
 	struct dl_segment *dlp_active_segment;
+	int _klog;
 };
 
 struct dl_topic_desc {
@@ -71,7 +64,7 @@ struct dl_topic_desc {
 };
 
 extern void dl_topic_delete(struct dl_topic *);
-extern int dl_topic_new(struct dl_topic **, char *);
+extern int dl_topic_new(struct dl_topic **, char *, char *);
 extern int dl_topic_as_desc(struct dl_topic *, struct dl_topic_desc **);
 extern int dl_topic_from_desc(struct dl_topic **, struct sbuf *,
     struct dl_segment_desc *);
@@ -88,6 +81,5 @@ extern int dl_topic_produce_to(struct dl_topic *, struct dl_bbuf *);
 
 extern unsigned long topic_hashmask;
 extern struct dl_topics *topic_hashmap;
-
 
 #endif

@@ -53,5 +53,6 @@ extern void dl_producer_up(struct dl_producer const * const);
 extern void dl_producer_down(struct dl_producer const * const);
 extern void dl_producer_syncd(struct dl_producer const * const);
 extern void dl_producer_reconnect(struct dl_producer const * const);
+extern void dl_producer_error(struct dl_producer const * const);
 
 #endif

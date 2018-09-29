@@ -35,6 +35,6 @@ ATF_TESTS_C+= atf_dl_bbuf
 
 LDADD+= -lprivateatf-c
 LDADD+= -lsbuf
-LDADD+= ${SRCTOP}/libdlog.a
+LDADD+= ../../libdlog/libdlog.a
 
 .include <bsd.test.mk>

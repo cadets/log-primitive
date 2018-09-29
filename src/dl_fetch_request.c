@@ -45,10 +45,11 @@
 #include "dl_fetch_request.h"
 #include "dl_memory.h"
 #include "dl_primitive_types.h"
-#include "dl_partition.h"
 #include "dl_protocol.h"
 #include "dl_request.h"
 #include "dl_utils.h"
+
+#define DL_DEFAULT_PARTITION 0
 
 static const int32_t DL_DEFAULT_REPLICA_ID = -1;
 

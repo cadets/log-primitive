@@ -178,8 +178,8 @@ dl_produce_request_decode(struct dl_produce_request **self,
 	int32_t topic, npartitions, part;
 	int rc = 0;
 
-	DL_ASSERT(self != NULL, "ProduceRequest instance cannot be NULL");
-	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
+	DL_ASSERT(self != NULL, ("ProduceRequest instance cannot be NULL"));
+	DL_ASSERT(source != NULL, ("Source buffer cannot be NULL"));
 	
 	/* Construct the ProduceRequest. */
 	request = (struct dl_produce_request *) dlog_alloc(

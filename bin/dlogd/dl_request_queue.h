@@ -34,30 +34,53 @@
  *
  */
 
-#ifndef _DL_BROKER_PARTITION_H
-#define _DL_BROKER_PARTITION_H
+#ifndef _DL_REQUEST_QUEUE_H
+#define _DL_REQUEST_QUEUE_H
 
-#include <sys/types.h>
-#include <sys/sbuf.h>
 #include <sys/queue.h>
+#include <sys/types.h>
 
-#include "dl_event_handler.h"
-#include "dl_segment.h"
-#include "dl_topic.h"
+#include <stdint.h>
+#include <semaphore.h>
 
-struct dl_partition {
-	SLIST_ENTRY(dl_partition) dlp_entries;
-	u_int32_t dlp_offset; /* Relative offset into the log's active segment. */
-	struct dl_segments dlp_segments;
-	struct dl_segment *dlp_active_segment;
-	int _klog;
-	struct dl_event_handler event_handler;
+#include "dl_bbuf.h"
+
+struct dl_request_element {
+	STAILQ_ENTRY(dl_request_element) dlrq_entries;
+	struct dl_bbuf *dlrq_buffer;
+	time_t dlrq_last_sent;
+	int32_t dlrq_correlation_id;
+	int16_t dlrq_api_key;
 };
 
-static const int32_t DL_DEFAULT_PARTITION = 0;
+STAILQ_HEAD(dl_request_queue, dl_request_element);
 
-extern void dl_partition_delete(struct dl_partition *);
-extern int dl_partition_new(struct dl_partition **, struct sbuf *);
-extern int dl_partition_new2(struct dl_partition **, struct dl_segment_desc *);
+struct dl_request_q {
+	struct dl_request_queue dlrq_requests;
+	sem_t dlrq_items;
+	sem_t dlrq_spaces;
+	pthread_mutex_t dlrq_mtx;
+};
+
+//struct dl_request_q;
+//struct dl_request_q_it;
+
+extern int dl_request_q_dequeue(struct dl_request_q *,
+    struct dl_request_element **);
+extern int dl_request_q_enqueue(struct dl_request_q *,
+    struct dl_request_element *);
+extern int dl_request_q_enqueue_new(struct dl_request_q *, struct dl_bbuf *,
+    int32_t, int16_t);
+extern int dl_request_q_new(struct dl_request_q **, uint32_t);
+extern void dl_request_q_delete(struct dl_request_q *);
+
+extern void dl_request_q_lock(struct dl_request_q *);
+extern void dl_request_q_unlock(struct dl_request_q *);
+
+//extern int dlrq_it_new(struct dl_request_q *);
+//extern int dlrq_unackid_it_new(struct dl_request_q *);
+//extern int dlrq_it_delete(struct dl_request_q *);
+//extern int dlrq_it_next(struct dl_request_q *);
+//extern int dlrq_it_has_next(struct dl_request_q *);
 
 #endif

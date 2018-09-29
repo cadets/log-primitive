@@ -266,32 +266,6 @@ ATF_TC_BODY(test8, tc)
 	sbuf_delete(topic);
 }
 
-/* Test 9 
- * dl_response_decode() - invalid params - response. 
- */
-ATF_TC_WITHOUT_HEAD(test9);
-ATF_TC_BODY(test9, tc)
-{
-	struct dl_bbuf *buffer;
-	int rc;
-
-	atf_tc_expect_signal(6, "NULL value passed to response.");
-	rc = dl_response_decode(NULL, buffer);
-}
-
-/* Test 10 
- * dl_response_decode() - invalid params - buffer. 
- */
-ATF_TC_WITHOUT_HEAD(test10);
-ATF_TC_BODY(test10, tc)
-{
-	struct dl_response *response;
-	int rc;
-
-	atf_tc_expect_signal(6, "NULL value passed to buffer.");
-	rc = dl_response_decode(&response, NULL);
-}
-
 ATF_TP_ADD_TCS(tp)
 {
 	ATF_TP_ADD_TC(tp, test1);
@@ -302,8 +276,6 @@ ATF_TP_ADD_TCS(tp)
 	ATF_TP_ADD_TC(tp, test6);
 	ATF_TP_ADD_TC(tp, test7);
 	ATF_TP_ADD_TC(tp, test8);
-	ATF_TP_ADD_TC(tp, test9);
-	ATF_TP_ADD_TC(tp, test10);
 
 	return atf_no_error();
 }

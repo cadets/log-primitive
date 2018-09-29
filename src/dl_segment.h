@@ -45,7 +45,7 @@
 #ifdef _KERNEL
 #include <sys/param.h>
 #include <sys/lock.h>
-#include <sys/mutex.h>
+#include <sys/sx.h>
 #include <sys/kthread.h>
 #else
 #include <pthread.h>
@@ -55,59 +55,54 @@
 #ifndef _KERNEL
 #include "dl_index.h"
 #endif
+#include "dl_offset.h"
 
 SLIST_HEAD(dl_segments, dl_segment);
 
+typedef void (* dls_lock)(struct dl_segment *);
+typedef void (* dls_unlock)(struct dl_segment *);
+typedef int (* dls_get_message_by_offset)(struct dl_segment *, int,
+    struct dl_bbuf **);
+typedef int (* dls_insert_message)(struct dl_segment *, struct dl_bbuf *);
+typedef void (* dls_delete)(struct dl_segment *);
+typedef uint32_t (* dls_get_offset)(struct dl_segment *);
+
 struct dl_segment {
 	SLIST_ENTRY(dl_segment) dls_entries;
-#ifdef _KERNEL
-	struct mtx dls_mtx; /* Lock for whilst updating segment. */
-#else
-	pthread_mutex_t dls_mtx; /* Lock for whilst updating segment. */
-#endif
-	u_int64_t base_offset; /* Start offset of the segment. */
+	volatile u_int64_t base_offset; 	/* Start offset of the segment. */
 	u_int32_t segment_size; /* Number of offsets in the segment */
-	u_int64_t offset; /* Current position in the log. TODO remove */
-#ifdef _KERNEL
-	struct ucred *ucred;
-	struct vnode *_log;
-#else
-	int _log; /* Segement's log file descriptor. */
-	int _klog; /* Segement's log file descriptor. */
-	struct dl_index *dls_idx;
-#endif
 	off_t last_sync_pos;
+	dls_insert_message dls_insert_fcn;
+	dls_get_message_by_offset dls_get_fcn;
+	dls_get_offset dls_get_offset_fcn;
+	dls_lock dls_lock_fcn;
+	dls_unlock dls_unlock_fcn;
+	dls_delete dls_delete_fcn;
+	union {
+		struct dl_user_segment *dls_user;
+		struct dl_kernel_segment *dls_kernel;
+	};
 };
 
 struct dl_segment_desc {
+	u_int32_t dlsd_offset; /* Offset within the log swgment. */
 	u_int64_t dlsd_base_offset; /* Start offset of the log. */
 	u_int32_t dlsd_seg_size;
 	int dlsd_log; /* Segement's log file descriptor. */
 };
 
-extern void dl_segment_delete(struct dl_segment *);
-#ifndef _KERNEL
-extern int dl_segment_new(struct dl_segment **, long int, long int,
-    struct sbuf *);
-extern int dl_segment_new_default(struct dl_segment **, struct sbuf *);
-extern int dl_segment_new_default_sized(struct dl_segment **, long int,
-    struct sbuf *);
-#endif
-extern int dl_segment_from_desc(struct dl_segment **,
-    struct dl_segment_desc *);
-
-extern void dl_segment_close(struct dl_segment *);
-extern int dl_segment_insert_message(struct dl_segment *, struct dl_bbuf *);
-extern int dl_segment_get_message_by_offset(struct dl_segment *, int,
-    struct dl_bbuf **);
-extern void dl_segment_lock(struct dl_segment *);
-extern void dl_segment_unlock(struct dl_segment *);
-
+extern int dl_segment_new(struct dl_segment**, uint32_t, uint32_t,
+    dls_insert_message, dls_get_message_by_offset, dls_get_offset,
+    dls_lock, dls_unlock, dls_delete);
 extern u_int64_t dl_segment_get_base_offset(struct dl_segment *);
 extern off_t dl_segment_get_last_sync_pos(struct dl_segment *);
-#ifndef _KERNEL
-extern int dl_segment_get_log(struct dl_segment *);
-#endif
 extern void dl_segment_set_last_sync_pos(struct dl_segment *, off_t);
+extern int dl_segment_get_message_by_offset(struct dl_segment *, int ,
+    struct dl_bbuf **);
+extern int dl_segment_insert_message(struct dl_segment *,
+    struct dl_bbuf *);
+extern void dl_segment_lock(struct dl_segment *);
+extern void dl_segment_unlock(struct dl_segment *);
+extern int dl_segment_get_offset(struct dl_segment *);
 
 #endif
