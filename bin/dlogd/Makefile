@@ -58,6 +58,8 @@ DLOG_SRCS= dl_bbuf.c \
 	dl_segment.c \
 	dl_topic.c \
 	dl_transport.c \
+	dl_sock_transport.c \
+	dl_tls_transport.c \
 	dl_utils.c \
 	lookup3.c
 
@@ -69,16 +71,18 @@ LDADD+=-lcrypto
 LDADD+=-lnv
 LDADD+=-lpthread
 LDADD+=-lsbuf
-LDADD+=-lz
+LDADD+=-lssl
 LDADD+=-lucl
+LDADD+=-lz
 
-#CFLAGS+=-DNDEBUG
+CFLAGS+=-DNDEBUG
 CFLAGS+=-g
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
 CFLAGS+=-I../../src
-CFLAGS+=-I${SRCTOP}/../dlog
+CFLAGS+=-I.
+#CFLAGS+=-O1
 #CFLAGS+=-fsanitize=address
 #CFLAGS+=-fno-omit-frame-pointer
 

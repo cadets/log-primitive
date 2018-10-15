@@ -50,8 +50,6 @@ SRCS= dlog_client.c \
 	dl_request.c \
 	dl_response.c \
 	dl_segment.c \
-	dl_user_segment.c \
-	dl_transport.c \
 	dl_topic.c \
 	lookup3.c
 
