@@ -974,9 +974,10 @@ dl_producer_up(struct dl_producer const * const self)
 	case DLP_CONNECTING: /* connecting -> online */
 		dl_producer_online(self);
 		break;
+	case DLP_ONLINE: /* online -> syncing */
+		dl_producer_syncing(self);
+		break;
 	case DLP_IDLE: /* IGNORE */
-		/* FALLTHROUGH */
-	case DLP_ONLINE:
 		/* FALLTHROUGH */
 	case DLP_SYNCING:
 		break;
