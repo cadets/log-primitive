@@ -29,6 +29,9 @@
 # SUCH DAMAGE.
 #
 
+BINTOP= $(.CURDIR)/../../bin
+LIBDLOG= $(.CURDIR)/../../libdlog
+LIBDLOGD= $(.CURDIR)/../../libdlogd
 SRCTOP= $(.CURDIR)/../../src
 CFLAGS+= -I${SRCTOP}
 
