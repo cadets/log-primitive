@@ -947,6 +947,8 @@ dl_producer_produce(struct dl_producer const * const self)
 		break;
 	case DLP_CONNECTING: /* IGNORE */
 		/* FALLTHROUGH */
+	case DLP_ONLINE:
+		/* FALLTHROUGH */
 	case DLP_OFFLINE:
 		/* FALLTHROUGH */
 	case DLP_SYNCING:
@@ -969,17 +971,20 @@ dl_producer_up(struct dl_producer const * const self)
 	DLOGTR0(PRIO_LOW, "Producer event = up()\n");
 
 	switch(self->dlp_state) {
-	case DLP_CONNECTING: /* connecting -> syncing */
-		dl_producer_syncing(self);
+	case DLP_CONNECTING: /* connecting -> online */
+		dl_producer_online(self);
 		break;
-	case DLP_OFFLINE:
+	case DLP_IDLE: /* IGNORE */
 		/* FALLTHROUGH */
-	case DLP_IDLE:
+	case DLP_ONLINE:
 		/* FALLTHROUGH */
 	case DLP_SYNCING:
-		/* IGNORE */
 		break;
+	case DLP_OFFLINE: /* CANNOT HAPPEN */
+		/* FALLTHROUGH */
 	case DLP_INITIAL:
+		/* FALLTHROUGH */
+	case DLP_FINAL:
 		/* FALLTHROUGH */
 	default:
 		DL_ASSERT(0, ("Invalid Producer state"));
@@ -996,6 +1001,8 @@ dl_producer_down(struct dl_producer const * const self)
 
 	switch(self->dlp_state) {
 	case DLP_CONNECTING: /* connecting -> offline */
+		/* FALLTHROUGH */
+	case DLP_ONLINE: /* online -> offline */
 		/* FALLTHROUGH */
 	case DLP_IDLE: /* idle-> offline */
 		/* FALLTHROUGH */
@@ -1035,6 +1042,8 @@ dl_producer_syncd(struct dl_producer const * const self)
 	case DLP_ONLINE:
 		/* FALLTHROUGH */
 	case DLP_INITIAL:
+		/* FALLTHROUGH */
+	case DLP_FINAL:
 		/* FALLTHROUGH */
 	default:
 		DL_ASSERT(0, ("Invalid topic state = %d",
@@ -1092,7 +1101,7 @@ dl_producer_error(struct dl_producer const * const self)
 	case DLP_IDLE: /* idle -> final */
 		dl_producer_final(self);
 		break;
-	case DLP_INITIAL:
+	case DLP_INITIAL: /* CANNOT HAPPEN */
 		/* FALLTHROUGH */
 	case DLP_FINAL:
 		/* FALLTHROUGH */
