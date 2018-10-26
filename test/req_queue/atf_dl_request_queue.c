@@ -58,7 +58,7 @@ ATF_TC_BODY(test1, tc)
 	struct dl_request_q *q = NULL;
 	int rc;
 
-	rc = dl_request_q_new(&q); 
+	rc = dl_request_q_new(&q, 10); 
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(q != NULL);
 
@@ -73,7 +73,7 @@ ATF_TC_BODY(test2, tc)
 {
 
 	atf_tc_expect_signal(6, "NULL value passed to instance.");
-	dl_request_q_new(NULL); 
+	dl_request_q_new(NULL, 10); 
 }
 
 /* Test 3
@@ -86,7 +86,7 @@ ATF_TC_BODY(test3, tc)
 	struct dl_request_element elem;
 	int rc;
 
-	rc = dl_request_q_new(&q); 
+	rc = dl_request_q_new(&q, 10); 
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(q != NULL);
 
@@ -117,7 +117,7 @@ ATF_TC_BODY(test5, tc)
 	struct dl_request_q *q = NULL;
 	int rc;
 
-	rc = dl_request_q_new(&q); 
+	rc = dl_request_q_new(&q, 10); 
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(q != NULL);
 	
@@ -136,7 +136,7 @@ ATF_TC_BODY(test6, tc)
 	struct dl_request_element elem;
 	int rc;
 
-	rc = dl_request_q_new(&q); 
+	rc = dl_request_q_new(&q, 10); 
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(q != NULL);
 
@@ -150,6 +150,224 @@ ATF_TC_BODY(test6, tc)
 	dl_request_q_delete(q);
 }
 
+/* Test 7
+ * dl_request_q_deueue() - valid params. 
+ */
+ATF_TC_WITHOUT_HEAD(test7);
+ATF_TC_BODY(test7, tc)
+{
+	struct dl_bbuf *buf;
+	struct dl_request_q *q = NULL;
+	struct dl_request_element elem, *delem;
+	int rc;
+
+	rc = dl_request_q_new(&q, 10); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(q != NULL);
+
+	rc = dl_bbuf_new_auto(&buf);
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_q_enqueue_new(q, buf, 1, 1); 
+	ATF_REQUIRE(rc == 0);
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 1);
+
+	dl_bbuf_delete(delem->dlrq_buffer);
+	dlog_free(delem);
+	dl_request_q_delete(q);
+}
+
+/* Test 8
+ * dl_request_q_deueue() - valid params. 
+ */
+ATF_TC_WITHOUT_HEAD(test8);
+ATF_TC_BODY(test8, tc)
+{
+	struct dl_bbuf *buf;
+	struct dl_request_q *q = NULL;
+	struct dl_request_element elem, *delem;
+	int rc;
+
+	rc = dl_request_q_new(&q, 10); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(q != NULL);
+
+	rc = dl_bbuf_new_auto(&buf);
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_q_enqueue_new(q, buf, 1, 1); 
+	ATF_REQUIRE(rc == 0);
+	rc = dl_request_q_enqueue_new(q, buf, 6, 1); 
+	ATF_REQUIRE(rc == 0);
+	rc = dl_request_q_enqueue_new(q, buf, 2, 1); 
+	ATF_REQUIRE(rc == 0);
+	rc = dl_request_q_enqueue_new(q, buf, 3, 1); 
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 1);
+	dlog_free(delem);
+
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 6);
+	dlog_free(delem);
+
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem != NULL);
+	ATF_REQUIRE(delem->dlrq_buffer != NULL);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 2);
+	dlog_free(delem);
+
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem != NULL);
+	ATF_REQUIRE(delem->dlrq_buffer != NULL);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 3);
+	dlog_free(delem);
+
+	dl_bbuf_delete(delem->dlrq_buffer);
+	dl_request_q_delete(q);
+}
+
+/* Test 9
+ * dl_request_q_deueue() - valid params. 
+ */
+ATF_TC_WITHOUT_HEAD(test9);
+ATF_TC_BODY(test9, tc)
+{
+	struct dl_bbuf *buf;
+	struct dl_request_q *q = NULL;
+	struct dl_request_element elem, *delem;
+	int rc;
+
+	rc = dl_request_q_new(&q, 10); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(q != NULL);
+
+	rc = dl_bbuf_new_auto(&buf);
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_q_enqueue_new(q, buf, 1, 1); 
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_q_enqueue_new(q, buf, 6, 1); 
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem != NULL);
+	ATF_REQUIRE(delem->dlrq_buffer != NULL);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 1);
+	dlog_free(delem);
+
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem != NULL);
+	ATF_REQUIRE(delem->dlrq_buffer != NULL);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 6);
+	dlog_free(delem);
+
+	rc = dl_request_q_enqueue_new(q, buf, 2, 1); 
+	ATF_REQUIRE(rc == 0);
+	rc = dl_request_q_enqueue_new(q, buf, 3, 1); 
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem != NULL);
+	ATF_REQUIRE(delem->dlrq_buffer != NULL);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 2);
+	dlog_free(delem);
+
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem != NULL);
+	ATF_REQUIRE(delem->dlrq_buffer != NULL);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 3);
+	dlog_free(delem);
+
+	dl_bbuf_delete(delem->dlrq_buffer);
+	dl_request_q_delete(q);
+}
+
+/* Test 10 
+ * dl_request_q_deueue() - valid params. 
+ */
+ATF_TC_WITHOUT_HEAD(test10);
+ATF_TC_BODY(test10, tc)
+{
+	struct dl_bbuf *buf;
+	struct dl_request_q *q = NULL;
+	struct dl_request_element elem, *delem;
+	int rc;
+
+	rc = dl_request_q_new(&q, 10); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(q != NULL);
+
+	rc = dl_bbuf_new_auto(&buf);
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_q_enqueue_new(q, buf, 1, 1); 
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_q_enqueue_new(q, buf, 6, 1); 
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem != NULL);
+	ATF_REQUIRE(delem->dlrq_buffer != NULL);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 1);
+	dlog_free(delem);
+
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem != NULL);
+	ATF_REQUIRE(delem->dlrq_buffer != NULL);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 6);
+	dlog_free(delem);
+
+	rc = dl_request_q_enqueue_new(q, buf, 2, 1); 
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem != NULL);
+	ATF_REQUIRE(delem->dlrq_buffer != NULL);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 2);
+	dlog_free(delem);
+
+	rc = dl_request_q_enqueue_new(q, buf, 3, 1); 
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_request_q_dequeue(q, &delem); 
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(delem != NULL);
+	ATF_REQUIRE(delem->dlrq_buffer != NULL);
+	ATF_REQUIRE(delem->dlrq_correlation_id == 3);
+	dlog_free(delem);
+
+	dl_bbuf_delete(delem->dlrq_buffer);
+	dl_request_q_delete(q);
+}
+
+/* Test 11
+ * dl_request_q_dequeue() - invalid params. 
+ */
+ATF_TC_WITHOUT_HEAD(test11);
+ATF_TC_BODY(test11, tc)
+{
+	struct dl_request_element *elem;
+	
+	atf_tc_expect_signal(6, "NULL value passed to instance.");
+	dl_request_q_dequeue(NULL, &elem); 
+}
 
 ATF_TP_ADD_TCS(tp)
 {
@@ -159,6 +377,11 @@ ATF_TP_ADD_TCS(tp)
 	ATF_TP_ADD_TC(tp, test4);
 	ATF_TP_ADD_TC(tp, test5);
 	ATF_TP_ADD_TC(tp, test6);
+	ATF_TP_ADD_TC(tp, test7);
+	ATF_TP_ADD_TC(tp, test8);
+	ATF_TP_ADD_TC(tp, test9);
+	ATF_TP_ADD_TC(tp, test10);
+	ATF_TP_ADD_TC(tp, test11);
 
 	return atf_no_error();
 }
