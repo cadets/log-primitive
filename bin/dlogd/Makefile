@@ -72,8 +72,9 @@ LDADD+=-lnv
 LDADD+=-lpthread
 LDADD+=-lsbuf
 LDADD+=-lssl
-LDADD+=-lucl
+LDADD+=-lutil
 LDADD+=-lz
+LDADD+=/usr/local/lib/libucl.a
 
 CFLAGS+=-DNDEBUG
 CFLAGS+=-g
