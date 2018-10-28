@@ -284,6 +284,8 @@ dlp_resender_thread(void *vargp)
 
 	for (;;) {
 
+		now = time(NULL);
+
 		dl_request_q_lock(self->dlp_requests);
 		STAILQ_FOREACH_SAFE(request,
 		    &self->dlp_unackd_requests->dlrq_requests,
@@ -600,18 +602,6 @@ dl_producer_syncing(struct dl_producer * const self)
 		    "Failed creating enqueing thread: %d\n", rc);
 		dl_producer_error(self);
 	}
-
-	/* Start the thread to resend unacknowledged requests. */
-	if (self->dlp_to_resend) {
-		rc = pthread_create(&self->dlp_resender_tid, NULL,
-		    dlp_resender_thread, self);
-		if (rc != 0) {
-
-			DLOGTR1(PRIO_HIGH,
-			    "Failed creating resender thread: %d\n", rc);
-			dl_producer_error(self);
-		}
-	}
 }
 
 static void
@@ -630,11 +620,13 @@ dl_producer_offline(struct dl_producer * const self)
 	}
 
         /* Stop the produce and resender threads */
-	pthread_cancel(self->dlp_resender_tid);
+	if (self->dlp_to_resend)
+		pthread_cancel(self->dlp_resender_tid);
 	pthread_cancel(self->dlp_produce_tid);
 
 	pthread_join(self->dlp_produce_tid, NULL);
-	pthread_join(self->dlp_resender_tid, NULL);
+	if (self->dlp_to_resend)
+		pthread_join(self->dlp_resender_tid, NULL);
 
 	/* Delete the producer transport */
 	DL_ASSERT(self->dlp_transport != NULL,
@@ -682,6 +674,17 @@ dl_producer_online(struct dl_producer * const self)
 		dl_producer_error(self);
 	}
 
+	/* Start the thread to resend unacknowledged requests. */
+	if (self->dlp_to_resend) {
+		rc = pthread_create(&self->dlp_resender_tid, NULL,
+		    dlp_resender_thread, self);
+		if (rc != 0) {
+
+			DLOGTR1(PRIO_HIGH,
+			    "Failed creating resender thread: %d\n", rc);
+			dl_producer_error(self);
+		}
+	}
 
 	/* Self-trigger the up() event now the the producer
 	 * thread has been created.

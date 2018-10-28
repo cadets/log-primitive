@@ -82,6 +82,7 @@ static char const * const DLOGD_CLIENT_FILE = "client_file";
 static char const * const DLOGD_CACERT_FILE = "cacert_file";
 static char const * const DLOGD_USER_PASSWORD = "user_password";
 static char const * const DLOGD_TLS = "tls";
+static char const * const DLOGD_RESEND = "resend";
 
 struct dl_producer_elem {
 	LIST_ENTRY(dl_producer_elem) dlp_entries;
@@ -117,7 +118,6 @@ setup_daemon(void)
 	/* Create a new nvlist to store producer configuration. */
 	props = nvlist_create(0);
 
-	nvlist_add_bool(props, DL_CONF_TORESEND, false);
 	nvlist_add_number(props, DL_CONF_DEBUG_LEVEL, dlogd_debug);
 
 	/* Open the DLog device */
@@ -339,6 +339,10 @@ main(int argc, char *argv[])
 		} else if (strcmp(ucl_object_key(obj), DLOGD_TLS) == 0) {
 
 			nvlist_add_bool(props, DL_CONF_TLS_ENABLE,
+			    ucl_object_toboolean(obj));
+		} else if (strcmp(ucl_object_key(obj), DLOGD_RESEND) == 0) {
+
+			nvlist_add_bool(props, DL_CONF_TORESEND,
 			    ucl_object_toboolean(obj));
 		} else if (strcmp(ucl_object_key(obj), DLOGD_NELEMENTS) == 0) {
 	
