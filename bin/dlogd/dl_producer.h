@@ -43,15 +43,23 @@
 
 #include "dl_response.h"
 
+struct dl_producer_stats_msg {
+	time_t dlpsm_timestamp;
+	int32_t dlpsm_cid;
+	bool dlpsm_error;
+};
+
 struct dl_producer_stats {
-	char dlps_topic_name[255];	
-	char dlps_state_name[255];	
-	bool dlps_tcp_connected;
-	bool dlps_tls_connected;
-	int32_t dlps_queued_requests;
-	int32_t dlps_unackd_requests;
 	volatile uint64_t dlps_bytes_sent;
 	volatile uint64_t dlps_bytes_received;
+	struct dl_producer_stats_msg dlps_sent;
+	struct dl_producer_stats_msg dlps_received;
+	int32_t dlps_queued_requests;
+	int32_t dlps_unackd_requests;
+	bool dlps_tcp_connected;
+	bool dlps_tls_connected;
+	char dlps_topic_name[255];	
+	char dlps_state_name[255];	
 };
 
 struct dl_producer;

@@ -351,10 +351,18 @@ dlp_produce_thread(void *vargp)
 			/* Update the producer statistics */
 			self->dlp_stats->dlps_queued_requests--;
 
-retry_send:
 			nbytes = dl_transport_send_request(
 			    self->dlp_transport, request->dlrq_buffer);
+
+			/* Update the producer statistics */
+			self->dlp_stats->dlps_sent.dlpsm_cid =
+			    request->dlrq_correlation_id;
+			self->dlp_stats->dlps_sent.dlpsm_timestamp = time(NULL);
+
 			if (nbytes != -1) {
+				/* Update the producer statistics */
+				self->dlp_stats->dlps_sent.dlpsm_error = false;
+
 				if (self->dlp_debug_level > 0) {
 					DLOGTR3(PRIO_LOW,
 					    "Successfully sent request id = %d "
@@ -364,12 +372,17 @@ retry_send:
 					    dl_bbuf_pos(request->dlrq_buffer));
 				}
 			} else {
-				DLOGTR2(PRIO_LOW,
-				    "Transport send error id = %d (%d)\n",
-				    request->dlrq_correlation_id, errno);
+				/* Update the producer statistics */
+				self->dlp_stats->dlps_sent.dlpsm_error = true;
 
-				if (errno == EAGAIN)
-					goto retry_send;
+				if (self->dlp_debug_level > 0) {
+					DLOGTR3(PRIO_LOW,
+					    "Failed sending  request id = %d "
+					    "(nbytes = %zu, bytes = %d)\n",
+					    request->dlrq_correlation_id,
+					    nbytes,
+					    dl_bbuf_pos(request->dlrq_buffer));
+				}
 			}
 
 			/* The request must be acknowledged, store
@@ -869,6 +882,9 @@ dl_producer_delete(struct dl_producer *self)
 
 	dl_producer_check_integrity(self);
 
+	/* Transition to the final state. */
+	dl_producer_final(self);
+
         /* Stop the enque, produce and resender threads */
 	pthread_cancel(self->dlp_resender_tid);
 	pthread_cancel(self->dlp_produce_tid);
@@ -926,6 +942,14 @@ dl_producer_response(struct dl_producer *self,
     struct dl_response_header *hdr)
 {
 	struct dl_request_element *req;
+	
+	dl_producer_check_integrity(self);
+	DL_ASSERT(hdr != NULL, ("Response header cannot be NULL"));
+
+	/* Update the producer statistics */
+	self->dlp_stats->dlps_received.dlpsm_cid =
+		hdr->dlrsh_correlation_id;
+	self->dlp_stats->dlps_received.dlpsm_timestamp = time(NULL);
 
 	/* Acknowledge the request message based on the CorrelationId
 	 * returned in the response.
@@ -943,6 +967,10 @@ dl_producer_response(struct dl_producer *self,
 			switch (req->dlrq_api_key) {
 			case DL_PRODUCE_API_KEY:
 				/* TODO: Construct ProducerResponse */
+				
+				/* Update the producer statistics */
+				self->dlp_stats->dlps_received.dlpsm_error =
+					false;
 				break;
 			default:
 				DLOGTR1(PRIO_HIGH,
