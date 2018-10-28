@@ -286,18 +286,21 @@ dlp_resender_thread(void *vargp)
 
 		now = time(NULL);
 
-		dl_request_q_lock(self->dlp_requests);
+		dl_request_q_lock(self->dlp_unackd_requests);
 		STAILQ_FOREACH_SAFE(request,
 		    &self->dlp_unackd_requests->dlrq_requests,
 		    dlrq_entries, request_temp) {
 
 			now = time(NULL);
-			DLOGTR4(PRIO_LOW, "Was sent %lu now() is %lu. "
-			    "Resend when the difference is %d. "
-			    "Current: %lu\n",
-			    request->dlrq_last_sent, now,
-			    self->dlp_resend_timeout,
-			    now - request->dlrq_last_sent);
+
+			if (self->dlp_debug_level > 1) {
+				DLOGTR4(PRIO_LOW, "Was sent %lu now() is %lu. "
+				    "Resend when the difference is %d. "
+				    "Current: %lu\n",
+				    request->dlrq_last_sent, now,
+				    self->dlp_resend_timeout,
+				    (now - request->dlrq_last_sent));
+			}
 
 			if ((now - request->dlrq_last_sent) >
 			    self->dlp_resend_timeout) {
@@ -309,11 +312,13 @@ dlp_resender_thread(void *vargp)
 				    &self->dlp_unackd_requests->dlrq_requests,
 				    request, dl_request_element, dlrq_entries);
 
-				DLOGTR0(PRIO_LOW, "Resending request.\n");
+				if (self->dlp_debug_level > 0)
+					DLOGTR1(PRIO_LOW,
+					    "Resending request id = %d\n",
+					    request->dlrq_correlation_id);
 
 				dl_request_q_enqueue(
 				    self->dlp_requests, request);
-
 			} else {
 				/* Any further requests will no require
 				 * resending, therefore break out of the
@@ -322,7 +327,7 @@ dlp_resender_thread(void *vargp)
 				break;
 			}
 		}
-		dl_request_q_unlock(self->dlp_requests);
+		dl_request_q_unlock(self->dlp_unackd_requests);
 
 		sleep(self->dlp_resend_period);
 	}
@@ -945,6 +950,7 @@ dl_producer_response(struct dl_producer *self,
     struct dl_response_header *hdr)
 {
 	struct dl_request_element *req;
+	//struct dl_response *response;
 	
 	dl_producer_check_integrity(self);
 	DL_ASSERT(hdr != NULL, ("Response header cannot be NULL"));
@@ -957,47 +963,76 @@ dl_producer_response(struct dl_producer *self,
 	/* Acknowledge the request message based on the CorrelationId
 	 * returned in the response.
 	 */
-	if (dl_request_q_dequeue(self->dlp_unackd_requests, &req) == 0) {
-		/* Update the producer statistics */
-		self->dlp_stats->dlps_unackd_requests--;
+	do {
+		if (dl_request_q_dequeue(self->dlp_unackd_requests,
+		    &req) == 0) {
+			/* Update the producer statistics */
+			self->dlp_stats->dlps_unackd_requests--;
 
-		if (req->dlrq_correlation_id ==
-			hdr->dlrsh_correlation_id) {
+			if (req->dlrq_correlation_id ==
+				hdr->dlrsh_correlation_id) {
 
-			DLOGTR1(PRIO_NORMAL, "Found unack'd request id: %d\n",
-			    hdr->dlrsh_correlation_id);
+				DLOGTR1(PRIO_NORMAL,
+				    "Found unack'd request id: %d\n",
+				    hdr->dlrsh_correlation_id);
 
-			switch (req->dlrq_api_key) {
-			case DL_PRODUCE_API_KEY:
-				/* TODO: Construct ProducerResponse */
+				switch (req->dlrq_api_key) {
+				case DL_PRODUCE_API_KEY:
+					/* TODO: Construct ProducerResponse */
+					// response = dl_produce_response_new();
+					
+					/* Update the producer statistics */
+					self->dlp_stats->dlps_received.dlpsm_error =
+						false;
+					break;
+				default:
+					DLOGTR1(PRIO_HIGH,
+					"Request ApiKey is invalid (%d)\n",
+					req->dlrq_api_key);
+					break;
+				}
 				
-				/* Update the producer statistics */
-				self->dlp_stats->dlps_received.dlpsm_error =
-					false;
-				break;
-			default:
-				DLOGTR1(PRIO_HIGH,
-				    "Request ApiKey is invalid (%d)\n",
-				    req->dlrq_api_key);
-				break;
+				/* The request can now be freed. */
+				dl_bbuf_delete(req->dlrq_buffer);
+				dlog_free(req);
+			} else {
+				/* The log's response doesn't correspond
+				 * to the client's oldest request.
+				 */
+				DLOGTR2(PRIO_HIGH,
+				    "Unack'd request d %d and response id: %d "
+				    "do not match\n", req->dlrq_correlation_id,
+				    hdr->dlrsh_correlation_id);
+
+				/* The request dequeued from the unackd
+				 * queue failed. This is either resent
+				 * of freed depending on the producer
+				 * configuration.
+				 */
+				if (self->dlp_to_resend) {
+
+					/* Resend the request. */
+					if (self->dlp_debug_level > 0) {
+						DLOGTR1(PRIO_LOW,
+						"Resending request id = %d\n",
+						    req->dlrq_correlation_id);
+					}
+
+					req->dlrq_last_sent = time(NULL);
+					dl_request_q_enqueue(
+					    self->dlp_requests, req);
+				} else {
+					dl_bbuf_delete(req->dlrq_buffer);
+					dlog_free(req);
+				}
 			}
 		} else {
-			/* The log's response doesn't
-			 * correspond to the client's most
-			 * recent request.
-			 */
-			DLOGTR2(PRIO_HIGH,
-				"Unack'd request d %d "
-				"and response id: %d "
-				"do not match\n",
-				req->dlrq_correlation_id,
-				hdr->dlrsh_correlation_id);
-		}
 
-		/* The request can now be freed. */
-		dl_bbuf_delete(req->dlrq_buffer);
-		dlog_free(req);
-	}
+			DLOGTR0(PRIO_HIGH, "Failed dequeuing response\n");
+			return -1;
+		}
+	} while (req->dlrq_correlation_id != hdr->dlrsh_correlation_id);
+
 	return 0;
 }
 void
