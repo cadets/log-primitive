@@ -61,6 +61,8 @@ struct dl_sock_transport {
 	int dlt_fd;
 };
 
+static const int DLT_SOCK_POLL_TIMEOUT = 2000;
+
 static inline void
 dl_transport_check_integrity(struct dl_sock_transport *self)
 {
@@ -199,6 +201,7 @@ dl_sock_transport_send_request(struct dl_transport *self,
     const struct dl_bbuf *buffer)
 {
 	struct iovec iov[2];
+	struct pollfd fds;
 	int32_t buflen;
 	int rc;
 
@@ -213,13 +216,44 @@ dl_sock_transport_send_request(struct dl_transport *self,
 	iov[1].iov_base = dl_bbuf_data(buffer);
 	iov[1].iov_len = dl_bbuf_pos(buffer);
 
+retry_send:
 	DLOGTR1(PRIO_LOW, "Sending request (bytes= %zu)\n", iov[1].iov_len);
 	rc = writev(self->dlt_sock->dlt_fd, iov, 2);
-	if (rc > 0) {
+	if (rc == 1) {
+
+		DLOGTR1(PRIO_LOW, "Transport send error (%d)\n", errno);
+
+		if (errno == EAGAIN) {
+
+			/* Poll on the socket until it is ready to retry. */
+			fds.fd = self->dlt_sock->dlt_fd;
+			fds.events = POLLOUT;
+			rc = poll(&fds, 1, DLT_SOCK_POLL_TIMEOUT);
+			if (rc == -1) {
+
+				/* Socket is ready to write, retry. */
+				DLOGTR1(PRIO_HIGH,
+				    "Error whilst polling on socket (%d)\n",
+				    errno);
+			} else if (rc == 0) {
+
+				/* Timeout whilst waiting on socket. */
+				DLOGTR0(PRIO_NORMAL,
+				    "Timed out whilst attempting to resend.\n");
+			} else {
+
+				/* Socket is ready to write, retry. */
+				goto retry_send;
+			}
+		}
+
+		return -1;
+	} else {
 		/* Update the Producer statistics. */
 		dl_producer_stats_bytes_sent(self->dlt_producer,
 		    dl_bbuf_pos(buffer));
 	}
+
 	return rc;
 }
 
