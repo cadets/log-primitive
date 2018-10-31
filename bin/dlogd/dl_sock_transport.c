@@ -208,53 +208,62 @@ dl_sock_transport_send_request(struct dl_transport *self,
 	dl_transport_check_integrity(self->dlt_sock);
 	DL_ASSERT(buffer != NULL, "Buffer to send cannot be NULL");
 
-	buflen = htobe32(dl_bbuf_pos(buffer));
-
-	iov[0].iov_base = &buflen;
-	iov[0].iov_len = sizeof(buflen);
-
-	iov[1].iov_base = dl_bbuf_data(buffer);
-	iov[1].iov_len = dl_bbuf_pos(buffer);
+	void *b;
+	size_t write_so_far = 0;
+	size_t len_write;
+	size_t buffer_size;
+	size_t offset;
+	size_t bytes_to_write;
+	
+	b = dl_bbuf_data(buffer);
+	buffer_size  = dl_bbuf_pos(buffer);
 
 retry_send:
-	DLOGTR1(PRIO_LOW, "Sending request (bytes= %zu)\n", iov[1].iov_len);
-	rc = writev(self->dlt_sock->dlt_fd, iov, 2);
-	if (rc == 1) {
+	offset = (write_so_far % buffer_size);
+	bytes_to_write = (buffer_size - write_so_far); // min(remaining_write, buffersize - offset);
+
+	DLOGTR1(PRIO_LOW, "Sending request (bytes= %zu)\n", bytes_to_write);
+	len_write = write(self->dlt_sock->dlt_fd, b + offset, bytes_to_write); 
+	if (len_write == -1 && errno != EAGAIN) {
 
 		DLOGTR1(PRIO_LOW, "Transport send error (%d)\n", errno);
-
-		if (errno == EAGAIN) {
-
-			/* Poll on the socket until it is ready to retry. */
-			fds.fd = self->dlt_sock->dlt_fd;
-			fds.events = POLLOUT;
-			rc = poll(&fds, 1, DLT_SOCK_POLL_TIMEOUT);
-			if (rc == -1) {
-
-				/* Socket is ready to write, retry. */
-				DLOGTR1(PRIO_HIGH,
-				    "Error whilst polling on socket (%d)\n",
-				    errno);
-			} else if (rc == 0) {
-
-				/* Timeout whilst waiting on socket. */
-				DLOGTR0(PRIO_NORMAL,
-				    "Timed out whilst attempting to resend.\n");
-			} else {
-
-				/* Socket is ready to write, retry. */
-				goto retry_send;
-			}
-		}
-
 		return -1;
-	} else {
+	}
+
+	if (len_write > 0 && len_write <= buffer_size)
+		write_so_far += len_write;
+
+	if (write_so_far == buffer_size) {
+
 		/* Update the Producer statistics. */
 		dl_producer_stats_bytes_sent(self->dlt_producer,
 		    dl_bbuf_pos(buffer));
+
+		return write_so_far;
 	}
 
-	return rc;
+	/* Poll on the socket until it is ready to retry. */
+	fds.fd = self->dlt_sock->dlt_fd;
+	fds.events = POLLOUT;
+	rc = poll(&fds, 1, DLT_SOCK_POLL_TIMEOUT);
+	if (rc == -1) {
+
+		/* Socket is ready to write, retry. */
+		DLOGTR1(PRIO_HIGH,
+			"Error whilst polling on socket (%d)\n",
+			errno);
+	} else if (rc == 0) {
+
+		/* Timeout whilst waiting on socket. */
+		DLOGTR0(PRIO_NORMAL,
+			"Timed out whilst attempting to resend.\n");
+	} else {
+
+		/* Socket is ready to write, retry. */
+		goto retry_send;
+	}
+
+	return -1;
 }
 
 static void 

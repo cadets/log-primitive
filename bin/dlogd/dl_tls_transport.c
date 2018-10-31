@@ -380,20 +380,6 @@ dl_tls_transport_send_request(struct dl_transport *self,
 	DLOGTR1(PRIO_LOW, "Sending request (bytes= %u)\n",
 	    dl_bbuf_pos(buffer));
 
-	/* Write the length pre-pended request to the transport.
-	 * (The length is big-endian format).
-	 */
-	buflen = htobe32(dl_bbuf_pos(buffer));
-
-	rc = BIO_write(bio_buf, &buflen, sizeof(buflen));
-	if (rc <= 0) {
-		DLOGTR0(PRIO_HIGH,
-		    "BIO_write in TlsTransport send_request failed\n");
-		/* Free the BIO used to buffer the request. */
-		BIO_free(bio_buf);
-		return -1;
-	}
-
 	rc = BIO_write(bio_buf, dl_bbuf_data(buffer), dl_bbuf_pos(buffer));
 	if (rc <= 0) {
 
