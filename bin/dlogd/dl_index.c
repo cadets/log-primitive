@@ -189,7 +189,7 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 			    log_end);
 			break;
 		}
-		DL_ASSERT(rc == sizeof(offset) + sizeof(sisze),
+		DL_ASSERT(rc == sizeof(offset) + sizeof(size),
 		   ("Number of bytes read from log"));
 
 		/* Write the index for the log entry. */
