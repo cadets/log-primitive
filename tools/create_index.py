@@ -62,7 +62,7 @@ if __name__ == "__main__":
 
                 # Write the log offset and correspondinging physical
                 # location in the log file to the index
-                data = struct.pack(">II", offset, poffset)
+                data = struct.pack(">IQ", offset, poffset)
                 idx.write(data)
 
                 # Advance to the next entry in the log
