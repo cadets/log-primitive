@@ -47,7 +47,7 @@ extern int dl_index_new(struct dl_index **, int, int64_t, struct sbuf *);
 extern void dl_index_delete(struct dl_index *);
 
 extern int dl_index_update(struct dl_index *, off_t); 
-extern off_t dl_index_lookup(struct dl_index *, uint32_t, off64_t *); 
+extern off_t dl_index_lookup(struct dl_index *, uint32_t, off_t *); 
 extern off_t dl_index_get_last(struct dl_index *);
 
 #endif
