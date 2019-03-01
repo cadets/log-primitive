@@ -75,6 +75,9 @@ static const int DLT_TLS_POLL_TIMEOUT = 2000;
 static dl_event_handler_handle dl_tls_get_transport_fd(void *);
 static void dl_tls_transport_hdlr(void *, int, int);
 
+/* dlogd properties. */
+extern nvlist_t *dlogd_props;
+
 static int dl_tls_transport_connect(struct dl_transport *,
     const char * const, const int);
 static void dl_tls_transport_delete(struct dl_transport *);
@@ -542,8 +545,7 @@ dl_tls_transport_get_fd(struct dl_transport *self)
 }
 
 int
-dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer,
-    nvlist_t *props)
+dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer)
 {
 	struct dl_transport *transport;
 	struct dl_tls_transport *tls;
@@ -553,7 +555,6 @@ dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer,
 
 	DL_ASSERT(self != NULL, ("Transport instance cannot be NULL"));
 	DL_ASSERT(producer != NULL, ("Producer instance cannot be NULL"));
-	DL_ASSERT(props != NULL, ("Properties instance cannot be NULL"));
       
        	rc = dl_transport_new(&transport, dl_tls_transport_delete,
 	    dl_tls_transport_connect, dl_tls_transport_read_msg,
@@ -596,8 +597,8 @@ dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer,
 
 	SSL_CTX_set_options(tls->dlt_tls_ctx, DLT_TLS_FLAGS);
 	
-	if (nvlist_exists_string(props, DL_CONF_CLIENT_FILE)) {
-		client_file = nvlist_get_string(props, DL_CONF_CLIENT_FILE);
+	if (nvlist_exists_string(dlogd_props, DL_CONF_CLIENT_FILE)) {
+		client_file = nvlist_get_string(dlogd_props, DL_CONF_CLIENT_FILE);
 	} else {
 		client_file = DL_DEFAULT_CLIENT_FILE;
 	}
@@ -613,16 +614,16 @@ dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer,
 		goto err_tls_ctx_free;
 	}
 
-	if (nvlist_exists_string(props, DL_CONF_USER_PASSWORD)) {
-		password = nvlist_get_string(props, DL_CONF_USER_PASSWORD);
+	if (nvlist_exists_string(dlogd_props, DL_CONF_USER_PASSWORD)) {
+		password = nvlist_get_string(dlogd_props, DL_CONF_USER_PASSWORD);
 	} else {
 		password = DL_DEFAULT_USER_PASSWORD;
 	}
 
 	SSL_CTX_set_default_passwd_cb_userdata(tls->dlt_tls_ctx, password);
 
-	if (nvlist_exists_string(props, DL_CONF_PRIVATEKEY_FILE)) {
-		privkey_file = nvlist_get_string(props,
+	if (nvlist_exists_string(dlogd_props, DL_CONF_PRIVATEKEY_FILE)) {
+		privkey_file = nvlist_get_string(dlogd_props,
 		    DL_CONF_PRIVATEKEY_FILE);
 	} else {
 		privkey_file = DL_DEFAULT_PRIVATEKEY_FILE;
@@ -652,8 +653,8 @@ dl_tls_transport_new(struct dl_transport **self, struct dl_producer *producer,
 	 * are located (in not NULL a file of CA certificated in PEM
 	 * format).
 	 */
-	if (nvlist_exists_string(props, DL_CONF_CACERT_FILE)) {
-		cacert_file = nvlist_get_string(props, DL_CONF_CACERT_FILE);
+	if (nvlist_exists_string(dlogd_props, DL_CONF_CACERT_FILE)) {
+		cacert_file = nvlist_get_string(dlogd_props, DL_CONF_CACERT_FILE);
 	} else {
 		cacert_file = DL_DEFAULT_CACERT_FILE;
 	}
