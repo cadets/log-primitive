@@ -1,6 +1,6 @@
 /*-
  * Copyright (c) 2017 (Ilia Shumailov)
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -42,6 +42,8 @@
 
 #include "dl_response.h" 
 
+extern int dl_config_new(char *, int);
+
 /* TODO: Remove this? */
 typedef void (* dl_response_func) (struct dl_response const * const);
 
@@ -60,20 +62,23 @@ struct dl_client_config_desc {
 	size_t dlcc_packed_nvlist_len;
 };
 
-#define DL_CONF_CLIENTID "client.id"
-#define DL_CONF_BROKER "client.broker"
-#define DL_CONF_BROKER_PORT "broker.port"
-#define DL_CONF_TORESEND "resend.to_resend"
+#define DL_CONF_CLIENTID "clientid"
+#define DL_CONF_BROKER "hostname"
+#define DL_CONF_BROKER_PORT "port"
+#define DL_CONF_TORESEND "resend"
 #define DL_CONF_RESENDTIMEOUT "resend.timeout"
 #define DL_CONF_RESENDPERIOD "resend.period"
 #define DL_CONF_TOPIC "client.topic"
-#define DL_CONF_PRIVATEKEY_FILE "tls.privatekey.file"
-#define DL_CONF_CLIENT_FILE "tls.client.file"
-#define DL_CONF_CACERT_FILE "tls.cacert.file"
-#define DL_CONF_USER_PASSWORD "tls.user.password"
-#define DL_CONF_TLS_ENABLE "tls.enable"
+#define DL_CONF_PRIVATEKEY_FILE "privatekey_file"
+#define DL_CONF_CLIENT_FILE "client_file"
+#define DL_CONF_CACERT_FILE "cacert_file"
+#define DL_CONF_USER_PASSWORD "user_password"
+#define DL_CONF_TLS_ENABLE "tls"
+#define DL_CONF_TOPICS "topics"
 #define DL_CONF_DEBUG_LEVEL "debug.level"
-#define DL_CONF_REQUEST_QUEUE_LEN "request.queue.length"
+#define DL_CONF_REQUEST_QUEUE_LEN "request_queue_len"
+#define DL_CONF_NELEMENTS "nelements"
+#define DL_CONF_LOG_PATH "log_path"
 
 #define DL_DEFAULT_CLIENTID "dlog"
 #define DL_DEFAULT_BROKER "127.0.0.1"
@@ -89,5 +94,7 @@ struct dl_client_config_desc {
 #define DL_DEFAULT_TLS_ENABLE false
 #define DL_DEFAULT_DEBUG_LEVEL 0
 #define DL_DEFAULT_REQUEST_QUEUE_LEN 100
+#define DL_DEFAULT_NELEMENTS 10
+#define DL_DEFAULT_LOG_PATH "/var/db/dlogd"
 
 #endif
