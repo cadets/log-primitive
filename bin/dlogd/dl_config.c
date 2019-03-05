@@ -38,6 +38,7 @@
 #include <sys/types.h>
 
 #include <ucl.h>
+#include <unistd.h>
 
 #include "dl_assert.h"
 #include "dl_config.h"
@@ -187,6 +188,11 @@ dl_config_new(char *conf_file, int debug_lvl)
 
 	/* Free the libucl parser. */	
 	ucl_parser_free(parser);
+
+	if (debug_lvl > 1) {
+		DLOGTR0(PRIO_NORMAL, "Configuration:\n");
+		nvlist_dump(dlogd_props, STDOUT_FILENO);
+	}
 
 	return 0;
 
