@@ -38,6 +38,7 @@ PROGS= dlogd
 BINDIR= bin
 
 DLOG_SRCS= dl_bbuf.c \
+	dl_config.c \
 	dl_correlation_id.c \
 	dl_fetch_request.c \
 	dl_fetch_response.c \
@@ -53,6 +54,8 @@ DLOG_SRCS= dl_bbuf.c \
 	dl_produce_response.c \
 	dl_request.c \
 	dl_request_queue.c \
+	dl_record.c \
+	dl_record_header.c \
 	dl_response.c \
 	dl_user_segment.c \
 	dl_segment.c \
