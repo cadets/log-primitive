@@ -36,7 +36,7 @@
 
 #include <sys/file.h>
 #include <sys/mman.h>
-#include <sys/nv.h>
+#include <sys/dnv.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/sbuf.h>
@@ -866,34 +866,19 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	producer->dlp_transport = NULL;
 
 	producer->dlp_name = sbuf_new_auto();
-	if (nvlist_exists_string(props, DL_CONF_CLIENTID)) {
-		client_id = nvlist_get_string(props, DL_CONF_CLIENTID);
-	} else {
-		client_id = DL_DEFAULT_CLIENTID;
-	}
+	client_id = dnvlist_get_string(props, DL_CONF_CLIENTID,
+	    DL_DEFAULT_CLIENTID);
 	sbuf_cpy(producer->dlp_name, client_id);
 	sbuf_finish(producer->dlp_name);
 
-	if (nvlist_exists_string(props, DL_CONF_RESENDTIMEOUT)) {
-		producer->dlp_resend_timeout = nvlist_get_number(props,
-		    DL_CONF_RESENDTIMEOUT);
-	} else {
-		producer->dlp_resend_timeout = DL_DEFAULT_RESENDTIMEOUT;
-	}
+	producer->dlp_resend_timeout = dnvlist_get_number(props,
+	    DL_CONF_RESENDTIMEOUT, DL_DEFAULT_RESENDTIMEOUT);
 
-	if (nvlist_exists_string(props, DL_CONF_RESENDPERIOD)) {
-		producer->dlp_resend_period = nvlist_get_number(props,
-		    DL_CONF_RESENDPERIOD);
-	} else {
-		producer->dlp_resend_period = DL_DEFAULT_RESENDPERIOD;
-	}
+	producer->dlp_resend_period = dnvlist_get_number(props,
+	    DL_CONF_RESENDPERIOD, DL_DEFAULT_RESENDPERIOD);
 
-	if (nvlist_exists_number(props, DL_CONF_REQUEST_QUEUE_LEN)) {
-		requestq_len = nvlist_get_number(props,
-		    DL_CONF_REQUEST_QUEUE_LEN);
-	} else {
-		requestq_len = DL_DEFAULT_REQUEST_QUEUE_LEN;
-	}
+	requestq_len = dnvlist_get_number(props, DL_CONF_REQUEST_QUEUE_LEN,
+	    DL_DEFAULT_REQUEST_QUEUE_LEN);
 	producer->dlp_broker_hostname = sbuf_new_auto();
 	sbuf_cpy(producer->dlp_broker_hostname, hostname);
 	sbuf_finish(producer->dlp_broker_hostname);
@@ -942,20 +927,12 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	dl_poll_reactor_register(&producer->dlp_ktimer_hdlr,
 	    POLLIN | POLLOUT | POLLERR);
 
-	if (nvlist_exists_bool(props, DL_CONF_TORESEND)) {
-		producer->dlp_resend = nvlist_get_bool(props,
-		    DL_CONF_TORESEND);
-	} else {
-		producer->dlp_resend = DL_DEFAULT_TORESEND;
-	}
+	producer->dlp_resend = dnvlist_get_bool(props, DL_CONF_TORESEND,
+	    DL_DEFAULT_TORESEND);
 
 	/* Read the configured debug level */
-	if (nvlist_exists_string(props, DL_CONF_CLIENTID)) {
-		producer->dlp_debug_level = nvlist_get_number(props,
-		    DL_CONF_DEBUG_LEVEL);
-	} else {
-		producer->dlp_debug_level = DL_DEFAULT_DEBUG_LEVEL;
-	}
+	producer->dlp_debug_level = dnvlist_get_number(props,
+	    DL_CONF_DEBUG_LEVEL, DL_DEFAULT_DEBUG_LEVEL);
 
 	*self = producer;
 	dl_producer_check_integrity(*self);

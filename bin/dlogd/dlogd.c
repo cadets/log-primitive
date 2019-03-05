@@ -282,7 +282,7 @@ main(int argc, char *argv[])
 		pidfile_remove(pfh);
 		errx(EXIT_FAILURE, "Failed parsing dlogd configuration file\n");
 	}
-
+	
 	if (setup_daemon() != 0) {
 
 		pidfile_remove(pfh);
