@@ -47,6 +47,9 @@ SRCS= dlog_client.c \
 	dl_primitive_types.c \
 	dl_produce_request.c \
 	dl_produce_response.c \
+	dl_record.c \
+	dl_record_batch.c \
+	dl_record_header.c \
 	dl_request.c \
 	dl_response.c \
 	dl_segment.c \
