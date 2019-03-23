@@ -44,13 +44,14 @@ MAN.dlogdstat =
 #LDADD+=-lcrypto
 #LDADD+=-lnv
 #LDADD+=-lpthread
-LDADD+=/usr/local/lib/libncurses.a
-LDADD+=/usr/local/lib/libtinfo.a
+LDADD+=-lncurses
+LDADD+=-ltinfo
 LDADD+=-lsbuf
 #LDADD+=-lssl
 #LDADD+=-lucl
 #LDADD+=-lz
 
+CFLAGS+=-Werror
 CFLAGS+=-DNDEBUG
 CFLAGS+=-g
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
