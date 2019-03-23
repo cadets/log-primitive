@@ -1,5 +1,5 @@
 #-
-# Copyright (c) 2018 (Graeme Jenkinson)
+# Copyright (c) 2018-2019 (Graeme Jenkinson)
 # All rights reserved.
 #
 # This software was developed by BAE Systems, the University of Cambridge
@@ -55,6 +55,7 @@ DLOG_SRCS= dl_bbuf.c \
 	dl_request.c \
 	dl_request_queue.c \
 	dl_record.c \
+	dl_record_batch.c \
 	dl_record_header.c \
 	dl_response.c \
 	dl_user_segment.c \
