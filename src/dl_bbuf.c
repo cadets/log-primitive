@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -56,15 +56,39 @@
 struct dl_bbuf {
 	unsigned char *dlb_data;
 	int dlb_flags;
-	int dlb_pos;
-	int dlb_limit;
-	int dlb_capacity;
+	size_t dlb_pos;
+	size_t dlb_limit;
+	size_t dlb_capacity;
 };
+
+/*!
+ * Wrapper for __builtin_clz to mitigate undefined behaviour for zero values.
+ *
+ * Zeroes need one byte on the wire, so we return 31 leading zeroes.
+ *
+ * \param[in] Value
+ * \return    Leading zeroes
+ */
+#define clz(value) \
+  ((value) ? __builtin_clz(value) : 31)
 
 static const int DL_BBUF_USRFLAGMASK = (DL_BBUF_AUTOEXTEND | DL_BBUF_FIXEDLEN |  DL_BBUF_BIGENDIAN | DL_BBUF_LITTLEENDIAN);
 static const int DL_BBUF_MINEXTENDSIZE = 16;
 static const int DL_BBUF_MAXEXTENDSIZE = PAGE_SIZE;
 static const int DL_BBUF_MAXEXTENDINC = PAGE_SIZE;
+
+/*! Mapping: most-significant bit ==> packed size */
+static const size_t
+DLB_VARINT_SIZE_MAP[] = {
+  1, 1, 1, 1, 1, 1, 1, 2,
+  2, 2, 2, 2, 2, 2, 3, 3,
+  3, 3, 3, 3, 3, 4, 4, 4,
+  4, 4, 4, 4, 5, 5, 5, 5,
+  5, 5, 5, 6, 6, 6, 6, 6,
+  6, 6, 7, 7, 7, 7, 7, 7,
+  7, 8, 8, 8, 8, 8, 8, 8,
+  9, 9, 9, 9, 9, 9, 9, 10
+};
 
 static void dl_bbuf_assert_integrity(const char *, struct dl_bbuf *);
 static int dl_bbuf_extend(struct dl_bbuf *, int);
@@ -146,7 +170,7 @@ dl_bbuf_delete(struct dl_bbuf *self)
 }
 
 int
-dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, int capacity, int flags)
+dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, size_t capacity, int flags)
 {
 	struct dl_bbuf *newbuf;
 
@@ -212,7 +236,7 @@ dl_bbuf_new_auto(struct dl_bbuf **buffer)
 }
 
 int
-dl_bbuf_bcat(struct dl_bbuf *self, unsigned char const * const source, int len)
+dl_bbuf_bcat(struct dl_bbuf *self, unsigned char const * const source, size_t len)
 {
 	int add_len;
 
@@ -242,7 +266,7 @@ dl_bbuf_scat(struct dl_bbuf *self, struct sbuf *source)
 	dl_bbuf_assert_integrity(__func__, self);
 	DL_ASSERT(source != NULL, ("Source sbuf cannot be NULL"));
 
-	dl_bbuf_bcat(self, (unsigned char *)  sbuf_data(source),
+	dl_bbuf_bcat(self, (unsigned char *) sbuf_data(source),
 	    sbuf_len(source));
 	return 0;
 }
@@ -305,7 +329,7 @@ dl_bbuf_flip(struct dl_bbuf *self)
 	return 0;
 }
 
-int
+size_t
 dl_bbuf_len(struct dl_bbuf *self)
 {
 
@@ -313,7 +337,7 @@ dl_bbuf_len(struct dl_bbuf *self)
 	return self->dlb_limit;
 }
 
-int
+size_t
 dl_bbuf_pos(struct dl_bbuf *self)
 {
 
@@ -529,7 +553,7 @@ dl_bbuf_get_uint64(struct dl_bbuf *self, uint64_t *value)
 
 
 int
-dl_bbuf_put_int8_at(struct dl_bbuf *self, int8_t value, int pos)
+dl_bbuf_put_int8_at(struct dl_bbuf *self, int8_t value, size_t pos)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
@@ -562,7 +586,7 @@ dl_bbuf_put_int8(struct dl_bbuf *self, int8_t value)
 }
 
 int
-dl_bbuf_put_uint8_at(struct dl_bbuf *self, uint8_t value, int pos)
+dl_bbuf_put_uint8_at(struct dl_bbuf *self, uint8_t value, size_t pos)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
@@ -595,7 +619,7 @@ dl_bbuf_put_uint8(struct dl_bbuf *self, uint8_t value)
 }
 
 int
-dl_bbuf_put_int16_at(struct dl_bbuf *self, int16_t value, int pos)
+dl_bbuf_put_int16_at(struct dl_bbuf *self, int16_t value, size_t pos)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
@@ -635,7 +659,7 @@ dl_bbuf_put_int16(struct dl_bbuf *self, int16_t value)
 }
 
 int
-dl_bbuf_put_int32_at(struct dl_bbuf *self, int32_t value, int pos)
+dl_bbuf_put_int32_at(struct dl_bbuf *self, int32_t value, size_t pos)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
@@ -679,7 +703,42 @@ dl_bbuf_put_int32(struct dl_bbuf *self, int32_t value)
 }
 
 int
-dl_bbuf_put_int64_at(struct dl_bbuf *self, int64_t value, int pos)
+dl_bbuf_put_int32_as_varint(struct dl_bbuf *self, int32_t value)
+{
+	size_t packed_len = DLB_VARINT_SIZE_MAP[31 - clz(value)];
+	uint8_t packed_value[packed_len];
+
+	dl_bbuf_assert_integrity(__func__, self);
+
+	/* zig-zag encode the signed value */
+	int32_t zigzag_value = (value << 1) ^ (value >> 31);		
+
+	/* varint encode the value. */
+	size_t size = 0; uint32_t temp = zigzag_value;
+	if (temp & 0xFFFFFF80U) {
+		packed_value[size++] = temp | 0x80;
+		temp >>= 7;
+		if (temp & 0xFFFFFF80U) {
+			packed_value[size++] = temp | 0x80;
+			temp >>= 7;
+			if (temp & 0xFFFFFF80U) {
+				packed_value[size++] = temp | 0x80;
+				temp >>= 7;
+				if (temp & 0xFFFFFF80U) {
+					packed_value[size++] = temp | 0x80;
+					temp >>= 7;
+				}
+			}
+		}
+	}
+	packed_value[size++] = temp;
+
+	/* Copy the varint encoded value into ther bbuf */
+	return dl_bbuf_bcat(self, packed_value, packed_len);
+}
+
+int
+dl_bbuf_put_int64_at(struct dl_bbuf *self, int64_t value, size_t pos)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
