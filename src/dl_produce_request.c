@@ -52,7 +52,7 @@
 
 int
 dl_produce_request_new(struct dl_request **self, const int32_t correlation_id,
-    struct sbuf *client, int16_t required_acks, int32_t timeout,
+    struct sbuf *client, dl_required_acks required_acks, int32_t timeout,
     struct sbuf *topic_name, struct dl_message_set *message_set)
 {
 	struct dl_produce_request *produce_request;
@@ -132,7 +132,7 @@ err_request_ctor:
 
 int
 dl_produce_request_new_nomsg(struct dl_request **self,
-    const int32_t correlation_id, struct sbuf *client, int16_t required_acks,
+    const int32_t correlation_id, struct sbuf *client, dl_required_acks required_acks,
     int32_t timeout, struct sbuf *topic_name)
 {
 	return dl_produce_request_new(self, correlation_id, client,

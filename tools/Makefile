@@ -29,7 +29,8 @@
 # SUCH DAMAGE.
 #
 
-.PATH : ../src
+.PATH : ../libdlog
+#.PATH : ../src
 
 .OBJDIR:= obj
 MK_AUTO_OBJ:= yes
@@ -57,22 +58,26 @@ DLOG_SRCS= dlog_client.c \
 	dl_topic.c \
 	lookup3.c
 
-PROGS= dlog_start_broker \
-       dlog_console_producer \
+#PROGS= dlog_start_broker \
+#       dlog_console_producer \
+#       dlog_console_consumer
+PROGS= dlog_console_producer \
        dlog_console_consumer
 BINDIR= bin
 
-SRCS.dlog_start_broker= dlog_start_broker.c \
-	../src/dl_partition.c \
-	../src/dl_segment.c \
-	../src/dl_topic.c \
-	${DLOG_SRCS}
-MAN.dlog_start_broker=
+#SRCS.dlog_start_broker= dlog_start_broker.c
+#\
+#	../src/dl_partition.c \
+#	../src/dl_segment.c \
+#	../src/dl_topic.c
+#${DLOG_SRCS}
+#MAN.dlog_start_broker=
 
 SRCS.dlog_console_producer= dlog_console_producer.c
 MAN.dlog_console_producer=
 
-SRCS.dlog_console_consumer= dlog_console_consumer.c ${DLOG_SRCS}
+SRCS.dlog_console_consumer= dlog_console_consumer.c 
+#${DLOG_SRCS}
 MAN.dlog_console_consumer=
 
 LDADD+= -lz
@@ -80,9 +85,11 @@ LDADD+= -lpthread
 LDADD+= -lm
 LDADD+= -lsbuf
 LDADD+= -lnv
-#LDADD+= ${SRCTOP}/libdlog.a
+#LDADD+= -ldlog
+LDADD+= ${SRCTOP}/../libdlog/libdlog.a
 
 CFLAGS+= -I${SRCTOP}
-CFLAGS+= -I${SRCTOP}/../dlog
+CFLAGS+= -I${SRCTOP}/../bin/dlogd
+CLFAGS+= -L${SRCTOP}/../libdlog
 
 .include <bsd.progs.mk>

@@ -118,8 +118,9 @@ dlog_produce_v1(struct dlog_handle *self, char *k,
 	dlog_client_check_integrity(self);
 
 	/* Instantiate a new MessageSet. */
-	if (dl_message_set_new(&message_set, k, strlen(k), v, v_len) != 0)
-		return -1;
+	if (dl_message_set_new(&message_set, (unsigned char *) k, strlen(k),
+	    v, v_len) != 0)
+		goto err_produce;
 
 	if (dl_bbuf_new(&buffer, NULL, DL_MTU,
 		DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN) != 0)
@@ -208,7 +209,7 @@ err_free_bbuf:
 	dl_bbuf_delete(buffer);
 
 err_free_record_set:
-	dl_record_set_delete(record_batch);
+	dl_record_batch_delete(record_batch);
 
 err_produce:
 	DLOGTR0(PRIO_HIGH, "Error producing request\n");
@@ -297,7 +298,7 @@ dlog_client_close(struct dlog_handle *self)
 	nvlist_destroy(props);
 
 	/* Free the client configuration. */
-	dlog_free(self->dlh_config);
+	dlog_free((struct dl_client_config *) self->dlh_config);
 
 	/* Free all the memory associated with the client handle. */
 	dlog_free(self);	
