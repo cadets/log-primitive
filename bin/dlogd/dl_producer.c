@@ -530,7 +530,7 @@ dlp_enqueue_thread(void *vargp)
 		/* Instantiate a new ProduceRequest */
 		if (dl_produce_request_new_nomsg(&message,
 		    dl_correlation_id_val(self->dlp_cid),
-		    self->dlp_name, 1, 2000,
+		    self->dlp_name, DL_DEFAULT_ACKS, DL_DEFAULT_ACK_TIMEOUT,
 		    topic_name) == 0) {
 
 			rc = dl_request_encode(message, &buffer);
@@ -543,7 +543,9 @@ dlp_enqueue_thread(void *vargp)
 
 			/* Free the ProduceRequest */
 			dl_request_delete(message);
-
+		// TODO
+		dl_bbuf_put_int32(buffer, dl_bbuf_pos(msg_buffer));
+	
 			/* Concat the buffers together */
 			rc = dl_bbuf_concat(buffer, msg_buffer);
 			if (rc != 0) {
@@ -592,6 +594,8 @@ dlp_enqueue_thread(void *vargp)
 				/* Increment the offset to process. */
 				dl_offset_inc(dl_user_segment_get_offset_tmp(seg));
 			}
+
+			getchar();
 		} else {
 
 			DLOGTR0(PRIO_HIGH,
@@ -1060,7 +1064,8 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 			case DL_PRODUCE_API_KEY:
 				/* TODO: Construct ProducerResponse */
 				// dl_produce_response_decode(&response, &buffer);
-			
+		
+
 				//dl_response_delete(response);
 
 				/* Update the producer statistics */

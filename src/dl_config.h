@@ -40,6 +40,7 @@
 
 #include <sys/nv.h>
 
+#include "dl_produce_request.h" 
 #include "dl_response.h" 
 
 extern int dl_config_new(char *, int);
@@ -79,6 +80,8 @@ struct dl_client_config_desc {
 #define DL_CONF_REQUEST_QUEUE_LEN "request_queue_len"
 #define DL_CONF_NELEMENTS "nelements"
 #define DL_CONF_LOG_PATH "log_path"
+#define DL_CONF_ACKS "acks"
+#define DL_CONF_ACK_TIMEOUT "ack_timeout"
 
 #define DL_DEFAULT_CLIENTID "dlog"
 #define DL_DEFAULT_BROKER "127.0.0.1"
@@ -96,5 +99,7 @@ struct dl_client_config_desc {
 #define DL_DEFAULT_REQUEST_QUEUE_LEN 100
 #define DL_DEFAULT_NELEMENTS 10
 #define DL_DEFAULT_LOG_PATH "/var/db/dlogd"
+#define DL_DEFAULT_ACKS DL_LEADER_ACKS
+#define DL_DEFAULT_ACK_TIMEOUT 5000 
 
 #endif
