@@ -280,10 +280,10 @@ dl_request_encode(struct dl_request const *request, struct dl_bbuf **target)
 
 		/* Encode a placeholder for the total request size. */	
 		rc |= DL_ENCODE_REQUEST_SIZE(*target, -1);
-		
+	
 		/* Encode the Request Header. */
 		if (dl_request_header_encode(request, *target) == 0) {
-
+	
 			/* Encode the Request Body. */
 			switch (request->dlrqm_api_key) {
 			case DL_PRODUCE_API_KEY:
