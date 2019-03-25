@@ -51,7 +51,6 @@
 
 static void dlp_siginfo_handler(int);
 static void dlp_sigint_handler(int);
-static void dlp_on_response(struct dl_response const * const);
 
 /* Configure the distributed log logging level. */
 unsigned short PRIO_LOG = PRIO_LOW;
@@ -90,58 +89,12 @@ dlp_sigint_handler(int sig)
 	exit(EXIT_SUCCESS);
 }
 
-static void
-dlp_on_response(struct dl_response const * const response)
-{
-	struct dl_produce_response *produce_response;
-	struct dl_produce_response_partition *produce_partition;
-	struct dl_produce_response_topic *produce_topic;
-	int partition;
-
-	dl_debug(PRIO_LOW, "correlation id = %d\n", response->dlrs_correlation_id);
-	dl_debug(PRIO_LOW, "api key= %d\n", response->dlrs_api_key);
-
-	switch (response->dlrs_api_key) {
-	case DL_PRODUCE_API_KEY:
-		//produce_response = response->dlrs_message.dlrs_produce_message;
-		produce_response = response->dlrs_produce_response;
-
-		dl_debug(PRIO_LOW, "ntopics= %d\n", produce_response->dlpr_ntopics);
-
-		SLIST_FOREACH(produce_topic,
-			&produce_response->dlpr_topics, dlprt_entries) {
-
-			dl_debug(PRIO_LOW, "Topic: %s\n",
-				sbuf_data(produce_topic->dlprt_topic_name));
-
-			for (partition = 0;
-			    partition < produce_topic->dlprt_npartitions;
-			    partition++) {
-
-				dl_debug(PRIO_LOW, "Partition: %d\n",
-				    produce_topic->dlprt_partitions[partition].dlprp_partition);
-
-				dl_debug(PRIO_LOW, "ErrorCode: %d\n",
-				    produce_topic->dlprt_partitions[partition].dlprp_error_code);
-
-				dl_debug(PRIO_LOW, "Base offset: %d\n",
-					produce_topic->dlprt_partitions[partition].dlprp_offset);
-			};
-		};
-		break;
-	default:
-		dl_debug(PRIO_HIGH, "Unexcepted Response %d\n",
-		    response->dlrs_api_key);
-		break;
-	}
-
-}
-
 #include <sys/queue.h>
-#include <dl_broker_topic.h>
+#include <dl_topic.h>
 
 unsigned long topic_hashmask;
-LIST_HEAD(dl_broker_topics, dl_broker_topic) *topic_hashmap;
+//LIST_HEAD(dl_topics, dl_topic) *topic_hashmap;
+struct dl_topics *topic_hashmap;
 
 /**
  * Utility for writing to the distributed log from the console.
@@ -200,7 +153,7 @@ main(int argc, char **argv)
 	 */
 	struct sbuf *tname = sbuf_new_auto();
 	sbuf_cpy(tname, "cadets-trace"); //topic);
-	struct dl_broker_topic *t;
+	struct dl_topic *t;
 	dl_topic_new(&t, tname, handle);
 
 	uint32_t h = hashlittle(topic, strlen(topic), 0);
@@ -213,8 +166,6 @@ main(int argc, char **argv)
 	signal(SIGINFO, dlp_siginfo_handler);
 
 	/* Configure and initialise the distributed log client. */
-	conf.dlcc_on_response = dlp_on_response;
-	
 	props = nvlist_create(0);
 	nvlist_add_string(props, DL_CONF_CLIENTID, client_id);
 	nvlist_add_string(props, DL_CONF_BROKER, hostname);
@@ -223,8 +174,8 @@ main(int argc, char **argv)
 
 	conf.dlcc_props = props;
 
-	handle = dlog_client_open(&conf);
-        if (handle == NULL) {
+	rc = dlog_client_open(&handle, &conf);
+        if (rc != 0) {
 		fprintf(stderr,
 		    "Error initialising the distributed log client.\n");
 		exit(EXIT_FAILURE);
@@ -243,8 +194,7 @@ main(int argc, char **argv)
 			 */
 			line[strlen(line) - 1] = '\0';
 
-			rc = dlog_produce(handle, "key", strlen("key"),
-			    line, strlen(line));
+			rc = dlog_produce(handle, "key", line, strlen(line));
 			if (rc != 0) {
 				fprintf(stderr,
 				    "Failed writing to the log %d\n", rc); 

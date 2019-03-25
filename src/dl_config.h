@@ -45,6 +45,7 @@
 
 extern int dl_config_new(char *, int);
 
+/* TODO remove this type, use only the raw nvlist. */
 struct dl_client_config {
 	nvlist_t *dlcc_props;
 };

@@ -72,7 +72,7 @@ dl_record_assert_integrity(const char *func,
 #else
 dl_record_assert_integrity(const char *func __attribute((unused)),
 #endif
-    struct dl_record *self)
+    struct dl_record const * const self)
 {
 
 	DL_ASSERT(self != NULL,
@@ -84,7 +84,7 @@ dl_record_assert_integrity(const char *func __attribute((unused)),
 }
 
 int
-dl_record_new(struct dl_record **self, char *key,
+dl_record_new(struct dl_record ** self, char *key,
     unsigned char *value, int32_t value_len)
 {
 	struct dl_record *record;

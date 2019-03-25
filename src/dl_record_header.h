@@ -63,6 +63,7 @@ extern int dl_record_header_encode_into(struct dl_record_header const *,
     struct dl_bbuf *);
 
 extern struct sbuf * dl_record_header_get_key(struct dl_record_header *);
-extern unsigned char * dl_record_header_get_value(struct dl_record_header *);
+extern unsigned char const * dl_record_header_get_value(
+    struct dl_record_header *);
 
 #endif
