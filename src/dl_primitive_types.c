@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -89,7 +89,7 @@ dl_decode_string(struct dl_bbuf *source, struct sbuf **target)
  * a value of -1 indicates a NULL string.
  */
 int
-dl_decode_bytes(unsigned char ** const target, int *target_len,
+dl_decode_bytes(int8_t ** const target, int *target_len,
     struct dl_bbuf *source)
 {
 	int32_t nbytes;

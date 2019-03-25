@@ -124,7 +124,7 @@ dl_record_batch_assert_integrity(const char *func,
 #else
 dl_record_batch_assert_integrity(const char *func __attribute((unused)),
 #endif
-    struct dl_record_batch *self)
+    struct dl_record_batch const * const self)
 {
 
 	DL_ASSERT(self != NULL,

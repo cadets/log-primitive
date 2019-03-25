@@ -485,7 +485,7 @@ dlp_produce_thread(void *vargp)
 				if (self->dlp_debug_level > 1)
 					DLOGTR2(PRIO_LOW,
 					    "ProduceRequest: id = %d failed "
-					    "(bytes = %d)\n",
+					    "(bytes = %zu)\n",
 					    request->dlrq_correlation_id,
 					    dl_bbuf_pos(request->dlrq_buffer));
 			}
@@ -572,7 +572,7 @@ dlp_enqueue_thread(void *vargp)
 
 			if (self->dlp_debug_level > 2)
 				DLOGTR2(PRIO_LOW,
-				    "ProduceRequest: id = %d enqueued (%d bytes)\n",
+				    "ProduceRequest: id = %d enqueued (%zu bytes)\n",
 				    dl_correlation_id_val(self->dlp_cid),
 				    dl_bbuf_pos(buffer));
 

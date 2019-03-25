@@ -44,7 +44,7 @@
 #define DLOG_API_V1 1
 #define DLOG_API_V2 2
 #define DLOG_API_V3 3
-#define DLOG_API_VERSION DLOG_API_V3
+#define DLOG_API_VERSION DLOG_API_V2
 
 // Topic names should have a maximum length
 // so that when persisted to the filesystem they

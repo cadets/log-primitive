@@ -59,7 +59,7 @@ dl_record_header_assert_integrity(const char *func,
 #else
 dl_record_header_assert_integrity(const char *func __attribute((unused)),
 #endif
-    struct dl_record_header *self)
+    struct dl_record_header const * const self)
 {
 
 	DL_ASSERT(self != NULL,
@@ -219,7 +219,7 @@ dl_record_header_get_key(struct dl_record_header *self)
 	return self->dlrh_key;
 }
 
-unsigned char *
+unsigned char const *
 dl_record_header_get_value(struct dl_record_header *self)
 {
 

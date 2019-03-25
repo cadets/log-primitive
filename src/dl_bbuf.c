@@ -90,7 +90,6 @@ DLB_VARINT_SIZE_MAP[] = {
   9, 9, 9, 9, 9, 9, 9, 10
 };
 
-static void dl_bbuf_assert_integrity(const char *, struct dl_bbuf *);
 static int dl_bbuf_extend(struct dl_bbuf *, int);
 static int dl_bbuf_extendsize(int);
 
@@ -100,7 +99,7 @@ dl_bbuf_assert_integrity(const char *func, struct dl_bbuf *self)
 #else
 static inline void
 dl_bbuf_assert_integrity(const char *func __attribute((unused)),
-    struct dl_bbuf *self)
+    struct dl_bbuf const * const self)
 #endif
 {
 
@@ -312,7 +311,7 @@ dl_bbuf_data(struct dl_bbuf *self)
 }
 
 dl_bbuf_flags
-dl_bbuf_get_flags(struct dl_bbuf *self)
+dl_bbuf_get_flags(struct dl_bbuf const *self)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
@@ -346,7 +345,7 @@ dl_bbuf_pos(struct dl_bbuf *self)
 }
 
 int
-dl_bbuf_get_int8(struct dl_bbuf *self, int8_t * const value)
+dl_bbuf_get_int8(struct dl_bbuf * const self, int8_t * const value)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
@@ -360,7 +359,7 @@ dl_bbuf_get_int8(struct dl_bbuf *self, int8_t * const value)
 }
 
 int
-dl_bbuf_get_uint8(struct dl_bbuf *self, uint8_t * const value)
+dl_bbuf_get_uint8(struct dl_bbuf * const self, uint8_t * const value)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
@@ -374,7 +373,7 @@ dl_bbuf_get_uint8(struct dl_bbuf *self, uint8_t * const value)
 }
 
 int
-dl_bbuf_get_int16(struct dl_bbuf *self, int16_t *value)
+dl_bbuf_get_int16(struct dl_bbuf * const self, int16_t * const value)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
@@ -396,7 +395,7 @@ dl_bbuf_get_int16(struct dl_bbuf *self, int16_t *value)
 }
 
 int
-dl_bbuf_get_uint16(struct dl_bbuf *self, uint16_t *value)
+dl_bbuf_get_uint16(struct dl_bbuf * const self, uint16_t * const value)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
@@ -418,7 +417,7 @@ dl_bbuf_get_uint16(struct dl_bbuf *self, uint16_t *value)
 }
 
 int
-dl_bbuf_get_int32(struct dl_bbuf *self, int32_t *value)
+dl_bbuf_get_int32(struct dl_bbuf * const self, int32_t * const value)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
@@ -444,7 +443,7 @@ dl_bbuf_get_int32(struct dl_bbuf *self, int32_t *value)
 }
 
 int
-dl_bbuf_get_uint32(struct dl_bbuf *self, uint32_t *value)
+dl_bbuf_get_uint32(struct dl_bbuf * const self, uint32_t * const value)
 {
 
 	dl_bbuf_assert_integrity(__func__, self);
@@ -470,7 +469,7 @@ dl_bbuf_get_uint32(struct dl_bbuf *self, uint32_t *value)
 }
 
 int
-dl_bbuf_get_int64(struct dl_bbuf *self, int64_t *value)
+dl_bbuf_get_int64(struct dl_bbuf * const self, int64_t * const value)
 {
 	int l, h;
 
@@ -511,7 +510,7 @@ dl_bbuf_get_int64(struct dl_bbuf *self, int64_t *value)
 }
 
 int
-dl_bbuf_get_uint64(struct dl_bbuf *self, uint64_t *value)
+dl_bbuf_get_uint64(struct dl_bbuf * const self, uint64_t * const value)
 {
 	int l, h;
 

@@ -47,13 +47,13 @@
 #include "dl_utils.h"
 
 static int dl_request_header_decode(struct dl_request * const,
-    struct dl_bbuf const * const);
+    struct dl_bbuf * const);
 static int dl_request_header_encode(struct dl_request const * const,
     struct dl_bbuf * const);
 	
 static int
 dl_request_header_decode(struct dl_request * const request,
-    struct dl_bbuf const * const source)
+    struct dl_bbuf * const source)
 {
 	int16_t api_version;
 	int rc = 0;
@@ -173,7 +173,7 @@ dl_request_new(struct dl_request **self, const int16_t api_key,
  * Request destructor.
  */
 void
-dl_request_delete(struct dl_request const * const self)
+dl_request_delete(struct dl_request * const self)
 {
 
 	DL_ASSERT(self != NULL, ("Request cannot be NULL."));
@@ -200,7 +200,7 @@ dl_request_delete(struct dl_request const * const self)
 
 int
 dl_request_decode(struct dl_request ** const self,
-    struct dl_bbuf const * const source)
+    struct dl_bbuf * const source)
 {
 	struct dl_request *request;
 	int rc;
