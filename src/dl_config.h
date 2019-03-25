@@ -45,20 +45,11 @@
 
 extern int dl_config_new(char *, int);
 
-/* TODO: Remove this? */
-typedef void (* dl_response_func) (struct dl_response const * const);
-
-struct dl_broker_config {
-	nvlist_t *dlbc_props;
-};
-
 struct dl_client_config {
-	dl_response_func dlcc_on_response;
 	nvlist_t *dlcc_props;
 };
 
 struct dl_client_config_desc {
-	dl_response_func dlcc_on_response;
 	void * dlcc_packed_nvlist;
 	size_t dlcc_packed_nvlist_len;
 };
