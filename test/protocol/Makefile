@@ -35,8 +35,12 @@ ATF_TESTS_C+= atf_dl_fetch_request
 ATF_TESTS_C+= atf_dl_fetch_response
 ATF_TESTS_C+= atf_dl_list_offset_request
 ATF_TESTS_C+= atf_dl_list_offset_response
+#ATF_TESTS_C+= atf_dl_primitive_types
 ATF_TESTS_C+= atf_dl_produce_request
 ATF_TESTS_C+= atf_dl_produce_response
+ATF_TESTS_C+= atf_dl_record
+ATF_TESTS_C+= atf_dl_record_batch
+ATF_TESTS_C+= atf_dl_record_header
 ATF_TESTS_C+= atf_dl_message_set
 
 LDADD+= -lprivateatf-c
