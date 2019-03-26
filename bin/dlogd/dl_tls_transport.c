@@ -135,7 +135,6 @@ static int
 dl_tls_transport_connect(struct dl_transport *self,
     const char * const hostname, const int port)
 {
-	BIO *bio;
 	struct sbuf *host;
 	SSL *ssl;
 	int rc, fd, flags;

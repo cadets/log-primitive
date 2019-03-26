@@ -436,7 +436,7 @@ int
 dl_request_q_ack(struct dl_request_q *self, int32_t id,
     struct dl_request_element **elem)
 {
-	struct dl_request_element *request, *request_tmp;
+	struct dl_request_element *request;
 	int rc, ret = -1;
 
 	rc = sem_wait(&self->dlrq_unackd_items);

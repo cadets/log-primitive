@@ -98,7 +98,7 @@ static const int8_t DL_MESSAGE_ATTRIBUTES_GZIP= 0x01;
 #define DL_ENCODE_LENGTH(target, value) dl_bbuf_put_int32(target, value)
 #define DL_ENCODE_LENGTH_AT(target, value, pos) dl_bbuf_put_int32_at(target, value, pos)
 #define DL_ENCODE_LAST_OFFSET_DELTA(target, value) dl_bbuf_put_int32(target, value)
-#define DL_ENCODE_MAGIC(target) dl_bbuf_put_int8(target, DL_MESSAGE_MAGIC_BYTE_V2)
+#define DL_ENCODE_MAGIC(target) dl_bbuf_put_int8(target, DL_MESSAGE_MAGIC_BYTE)
 #define DL_ENCODE_MAX_TIMESTAMP(target, value) dl_bbuf_put_int64(target, value)
 #define DL_ENCODE_PRODUCER_ID(target) dl_bbuf_put_int64(target, -1)
 #define DL_ENCODE_PRODUCER_EPOCH(target) dl_bbuf_put_int16(target, -1)
@@ -330,7 +330,6 @@ dl_record_batch_encode_into(struct dl_record_batch const *self,
 	z_stream stream;
 	unsigned char *crc_data;
 	uint8_t *compressed;
-	unsigned long crc_val;
 	uint32_t crcc_val, nencoded = 0;
 	int attr_pos, crc_pos, length_pos, after_length_pos;
 	int deflate_rc = Z_OK;

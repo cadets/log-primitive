@@ -280,7 +280,7 @@ dl_producer_kq_handler(void *instance, int fd __attribute((unused)),
 
 			idx = dl_user_segment_get_index(seg);
 			if (dl_index_update(idx,
-			    dl_index_get_last(idx) + DL_FSYNC_DEFAULT_CHARS) > 0) {
+			    dl_index_get_last(idx) + DL_INDEX_DEFAULT_CHARS) > 0) {
 				/* Fire the produce() event into the
 				 * Producer state machine .
 				 */
@@ -443,7 +443,6 @@ dlp_produce_thread(void *vargp)
 	struct dl_producer *self = (struct dl_producer *)vargp;
 	struct dl_request_element *request;
 	ssize_t nbytes;
-	int rc;
 
 	dl_producer_check_integrity(self);
 
@@ -1028,7 +1027,6 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 {
 	struct dl_request_element *request;
 	struct timeval tv_now, tdiff;
-	struct dl_response *response;
 	struct dl_response_header *hdr;
 	
 	dl_producer_check_integrity(self);

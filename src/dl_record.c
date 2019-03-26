@@ -219,7 +219,7 @@ dl_record_encode_into(struct dl_record const *self, struct dl_bbuf *target)
 {
 	struct dl_record_header *record_hdr;
    	struct dl_bbuf *record;
-	int size_pos, rc = 0;
+	int rc = 0;
 
 	dl_record_assert_integrity(__func__, self);
 	DL_ASSERT((dl_bbuf_get_flags(target) & DL_BBUF_AUTOEXTEND) != 0,

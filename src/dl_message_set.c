@@ -73,6 +73,7 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 #define DL_DECODE_CRC(source, value) dl_bbuf_get_int32(source, value)
 #define DL_DECODE_ERROR_CODE(source, value) dl_bbuf_get_int16(source, value)
 #define DL_DECODE_HIGH_WATERMARK(target, value) dl_bbuf_get_int64(target, value)
+#define DL_DECODE_KEY(source, value, value_len) dl_decode_bytes(value, value_len, source)
 #define DL_DECODE_MAGIC_BYTE(source, value) dl_bbuf_get_int8(source, value)
 #define DL_DECODE_MAX_WAIT_TIME(source, value) dl_bbuf_get_int32(source, value)
 #define DL_DECODE_MESSAGE_SIZE(source, value) dl_bbuf_get_int32(source, value)
@@ -87,6 +88,7 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 #define DL_DECODE_TIMESTAMP_DELTA(source, value) dl_bbuf_get_int64(source, value)
 #define DL_DECODE_THROTTLE_TIME(source, value) dl_bbuf_get_int32(source, value)
 #define DL_DECODE_TOPIC_NAME(source, target) dl_decode_string(source, target)
+#define DL_DECODE_VALUE(source, value, value_len) dl_decode_bytes(value, value_len, source)
 
 #define DL_ENCODE_ATTRIBUTES(target, value) dl_bbuf_put_int8(target, value)
 #define DL_ENCODE_API_KEY(target, value) dl_bbuf_put_int16(target, value)
@@ -97,6 +99,7 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 #define DL_ENCODE_CRC_AT(source, value, at) dl_bbuf_put_int32_at(source, value, at)
 #define DL_ENCODE_ERROR_CODE(target, value) dl_bbuf_put_int16(target, value)
 #define DL_ENCODE_HIGH_WATERMARK(target, value) dl_bbuf_put_int64(target, value)
+#define DL_ENCODE_KEY(target, value, value_len) dl_encode_bytes(value, value_len, target)
 #define DL_ENCODE_MAGIC_BYTE(target) dl_bbuf_put_int8(target, DL_MESSAGE_MAGIC_BYTE)
 #define DL_ENCODE_MAX_WAIT_TIME(target, value) dl_bbuf_put_int32(target, value)
 #define DL_ENCODE_MAX_BYTES(target, value) dl_bbuf_put_int32(target, value)
@@ -119,7 +122,7 @@ static const int64_t DL_DEFAULT_OFFSET = 0;
 #define DL_ENCODE_TIMESTAMP_DELTA(target, value) dl_bbuf_put_int64(target, value)
 #define DL_ENCODE_THROTTLE_TIME(target, value) dl_bbuf_put_int32(target, value)
 #define DL_ENCODE_TOPIC_NAME(target, source) dl_encode_string(target, source)
-
+#define DL_ENCODE_VALUE(target, value, value_len) dl_encode_bytes(value, value_len, target)
 
 static int dl_messages_encode(struct dl_messages const *,
     struct dl_bbuf *);
@@ -340,11 +343,10 @@ dl_message_decode(struct dl_message **self, struct dl_bbuf *source)
 	}
 
 	/* Decode the Message Key */
-	rc |= dl_decode_bytes(&message->dlm_key, &message->dlm_key_len, source);
+	rc |= DL_DECODE_KEY(source, &message->dlm_key, &message->dlm_key_len);
 
 	/* Decode the Message Value */
-	rc |= dl_decode_bytes(&message->dlm_value, &message->dlm_value_len,
-	    source);
+	rc |= DL_DECODE_VALUE(source, &message->dlm_value, &message->dlm_value_len);
 
 	if (rc == 0) {
 		*self = message; 
@@ -370,7 +372,7 @@ dl_message_set_encode_compressed(struct dl_message_set const *message_set,
 	z_stream stream;
 	uint8_t *compressed;
 	//int msgset_size_pos, msgset_start, msgset_end;
-         int rc = 0;
+        int rc = 0;
 	int deflate_rc = Z_OK;
 
 	DL_ASSERT(message_set != NULL, ("MessageSet cannot be NULL"));
@@ -507,17 +509,27 @@ dl_message_set_encode_compressed(struct dl_message_set const *message_set,
 	 */
 	//msgset_start = dl_bbuf_pos(target);
 
-	/* Contrust a new Kafka Message encapsulating the compressed
+	/* Contruct a new Kafka Message encapsulating the compressed
 	 * MessageSet.
 	 */
 	message.dlm_offset = DL_DEFAULT_OFFSET; 
 #ifdef _KERNEL	
+#ifdef __APPLE__
+	int32_t secs, msecs;
+
+	clock_get_calendar_microtime(&secs, &msecs);
+	timestamp = (secs * 1000) + msecs;
+#else
 	struct timeval tv;
 
 	getmicrotime(&tv);
 	message.dlm_timestamp = (tv.tv_sec * 1000) + (tv.tv_usec / 1000); 
+#endif
 #else
-	message.dlm_timestamp = time(NULL);
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+	message.dlm_timestamp = (tv.tv_sec *1000) + (tv.tv_usec/1000);
 #endif
 	message.dlm_key = NULL, 
 	message.dlm_key_len = 0;
@@ -683,7 +695,10 @@ dl_message_encode(struct dl_message const *message, struct dl_bbuf *target,
 	timestamp = (tv.tv_sec *1000) + (tv.tv_usec/1000);
 #endif
 #else
-	timestamp = time(NULL);
+	struct timeval tv;
+
+	gettimeofday(&tv, NULL);
+	timestamp = (tv.tv_sec *1000) + (tv.tv_usec/1000);
 #endif
 	rc |= DL_ENCODE_TIMESTAMP(target, timestamp);
 #ifdef _KERNEL
@@ -691,14 +706,13 @@ dl_message_encode(struct dl_message const *message, struct dl_bbuf *target,
 #endif
 	
 	/* Encode the Key */
-	rc |= dl_encode_bytes(message->dlm_key, message->dlm_key_len, target);
+	rc |= DL_ENCODE_KEY(target, message->dlm_key, message->dlm_key_len);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
 	
 	/* Encode the Value */
-	rc |= dl_encode_bytes(message->dlm_value, message->dlm_value_len,
-	    target);
+	rc |= DL_ENCODE_VALUE(target, message->dlm_value, message->dlm_value_len);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif

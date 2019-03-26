@@ -82,6 +82,7 @@ LDADD+=-lucl
 
 CFLAGS+=-DNDEBUG
 CFLAGS+=-g
+CFLAGS+=-Wunused-variable
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
