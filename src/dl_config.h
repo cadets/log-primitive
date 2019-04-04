@@ -74,6 +74,7 @@ struct dl_client_config_desc {
 #define DL_CONF_LOG_PATH "log_path"
 #define DL_CONF_ACKS "acks"
 #define DL_CONF_ACK_TIMEOUT "ack_timeout"
+#define DL_CONF_MSG_VERSION "msg_ver"
 
 #define DL_DEFAULT_CLIENTID "dlog"
 #define DL_DEFAULT_BROKER "127.0.0.1"
@@ -93,5 +94,6 @@ struct dl_client_config_desc {
 #define DL_DEFAULT_LOG_PATH "/var/db/dlogd"
 #define DL_DEFAULT_ACKS DL_LEADER_ACKS
 #define DL_DEFAULT_ACK_TIMEOUT 5000 
+#define DL_DEFAULT_MSG_VERSION 2
 
 #endif

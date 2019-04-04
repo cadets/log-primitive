@@ -44,6 +44,7 @@
 #include <sys/types.h>
 #include <sys/nv.h>
 
+#include <sys/dnv.h>
 #ifdef _KERNEL
 #include <sys/kthread.h>
 #include <sys/sbuf.h>
@@ -453,12 +454,14 @@ dlog_produce(struct dlog_handle *self, char *k, unsigned char *v, size_t v_len)
 
 	dlog_client_check_integrity(self);
 
-	if (true) {
 
-		return dlog_produce_v1(self, k, v, v_len);
-	} else {
+	if (dnvlist_get_string(props, DL_CONF_MSG_VERSION,
+	    DL_DEFAULT_MSG_VERSION) == 2) {
 
 		return dlog_produce_v2(self, k, v, v_len);
+	} else {
+
+		return dlog_produce_v1(self, k, v, v_len);
 	}
 }
 
