@@ -454,8 +454,7 @@ dlog_produce(struct dlog_handle *self, char *k, unsigned char *v, size_t v_len)
 
 	dlog_client_check_integrity(self);
 
-
-	if (dnvlist_get_string(props, DL_CONF_MSG_VERSION,
+	if (dnvlist_get_number(self->dlh_config->dlcc_props, DL_CONF_MSG_VERSION,
 	    DL_DEFAULT_MSG_VERSION) == 2) {
 
 		return dlog_produce_v2(self, k, v, v_len);
