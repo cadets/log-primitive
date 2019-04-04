@@ -51,9 +51,9 @@
 #include "dl_request.h"
 
 enum dl_required_acks {
-	DL_NO_ACKS = -1,
-	DL_LEADER_ACKS = 0,
-	DL_ISR_ACKS = 1,
+	DL_NO_ACKS = 0,
+	DL_LEADER_ACKS = 1,
+	DL_ISR_ACKS = -1,
 };
 typedef enum dl_required_acks dl_required_acks;
 

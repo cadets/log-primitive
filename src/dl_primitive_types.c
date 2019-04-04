@@ -122,7 +122,7 @@ dl_decode_bytes(unsigned char const ** const target, int *target_len,
 
 	/* TODO: Replace with bulk drain function in dl_bbuf */
 	for (int i = 0; i < nbytes; i++) {
-		dl_bbuf_get_uint8(source, (uint8_t *) (* target) + i);
+		dl_bbuf_get_uint8(source, (const uint8_t *) (* target) + i);
 	}
 	return 0;
 }

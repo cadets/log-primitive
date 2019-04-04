@@ -350,7 +350,7 @@ dl_bbuf_get_int8(struct dl_bbuf * const self, int8_t * const value)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (self->dlb_pos + sizeof(int8_t)) <= self->dlb_limit) {
+	    (self->dlb_pos + sizeof(int8_t)) <= self->dlb_limit) {
 
 		*value = self->dlb_data[self->dlb_pos++];
 		return 0;
@@ -364,7 +364,7 @@ dl_bbuf_get_uint8(struct dl_bbuf * const self, uint8_t * const value)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (self->dlb_pos + sizeof(uint8_t)) <= self->dlb_limit) {
+	    (self->dlb_pos + sizeof(uint8_t)) <= self->dlb_limit) {
 
 		*value = self->dlb_data[self->dlb_pos++];
 		return 0;
@@ -378,7 +378,7 @@ dl_bbuf_get_int16(struct dl_bbuf * const self, int16_t * const value)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (self->dlb_pos + sizeof(int16_t)) <= self->dlb_limit) {
+	    (self->dlb_pos + sizeof(int16_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
 			*value =
@@ -400,7 +400,7 @@ dl_bbuf_get_uint16(struct dl_bbuf * const self, uint16_t * const value)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (self->dlb_pos + sizeof(uint16_t)) <= self->dlb_limit) {
+	    (self->dlb_pos + sizeof(uint16_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
 			*value =
@@ -422,7 +422,7 @@ dl_bbuf_get_int32(struct dl_bbuf * const self, int32_t * const value)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (self->dlb_pos + sizeof(int32_t)) <= self->dlb_limit) {
+	    (self->dlb_pos + sizeof(int32_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
 			*value =
@@ -448,7 +448,7 @@ dl_bbuf_get_uint32(struct dl_bbuf * const self, uint32_t * const value)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (self->dlb_pos + sizeof(uint32_t)) <= self->dlb_limit) {
+	    (self->dlb_pos + sizeof(uint32_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
 			*value =
@@ -475,7 +475,7 @@ dl_bbuf_get_int64(struct dl_bbuf * const self, int64_t * const value)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (self->dlb_pos + sizeof(int64_t)) <= self->dlb_limit) {
+	    (self->dlb_pos + sizeof(int64_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
 			h =
@@ -516,7 +516,7 @@ dl_bbuf_get_uint64(struct dl_bbuf * const self, uint64_t * const value)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (self->dlb_pos + sizeof(uint64_t)) <= self->dlb_limit) {
+	    (self->dlb_pos + sizeof(uint64_t)) <= self->dlb_limit) {
 
 		if (self->dlb_flags & DL_BBUF_BIGENDIAN) {
 			h =
@@ -557,7 +557,7 @@ dl_bbuf_put_int8_at(struct dl_bbuf *self, int8_t value, size_t pos)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (pos + sizeof(int8_t)) > self->dlb_capacity) {
+	    (pos + sizeof(int8_t)) > self->dlb_capacity) {
 
 		if (self->dlb_flags & DL_BBUF_AUTOEXTEND) {
 
@@ -590,7 +590,7 @@ dl_bbuf_put_uint8_at(struct dl_bbuf *self, uint8_t value, size_t pos)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (pos + sizeof(uint8_t)) > self->dlb_capacity) {
+	    (pos + sizeof(uint8_t)) > self->dlb_capacity) {
 
 		if (self->dlb_flags & DL_BBUF_AUTOEXTEND) {
 
@@ -623,7 +623,7 @@ dl_bbuf_put_int16_at(struct dl_bbuf *self, int16_t value, size_t pos)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (pos + sizeof(int16_t)) > self->dlb_capacity) {
+	    (pos + sizeof(int16_t)) > self->dlb_capacity) {
 
 		if (self->dlb_flags & DL_BBUF_AUTOEXTEND) {
 
@@ -663,7 +663,7 @@ dl_bbuf_put_int32_at(struct dl_bbuf *self, int32_t value, size_t pos)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (pos + sizeof(int32_t)) > self->dlb_capacity) {
+	    (pos + sizeof(int32_t)) > self->dlb_capacity) {
 
 		if (self->dlb_flags & DL_BBUF_AUTOEXTEND) {
 
@@ -742,7 +742,7 @@ dl_bbuf_put_int64_at(struct dl_bbuf *self, int64_t value, size_t pos)
 
 	dl_bbuf_assert_integrity(__func__, self);
 	if (self != NULL &&
-	    (int) (pos + sizeof(int64_t)) > self->dlb_capacity) {
+	    (pos + sizeof(int64_t)) > self->dlb_capacity) {
 
 		if (self->dlb_flags & DL_BBUF_AUTOEXTEND) {
 

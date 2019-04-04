@@ -242,7 +242,7 @@ dl_message_set_decode(struct dl_message_set **self, struct dl_bbuf *source)
 	/* Decode the MessageSetSize. */
 	rc |= DL_DECODE_MESSAGE_SET_SIZE(source, &msg_set_size);
 
-	if (msg_set_size > dl_bbuf_len(source)-dl_bbuf_pos(source)) {
+	if (msg_set_size > (int32_t) (dl_bbuf_len(source)-dl_bbuf_pos(source))) {
 
 		DLOGTR2(PRIO_HIGH,
 		    "MessageSetSize (%d) is greater than "
@@ -371,7 +371,6 @@ dl_message_set_encode_compressed(struct dl_message_set const *message_set,
 	struct dl_message message;
 	z_stream stream;
 	uint8_t *compressed;
-	//int msgset_size_pos, msgset_start, msgset_end;
         int rc = 0;
 	int deflate_rc = Z_OK;
 
@@ -497,18 +496,6 @@ dl_message_set_encode_compressed(struct dl_message_set const *message_set,
 	dlog_free(compressed);
 	dl_bbuf_delete(uncompressed);
 
-	/* Add a placeholder for the MessageSetSize. */
-	//msgset_size_pos = dl_bbuf_pos(target);
-	//rc |= DL_ENCODE_MESSAGE_SIZE(target, -1);
-#ifdef _KERNEL
-	//DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
-#endif
-	/* Save the position of the start of the MessageSet; this is used
-	 * to compute the MessageSetSize once the MessageSet has been
-	 * successfully encoded.
-	 */
-	//msgset_start = dl_bbuf_pos(target);
-
 	/* Contruct a new Kafka Message encapsulating the compressed
 	 * MessageSet.
 	 */
@@ -540,10 +527,6 @@ dl_message_set_encode_compressed(struct dl_message_set const *message_set,
 
 	dl_bbuf_delete(gzipd);
 
-	/* Encode the MessageSetSize into the buffer. */
-	//msgset_end = dl_bbuf_pos(target);
-	//rc |= DL_ENCODE_MESSAGE_SIZE_AT(target, (msgset_end-msgset_start),
-	//    msgset_size_pos);
 #ifdef _KERNEL
 	DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
