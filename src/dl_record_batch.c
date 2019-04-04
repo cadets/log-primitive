@@ -65,7 +65,8 @@ struct dl_record_batch {
 
 static const int8_t DL_MESSAGE_MAGIC_BYTE_V2 = 0x02;
 static const int8_t DL_MESSAGE_MAGIC_BYTE = DL_MESSAGE_MAGIC_BYTE_V2;
-static const int8_t DL_MESSAGE_ATTRIBUTES_GZIP= 0x01;
+static const int8_t DL_MESSAGE_ATTRIBUTES_UNCOMPRESSED = 0x00;
+static const int8_t DL_MESSAGE_ATTRIBUTES_GZIP = 0x01;
 
 #ifdef _KERNEL
 #define CRC32(data, len) crc32(data, len)
@@ -90,6 +91,7 @@ static const int8_t DL_MESSAGE_ATTRIBUTES_GZIP= 0x01;
     dl_bbuf_get_int32(source, value)
 
 #define DL_ENCODE_ATTRIBUTES(source, value) dl_bbuf_put_int16(source, value)
+#define DL_ENCODE_ATTRIBUTES_AT(source, value, pos) dl_bbuf_put_int16_at(source, value, pos)
 #define DL_ENCODE_BASE_OFFSET(target) dl_bbuf_put_int64(target, 0)
 #define DL_ENCODE_BASE_SEQUENCE(target) dl_bbuf_put_int32(target, -1)
 #define DL_ENCODE_BASE_TIMESTAMP(target, value) dl_bbuf_put_int64(target, value)
@@ -538,7 +540,18 @@ dl_record_batch_encode_into(struct dl_record_batch const *self,
 		DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
 
-		rc |= dl_bbuf_concat(target, gzipd);
+		/* Check that the Records are smaller when compressed. */
+		if (dl_bbuf_pos(gzipd) < dl_bbuf_pos(encoded_records)) {
+		
+			rc |= dl_bbuf_concat(target, gzipd);
+		} else {
+			/* The compressed Records are not smaller,
+			 * therefore, send uncompressed.
+			 */	
+			rc |= dl_bbuf_concat(target, encoded_records);
+			rc |= DL_ENCODE_ATTRIBUTES_AT(target,
+			    DL_MESSAGE_ATTRIBUTES_UNCOMPRESSED, attr_pos);
+		}	
 #ifdef _KERNEL
 		DL_ASSERT(rc == 0, ("Insert into autoextending buffer cannot fail."));
 #endif
