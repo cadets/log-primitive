@@ -40,9 +40,6 @@
 
 #include <sys/nv.h>
 
-#include "dl_produce_request.h" 
-#include "dl_response.h" 
-
 extern int dl_config_new(char *, int);
 
 /* TODO remove this type, use only the raw nvlist. */
