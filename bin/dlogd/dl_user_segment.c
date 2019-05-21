@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -293,7 +293,7 @@ dl_user_segment_get_message_by_offset(struct dl_segment *self, int offset,
 	int rc;
 
 	dl_user_segment_check_integrity(self->dls_user);
-
+		
 	rc = dl_index_lookup(self->dls_user->dls_idx, offset, &poffset);
 	if (rc == 0) {
 		rc = pread(self->dls_user->dls_log, tmp_buf, sizeof(tmp_buf),
@@ -306,12 +306,11 @@ dl_user_segment_get_message_by_offset(struct dl_segment *self, int offset,
 		dl_bbuf_new(&t, (unsigned char *) tmp_buf,
 		    sizeof(tmp_buf), DL_BBUF_BIGENDIAN);
 		dl_bbuf_get_int64(t, &base_offset);
-		DLOGTR1(PRIO_NORMAL, "base offset= %ld\n", base_offset);
 		dl_bbuf_get_int32(t, &size);
-		DLOGTR1(PRIO_NORMAL, "size = %d\n", size);
 		dl_bbuf_delete(t);
 
-		msg_tmp = dlog_alloc(size * sizeof(unsigned char) + sizeof(int32_t));
+		msg_tmp = dlog_alloc(size * sizeof(unsigned char) +
+		    + sizeof(int64_t) + sizeof(int32_t));
 		if (msg_tmp == NULL) {
 
 			return -1;
