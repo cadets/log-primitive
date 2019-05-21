@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 20182019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -73,7 +73,7 @@ ATF_TC_BODY(test1, tc)
 }
 
 /* Test 2
- * dl_list_offset_request_new() - invalid params - NULL response. 
+ * dl_list_offset_response_new() - invalid params - NULL response. 
  */
 ATF_TC_WITHOUT_HEAD(test2);
 ATF_TC_BODY(test2, tc)
@@ -86,8 +86,8 @@ ATF_TC_BODY(test2, tc)
 	sbuf_cpy(topic, "test-topic");
 	sbuf_finish(topic);
 
-	atf_tc_expect_signal(6, "NULL value passed to request.");
-	rc = dl_list_offset_response_new(&response, 0, NULL, 0, 0, 0);
+	atf_tc_expect_signal(6, "NULL value passed to response.");
+	rc = dl_list_offset_response_new(NULL, 0, topic, 0, 0, 0);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(response != NULL);
 
@@ -96,7 +96,7 @@ ATF_TC_BODY(test2, tc)
 }
 
 /* Test 3
- * dl_list_offset_request_new() - invalid params - NULL topic. 
+ * dl_list_offset_response_new() - invalid params - NULL topic. 
  */
 ATF_TC_WITHOUT_HEAD(test3);
 ATF_TC_BODY(test3, tc)
@@ -104,7 +104,7 @@ ATF_TC_BODY(test3, tc)
 	struct dl_list_offset_response *response;
 	int rc;
 
-	atf_tc_expect_signal(6, "NULL value passed to request.");
+	atf_tc_expect_signal(6, "NULL value passed to topic.");
 	rc = dl_list_offset_response_new(&response, 0, NULL, 0, 0, 0);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(response != NULL);
@@ -113,7 +113,7 @@ ATF_TC_BODY(test3, tc)
 }
 
 /* Test 4 
- * dl_list_offset_response_delete() - invalid params - request NULL. 
+ * dl_list_offset_response_delete() - invalid params - response NULL. 
  */
 ATF_TC_WITHOUT_HEAD(test4);
 ATF_TC_BODY(test4, tc)
@@ -141,7 +141,11 @@ ATF_TC_BODY(test5, tc)
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(response != NULL);
 
-	rc = dl_list_offset_response_encode(response, &buffer);
+	rc = dl_bbuf_new(&buffer, NULL, 1024,
+	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN);
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_list_offset_response_encode(response, buffer);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(buffer != NULL);
 
@@ -184,8 +188,14 @@ ATF_TC_BODY(test7, tc)
 	struct dl_bbuf *buffer;
 	int rc;
 
+	rc = dl_bbuf_new(&buffer, NULL, 1024,
+	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN);
+	ATF_REQUIRE(rc == 0);
+
 	atf_tc_expect_signal(6, "NULL value passed to response.");
-	rc = dl_list_offset_response_encode(NULL, &buffer);
+	rc = dl_list_offset_response_encode(NULL, buffer);
+
+	dl_bbuf_delete(buffer);
 }
 
 /* Test 8 
@@ -212,7 +222,11 @@ ATF_TC_BODY(test8, tc)
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(response != NULL);
 
-	rc = dl_list_offset_response_encode(response, &buffer);
+	rc = dl_bbuf_new(&buffer, NULL, 1024,
+	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN);
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_list_offset_response_encode(response, buffer);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(buffer != NULL);
 
@@ -236,6 +250,91 @@ ATF_TC_BODY(test8, tc)
 	sbuf_delete(topic);
 }
 
+/* Test 9 
+ * dl_list_offset_response_decode() - valid params. 
+ */
+ATF_TC_WITHOUT_HEAD(test9);
+ATF_TC_BODY(test9, tc)
+{
+	struct dl_list_offset_response *response, *decoded_response;
+	struct dl_list_offset_response_topic *response_topic;
+	struct sbuf *topic;
+	struct dl_bbuf *buffer;
+	int64_t offset = 123456789;
+	int32_t cid = 1000, timestamp = 1000;
+	int16_t error_code = 2;
+	int rc;
+
+	topic = sbuf_new_auto();
+	sbuf_cpy(topic, "test-topic");
+	sbuf_finish(topic);
+
+	rc = dl_list_offset_response_new(&response, cid, topic, error_code,
+	    timestamp, offset);
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(response != NULL);
+
+	rc = dl_bbuf_new(&buffer, NULL, 1024,
+	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN);
+	ATF_REQUIRE(rc == 0);
+
+	rc = dl_list_offset_response_encode(response, buffer);
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(buffer != NULL);
+
+	dl_bbuf_flip(buffer);	
+	rc = dl_list_offset_response_decode(&decoded_response, buffer);
+	ATF_REQUIRE(rc == 0);
+	ATF_REQUIRE(decoded_response != NULL);
+	response_topic = SLIST_FIRST(&decoded_response->dlor_topics);
+	ATF_REQUIRE(strcmp(sbuf_data(response_topic->dlort_topic_name),
+	    sbuf_data(topic)) == 0);
+	ATF_REQUIRE(response_topic->dlort_partitions[0].dlorp_error_code ==
+	    error_code);
+	ATF_REQUIRE(response_topic->dlort_partitions[0].dlorp_timestamp ==
+	    timestamp);
+	ATF_REQUIRE(response_topic->dlort_partitions[0].dlorp_offset ==
+	    offset);
+
+	dl_list_offset_response_delete(response);
+	dl_bbuf_delete(buffer);
+	dl_list_offset_response_delete(decoded_response);
+	sbuf_delete(topic);
+}
+
+/* Test 10
+ * dl_list_offset_response_decode() - invalid params - buffer. 
+ */
+ATF_TC_WITHOUT_HEAD(test10);
+ATF_TC_BODY(test10, tc)
+{
+	struct dl_list_offset_response *response;
+	struct sbuf *topic;
+	int rc;
+
+	atf_tc_expect_signal(6, "NULL value passed to buffer.");
+	rc = dl_list_offset_response_decode(&response, NULL);
+}
+
+/* Test 11 
+ * dl_list_offset_response_decode() - invalid params - response. 
+ */
+ATF_TC_WITHOUT_HEAD(test11);
+ATF_TC_BODY(test11, tc)
+{
+	struct dl_bbuf *buffer;
+	int rc;
+
+	rc = dl_bbuf_new(&buffer, NULL, 1024,
+	    DL_BBUF_AUTOEXTEND|DL_BBUF_BIGENDIAN);
+	ATF_REQUIRE(rc == 0);
+
+	atf_tc_expect_signal(6, "NULL value passed to response.");
+	rc = dl_list_offset_response_decode(NULL, buffer);
+
+	dl_bbuf_delete(buffer);
+}
+
 ATF_TP_ADD_TCS(tp)
 {
 	ATF_TP_ADD_TC(tp, test1);
@@ -246,6 +345,9 @@ ATF_TP_ADD_TCS(tp)
 	ATF_TP_ADD_TC(tp, test6);
 	ATF_TP_ADD_TC(tp, test7);
 	ATF_TP_ADD_TC(tp, test8);
+	ATF_TP_ADD_TC(tp, test9);
+	ATF_TP_ADD_TC(tp, test10);
+	ATF_TP_ADD_TC(tp, test11);
 
 	return atf_no_error();
 }
