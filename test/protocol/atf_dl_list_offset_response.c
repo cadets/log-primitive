@@ -43,7 +43,6 @@
 #include "dl_bbuf.h"
 #include "dl_memory.h"
 #include "dl_list_offset_response.h"
-#include "dl_response.h"
 #include "dl_utils.h"
 
 unsigned short PRIO_LOG = PRIO_LOW;
@@ -57,7 +56,7 @@ const dlog_free_func dlog_free = free;
 ATF_TC_WITHOUT_HEAD(test1);
 ATF_TC_BODY(test1, tc)
 {
-	struct dl_response *response;
+	struct dl_list_offset_response *response;
 	struct sbuf *topic;
 	int rc;
 
@@ -69,7 +68,7 @@ ATF_TC_BODY(test1, tc)
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(response != NULL);
 
-	dl_response_delete(response);
+	dl_list_offset_response_delete(response);
 	sbuf_delete(topic);
 }
 
@@ -79,7 +78,7 @@ ATF_TC_BODY(test1, tc)
 ATF_TC_WITHOUT_HEAD(test2);
 ATF_TC_BODY(test2, tc)
 {
-	struct dl_response *response;
+	struct dl_list_offset_response *response;
 	struct sbuf *topic;
 	int rc;
 
@@ -92,7 +91,7 @@ ATF_TC_BODY(test2, tc)
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(response != NULL);
 
-	dl_response_delete(response);
+	dl_list_offset_response_delete(response);
 	sbuf_delete(topic);
 }
 
@@ -102,7 +101,7 @@ ATF_TC_BODY(test2, tc)
 ATF_TC_WITHOUT_HEAD(test3);
 ATF_TC_BODY(test3, tc)
 {
-	struct dl_response *response;
+	struct dl_list_offset_response *response;
 	int rc;
 
 	atf_tc_expect_signal(6, "NULL value passed to request.");
@@ -110,26 +109,26 @@ ATF_TC_BODY(test3, tc)
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(response != NULL);
 
-	dl_response_delete(response);
+	dl_list_offset_response_delete(response);
 }
 
 /* Test 4 
- * dl_response_delete() - invalid params - request NULL. 
+ * dl_list_offset_response_delete() - invalid params - request NULL. 
  */
 ATF_TC_WITHOUT_HEAD(test4);
 ATF_TC_BODY(test4, tc)
 {
 	atf_tc_expect_signal(6, "NULL value passed to response.");
-	dl_response_delete(NULL);
+	dl_list_offset_response_delete(NULL);
 }
 
 /* Test 5 
- * dl_response_encode() - valid params. 
+ * dl_list_offset_response_encode() - valid params. 
  */
 ATF_TC_WITHOUT_HEAD(test5);
 ATF_TC_BODY(test5, tc)
 {
-	struct dl_response *response;
+	struct dl_list_offset_response *response;
 	struct sbuf *topic;
 	struct dl_bbuf *buffer;
 	int rc;
@@ -142,22 +141,22 @@ ATF_TC_BODY(test5, tc)
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(response != NULL);
 
-	rc = dl_response_encode(response, &buffer);
+	rc = dl_list_offset_response_encode(response, &buffer);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(buffer != NULL);
 
-	dl_response_delete(response);
+	dl_list_offset_response_delete(response);
 	dl_bbuf_delete(buffer);
 	sbuf_delete(topic);
 }
 
 /* Test 6 
- * dl_response_encode() - invalid params - buffer. 
+ * dl_list_offset_response_encode() - invalid params - buffer. 
  */
 ATF_TC_WITHOUT_HEAD(test6);
 ATF_TC_BODY(test6, tc)
 {
-	struct dl_response *response;
+	struct dl_list_offset_response *response;
 	struct sbuf *topic;
 	int rc;
 
@@ -170,14 +169,14 @@ ATF_TC_BODY(test6, tc)
 	ATF_REQUIRE(response != NULL);
 
 	atf_tc_expect_signal(6, "NULL value passed to buffer.");
-	rc = dl_response_encode(response, NULL);
+	rc = dl_list_offset_response_encode(response, NULL);
 
-	dl_response_delete(response);
+	dl_list_offset_response_delete(response);
 	sbuf_delete(topic);
 }
 
 /* Test 7 
- * dl_response_encode() - invalid params - response. 
+ * dl_list_offset_response_encode() - invalid params - response. 
  */
 ATF_TC_WITHOUT_HEAD(test7);
 ATF_TC_BODY(test7, tc)
@@ -186,17 +185,16 @@ ATF_TC_BODY(test7, tc)
 	int rc;
 
 	atf_tc_expect_signal(6, "NULL value passed to response.");
-	rc = dl_response_encode(NULL, &buffer);
+	rc = dl_list_offset_response_encode(NULL, &buffer);
 }
 
 /* Test 8 
- * dl_response_decode() - valid params. 
+ * dl_list_offset_response_decode() - valid params. 
  */
 ATF_TC_WITHOUT_HEAD(test8);
 ATF_TC_BODY(test8, tc)
 {
-	struct dl_response *response, *decoded_response;
-	struct dl_response_header *header;
+	struct dl_list_offset_response *response, *decoded_response;
 	struct dl_list_offset_response_topic *response_topic;
 	struct sbuf *topic;
 	struct dl_bbuf *buffer;
@@ -214,21 +212,15 @@ ATF_TC_BODY(test8, tc)
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(response != NULL);
 
-	rc = dl_response_encode(response, &buffer);
+	rc = dl_list_offset_response_encode(response, &buffer);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(buffer != NULL);
 
 	dl_bbuf_flip(buffer);	
-	rc = dl_response_header_decode(&header, buffer);
-	ATF_REQUIRE(rc == 0);
-	ATF_REQUIRE(header != NULL);
-	ATF_REQUIRE(header->dlrsh_correlation_id == cid);
-
 	rc = dl_list_offset_response_decode(&decoded_response, buffer);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(decoded_response != NULL);
-	response_topic = SLIST_FIRST(
-	    &decoded_response->dlrs_offset_response->dlor_topics);
+	response_topic = SLIST_FIRST(&decoded_response->dlor_topics);
 	ATF_REQUIRE(strcmp(sbuf_data(response_topic->dlort_topic_name),
 	    sbuf_data(topic)) == 0);
 	ATF_REQUIRE(response_topic->dlort_partitions[0].dlorp_error_code ==
@@ -238,9 +230,9 @@ ATF_TC_BODY(test8, tc)
 	ATF_REQUIRE(response_topic->dlort_partitions[0].dlorp_offset ==
 	    offset);
 
-	dl_response_delete(response);
+	dl_list_offset_response_delete(response);
 	dl_bbuf_delete(buffer);
-	dl_response_delete(decoded_response);
+	dl_list_offset_response_delete(decoded_response);
 	sbuf_delete(topic);
 }
 
