@@ -107,7 +107,7 @@ dl_bbuf_assert_integrity(const char *func __attribute((unused)),
 	DL_ASSERT(self->dlb_data != NULL,
 	    ("%s called with unititialised of corrupt dl_buf", func)); 
 	DL_ASSERT(self->dlb_pos <= self->dlb_capacity,
-	    ("wrote past the end of the dl_buf (%d >= %d)",
+	    ("wrote past the end of the dl_buf (%zu >= %zu)",
 	    self->dlb_pos, self->dlb_capacity)); 
 }
 
@@ -174,7 +174,7 @@ dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, size_t capacity, int flag
 	struct dl_bbuf *newbuf;
 
 	DL_ASSERT(capacity >= 0,
-	    ("attempt to create a dl_buf of negative length (%d)",
+	    ("attempt to create a dl_buf of negative length (%zu)",
 	    capacity));
 	DL_ASSERT((flags & ~DL_BBUF_USRFLAGMASK) == 0,
 	    ("%s called with invalid flags", __func__));
