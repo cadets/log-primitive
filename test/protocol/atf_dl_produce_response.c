@@ -214,8 +214,6 @@ ATF_TC_BODY(test8, tc)
 	int16_t error_code = 0;
 	int rc;
 
-	HeapProfilerStart("test8");
-
 	topic = sbuf_new_auto();
 	sbuf_cpy(topic, "test-topic");
 	sbuf_finish(topic);
@@ -250,8 +248,6 @@ ATF_TC_BODY(test8, tc)
 	dl_bbuf_delete(buffer);
 	dl_produce_response_delete(decoded_response);
 	sbuf_delete(topic);
-
-	HeapProfilerStop("test8");
 }
 
 /* Test 9 
