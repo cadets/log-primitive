@@ -130,16 +130,16 @@ dl_record_batch_assert_integrity(const char *func __attribute((unused)),
 {
 
 	DL_ASSERT(self != NULL,
-	    ("%s called with NULL RecordBatch instance", func)); 
+	    ("%s called with NULL RecordBatch instance", __func__)); 
 }
 
 #ifdef _KERNEL
 static inline int
 timersub(struct timeval *x, struct timeval *y, struct timeval *result)
 {
-	DL_ASSERT(x != NULL, ("%s called with NULL x timeval", func)); 
-	DL_ASSERT(y != NULL, ("%s called with NULL y timeval", func)); 
-	DL_ASSERT(result  != NULL, ("%s called with NULL result timeval", func)); 
+	DL_ASSERT(x != NULL, ("%s called with NULL x timeval", __func__)); 
+	DL_ASSERT(y != NULL, ("%s called with NULL y timeval", __func__)); 
+	DL_ASSERT(result  != NULL, ("%s called with NULL result timeval", __func__)); 
 
 	// preserve *y
 	struct timeval yy = *y;
@@ -504,7 +504,7 @@ dl_record_batch_encode_into(struct dl_record_batch const *self,
 		* GZIP header (RFC 1952): 
 		* <0x1F>	 		- Identification 1 
 		* <0x8B> 			- Identification 2 
-		* <0x08>			- Compression method (8 = Defalte)
+		* <0x08>			- Compression method (8 = Default)
 		* <0x00>			- Flags
 		* <0x00><0x00><0x00><0x00>	- Modification TIME (of file) 
 		* <0x00>			- Operating System
