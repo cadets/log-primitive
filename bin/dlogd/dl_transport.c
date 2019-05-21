@@ -166,7 +166,7 @@ dl_transport_factory_get_inst(struct dl_transport **self,
 	bool tls;
 
 	DL_ASSERT(self != NULL, ("Transport instance cannot be NULL"));
-	DL_ASSERT(props != NULL, ("Properties instance cannot be NULL"));
+	DL_ASSERT(producer != NULL, ("Producer instance cannot be NULL"));
 
 	tls = dnvlist_get_bool(dlogd_props, DL_CONF_TLS_ENABLE,
 	    DL_DEFAULT_TLS_ENABLE);
