@@ -141,6 +141,7 @@ dl_list_offset_response_decode(struct dl_list_offset_response **self,
 	int32_t topic_it, part, nparts;
 	int rc = 0;
      
+	DL_ASSERT(self != NULL, ("ListOffsetRequest instance cannot be NULL."));
 	DL_ASSERT(source != NULL, "Source buffer cannot be NULL");
 
 	/* Construct the ListOffsetResponse. */
