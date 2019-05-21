@@ -34,6 +34,7 @@
  *
  */
 
+#include <sys/dnv.h>
 #include <sys/types.h>
 #include <sys/time.h>
 
@@ -42,6 +43,7 @@
 #include <semaphore.h>
 
 #include "dl_assert.h"
+#include "dl_config.h"
 #include "dl_memory.h"
 #include "dl_request_queue.h"
 #include "dl_utils.h"
@@ -60,6 +62,9 @@ struct dl_request_q {
 	sem_t dlrq_spaces;
 	pthread_mutex_t dlrq_mtx;
 };
+
+/* dlogd properties. */
+extern nvlist_t *dlogd_props;
 
 static inline void
 dlrq_check_integrity(struct dl_request_q *self)
@@ -120,8 +125,11 @@ dl_request_q_dequeue(struct dl_request_q *self,
 	/* Compute the residence time of the request element. */
 	gettimeofday(&now, NULL);
 	timersub(&now, &(*elem)->dlrq_enq_tv, &tdiff);
-	DLOGTR1(PRIO_NORMAL, "Residence time = %ldms\n",
-	    (tdiff.tv_sec * 1000 + tdiff.tv_usec/1000));
+
+	if (dnvlist_get_number(dlogd_props,
+	    DL_CONF_DEBUG_LEVEL, DL_DEFAULT_DEBUG_LEVEL) > 1)
+		DLOGTR1(PRIO_NORMAL, "Residence time = %ldms\n",
+		    (tdiff.tv_sec * 1000 + tdiff.tv_usec/1000));
 
 	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 	DL_ASSERT(rc == 0, ("Failed acquiring RequestQueue mutex"));
