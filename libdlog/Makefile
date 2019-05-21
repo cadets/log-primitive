@@ -51,9 +51,10 @@ SRCS= dlog_client.c \
 	dl_record_batch.c \
 	dl_record_header.c \
 	dl_request.c \
-	dl_response.c \
 	dl_segment.c \
 	dl_topic.c \
 	lookup3.c
+
+CFLAGS+= -Wall
 
 .include <bsd.lib.mk>
