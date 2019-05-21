@@ -71,14 +71,16 @@
 #include "dl_record.h"
 #include "dl_record_batch.h"
 #include "dl_request.h"
-#include "dl_response.h"
 #include "dl_utils.h"
 #include "dlog_client.h"
 
 static unsigned int dlog_nopen = 0;
+static unsigned int dlog_nerr = 0;
 static unsigned int dlog_nproduce = 0;
 
 #ifdef _KERNEL
+extern struct sysctl_oid *dlog_oidp;
+
 SYSCTL_DECL(_debug);
 
 SYSCTL_NODE(_debug, OID_AUTO, dlog, CTLFLAG_RW, 0, "DLog client");
@@ -87,7 +89,10 @@ SYSCTL_UINT(_debug_dlog, OID_AUTO, open_handles, CTLFLAG_RD, &dlog_nopen, 0,
     "Number of open DLog handles");
 
 SYSCTL_UINT(_debug_dlog, OID_AUTO, produce_requests, CTLFLAG_RD,
-    &dlog_nproduce, 0, "Number of produce requests");
+    &dlog_nproduce, 0, "Number of successful ProduceRequests");
+
+SYSCTL_UINT(_debug_dlog, OID_AUTO, produce_errors, CTLFLAG_RD,
+    &dlog_nerr, 0, "Number of failed ProduceRequests");
 #endif
 
 struct dlog_handle {
@@ -101,6 +106,7 @@ static int dlog_produce_v2(struct dlog_handle *, char *, unsigned char *, size_t
 static inline void
 dlog_client_check_integrity(struct dlog_handle *self)
 {
+
 	DL_ASSERT(self != NULL, ("DLog client handle cannot be NULL."));
 	DL_ASSERT(self->dlh_config != NULL,
 	    ("DLog client config cannot be NULL."));
@@ -108,7 +114,7 @@ dlog_client_check_integrity(struct dlog_handle *self)
 	    ("DLog client config properties cannot be NULL."));
 }
 
-	static int
+static int
 dlog_produce_v1(struct dlog_handle *self, char *k,
     unsigned char *v, size_t v_len)
 {
@@ -154,6 +160,8 @@ err_free_msgset:
 	dl_message_set_delete(message_set);
 
 err_produce:
+	/* Increment the SYSCTL count of produced records */
+	dlog_nerr++;
 	DLOGTR0(PRIO_HIGH, "Error producing request\n");
 	return -1;
 }
@@ -213,6 +221,8 @@ err_free_record_set:
 	dl_record_batch_delete(record_batch);
 
 err_produce:
+	/* Increment the SYSCTL count of produced records */
+	dlog_nerr++;
 	DLOGTR0(PRIO_HIGH, "Error producing request\n");
 	return -1;
 }
@@ -278,6 +288,10 @@ dlog_client_open(struct dlog_handle **self,
 		portnumber = (unsigned short) nvlist_get_number(props,
 		    DL_CONF_BROKER_PORT);
 	}
+	
+	DLOGTR1(PRIO_LOW, "Kafka Message format of producer: %zu\n",
+	    dnvlist_get_number(props, DL_CONF_MSG_VERSION,
+	    DL_DEFAULT_MSG_VERSION));
 
 	/* Increment the SYSCTL count of open handles */
 	dlog_nopen++;
@@ -447,10 +461,6 @@ dlog_list_offset(struct dlog_handle *handle, struct sbuf *topic_name,
 int
 dlog_produce(struct dlog_handle *self, char *k, unsigned char *v, size_t v_len)
 {
-	struct dl_bbuf *buffer;
-	struct dl_message_set *message_set;
-	struct dl_record *record;
-	struct dl_record_batch *record_batch;
 
 	dlog_client_check_integrity(self);
 
@@ -467,5 +477,6 @@ dlog_produce(struct dlog_handle *self, char *k, unsigned char *v, size_t v_len)
 int
 dlog_produce_no_key(struct dlog_handle *handle, unsigned char *v, size_t v_len)
 {
+
 	return dlog_produce(handle, NULL, v, v_len);
 }
