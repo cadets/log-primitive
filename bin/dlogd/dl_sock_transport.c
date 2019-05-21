@@ -206,9 +206,9 @@ dl_sock_transport_send_request(struct dl_transport *self,
 {
 	struct pollfd fds;
 	int rc;
-	void *b;
+	unsigned char *b;
 	size_t write_so_far = 0;
-	size_t len_write;
+	ssize_t len_write;
 	size_t buffer_size;
 	size_t offset;
 	size_t bytes_to_write;
@@ -230,7 +230,7 @@ retry_send:
 		return -1;
 	}
 
-	if (len_write > 0 && len_write <= buffer_size)
+	if (len_write > 0 && (size_t) len_write <= buffer_size)
 		write_so_far += len_write;
 
 	if (write_so_far == buffer_size) {
