@@ -217,11 +217,11 @@ dl_sock_transport_send_request(struct dl_transport *self,
 	DL_ASSERT(buffer != NULL, "Buffer to send cannot be NULL");
 
 	b = dl_bbuf_data(buffer);
-	buffer_size  = dl_bbuf_pos(buffer);
+	buffer_size = dl_bbuf_pos(buffer);
 
 retry_send:
 	offset = (write_so_far % buffer_size);
-	bytes_to_write = (buffer_size - write_so_far); // min(remaining_write, buffersize - offset);
+	bytes_to_write = (buffer_size - write_so_far);
 
 	len_write = write(self->dlt_sock->dlt_fd, b + offset, bytes_to_write); 
 	if (len_write == -1 && errno != EAGAIN) {
@@ -237,7 +237,7 @@ retry_send:
 
 		/* Update the Producer statistics. */
 		dl_producer_stats_bytes_sent(self->dlt_producer,
-		    dl_bbuf_pos(buffer));
+		    buffer_size);
 
 		return write_so_far;
 	}

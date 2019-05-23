@@ -76,19 +76,25 @@ dlrq_check_integrity(struct dl_request_q *self)
 static inline void
 dl_request_q_stats_request_items(struct dl_request_q *self)
 {
+	int rc = 0;
 
 	dlrq_check_integrity(self);
+	rc = pthread_mutex_lock(&self->dlrq_mtx);		
 	sem_getvalue(&self->dlrq_request_items,
 	    &self->dlrq_stats->dlrq_requests);
+	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 }
 
 static inline void
 dl_request_q_stats_unackd_items(struct dl_request_q *self)
 {
+	int rc = 0;
 
 	dlrq_check_integrity(self);
+	rc = pthread_mutex_lock(&self->dlrq_mtx);		
 	sem_getvalue(&self->dlrq_unackd_items,
 	    &self->dlrq_stats->dlrq_unackd);
+	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 }
 
 int 
