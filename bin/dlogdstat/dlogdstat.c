@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 (Graeme Jenkinson)
+ * Copyright (c) 2018-2019 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -51,6 +51,10 @@
 
 #include "dl_producer.h"
 
+static char const * const DLPS_STATE_NAME[] =
+    {"INITIAL", "IDLE", "SYNCING", "OFFLINE", "ONLINE", "CONNECTING",
+    "FINAL" };
+
 static char *g_pname;
 static bool stop  = false;
 static struct dl_producer_stats *stats;
@@ -76,7 +80,7 @@ display_stats()
 	printw("================\n");
 	printw("Producer:\n");
 	printw("\tTopic = %s\n", stats->dlps_topic_name);
-	printw("\tState = %s\n", stats->dlps_state_name);
+	printw("\tState = %s\n", DLPS_STATE_NAME[stats->dlps_state]);
 	printw("\tTCP status = %s\n",
 	    stats->dlps_tcp_connected ? "connected" : "disconnected");
 	printw("\tTLS status = %s\n",
