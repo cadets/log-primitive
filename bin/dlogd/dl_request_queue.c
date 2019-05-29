@@ -55,7 +55,7 @@ STAILQ_HEAD(dl_request_queue, dl_request_element);
 struct dl_request_q {
 	struct dl_request_queue dlrq_queue;
 	struct dl_request_element *dlrq_requests;
-	struct dl_request_q_stats *dlrq_stats;
+	struct dl_producer_stats *dlrq_stats;
 	sem_t dlrq_request_items;
 	sem_t dlrq_unackd_items;
 	sem_t dlrq_unackd_spaces;
@@ -76,24 +76,24 @@ dlrq_check_integrity(struct dl_request_q *self)
 static inline void
 dl_request_q_stats_request_items(struct dl_request_q *self)
 {
-	int rc = 0;
+	int sval, rc = 0;
 
 	dlrq_check_integrity(self);
 	rc = pthread_mutex_lock(&self->dlrq_mtx);		
-	sem_getvalue(&self->dlrq_request_items,
-	    &self->dlrq_stats->dlrq_requests);
+	sem_getvalue(&self->dlrq_request_items, &sval);
+	dlps_set_queue_requests(self->dlrq_stats, sval);
 	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 }
 
 static inline void
 dl_request_q_stats_unackd_items(struct dl_request_q *self)
 {
-	int rc = 0;
+	int sval, rc = 0;
 
 	dlrq_check_integrity(self);
 	rc = pthread_mutex_lock(&self->dlrq_mtx);		
-	sem_getvalue(&self->dlrq_unackd_items,
-	    &self->dlrq_stats->dlrq_unackd);
+	sem_getvalue(&self->dlrq_unackd_items, &sval);
+	dlps_set_queue_unackd(self->dlrq_stats, sval);
 	rc = pthread_mutex_unlock(&self->dlrq_mtx);
 }
 
@@ -334,7 +334,7 @@ dl_request_q_peek_unackd(struct dl_request_q *self, struct dl_request_element **
 
 int
 dl_request_q_new(struct dl_request_q **self,
-    struct dl_request_q_stats *stats, uint32_t qlimit)
+    struct dl_producer_stats *stats, uint32_t qlimit)
 {
 	struct dl_request_q *queue;
 	int rc;
@@ -355,9 +355,9 @@ dl_request_q_new(struct dl_request_q **self,
 
 	/* Initialise the queue statistics. */
 	queue->dlrq_stats = stats;
-	queue->dlrq_stats->dlrq_capacity = qlimit;
-	queue->dlrq_stats->dlrq_requests = 0;
-	queue->dlrq_stats->dlrq_unackd = 0;
+	dlps_set_queue_capacity(queue->dlrq_stats, qlimit);
+	dlps_set_queue_requests(queue->dlrq_stats, 0);
+	dlps_set_queue_unackd(queue->dlrq_stats, 0);
 
 	rc = sem_init(&queue->dlrq_request_items, 0, 0);
 	if (rc != 0) {

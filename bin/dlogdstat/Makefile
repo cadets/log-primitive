@@ -29,7 +29,7 @@
 # SUCH DAMAGE.
 #
 
-.PATH : ../../src
+.PATH : ../../src ../dlogd
 
 .OBJDIR:= obj
 MK_AUTO_OBJ:= yes
@@ -37,31 +37,26 @@ MK_AUTO_OBJ:= yes
 PROGS= dlogdstat
 BINDIR= bin
 
-SRCS.dlogdstat = dlogdstat.c
+SRCS.dlogdstat = dlogdstat.c dl_producer_stats.c
 MAN.dlogdstat =
 
-#LDADD+=-lc
-#LDADD+=-lcrypto
-#LDADD+=-lnv
-#LDADD+=-lpthread
 LDADD+=-lncurses
 LDADD+=-ltinfo
 LDADD+=-lsbuf
-#LDADD+=-lssl
-#LDADD+=-lucl
-#LDADD+=-lz
 
-CFLAGS+=-Werror
 CFLAGS+=-DNDEBUG
 CFLAGS+=-g
+CFLAGS+=-Werror
+CFLAGS+=-Wunused-variable
 CFLAGS+=-Wno-incompatible-pointer-types-discards-qualifiers
 CFLAGS+=-L/usr/local/lib
 CFLAGS+=-I/usr/local/include
 CFLAGS+=-I../dlogd
 CFLAGS+=-I../../src
 CFLAGS+=-I.
-#CFLAGS+=-O1
-#CFLAGS+=-fsanitize=address
-#CFLAGS+=-fno-omit-frame-pointer
+CFLAGS+=-O3
+CFLAGS+=-fsanitize=address
+CFLAGS+=-fno-omit-frame-pointer
+CFLAGS+=-fsanitize=undefined
 
 .include <bsd.progs.mk>

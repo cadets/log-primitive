@@ -43,7 +43,6 @@
 #include <sys/uio.h>
 #include <sys/time.h>
 #include <sys/types.h>
-#include <machine/atomic.h>
 
 #include <errno.h>
 #include <pthread.h>
@@ -61,23 +60,19 @@
 #include "dl_index.h"
 #include "dl_memory.h"
 #include "dl_poll_reactor.h"
+#include "dl_produce_response.h"
 #include "dl_producer.h"
+#include "dl_producer_stats.h"
 #include "dl_request.h"
 #include "dl_request_queue.h"
+#include "dl_response_header.h"
 #include "dl_topic.h"
 #include "dl_tls_transport.h"
 #include "dl_transport.h"
 #include "dl_user_segment.h"
 #include "dl_utils.h"
 
-typedef enum dl_producer_state {
-	DLP_INITIAL,
-	DLP_IDLE,
-	DLP_SYNCING,
-	DLP_OFFLINE,
-	DLP_ONLINE,
-	DLP_CONNECTING,
-	DLP_FINAL} dl_producer_state;
+typedef uint32_t dl_producer_state;
 
 struct dl_producer {
 	struct dl_producer_stats *dlp_stats;
@@ -100,10 +95,17 @@ struct dl_producer {
 	int dlp_reconn_ms;
 	int dlp_resend_timeout;
 	int dlp_resend_period;
-	int dlp_stats_fd;
 	int dlp_debug_level;
 	bool dlp_resend;
 };
+
+const static uint32_t DLP_INITIAL = 0;
+const static uint32_t DLP_IDLE = 1;
+const static uint32_t DLP_SYNCING = 2;
+const static uint32_t DLP_OFFLINE = 3;
+const static uint32_t DLP_ONLINE = 4;
+const static uint32_t DLP_CONNECTING = 5;
+const static uint32_t DLP_FINAL = 6;
 
 static void dl_producer_idle(struct dl_producer * const self);
 static void dl_producer_syncing(struct dl_producer * const self);
@@ -143,97 +145,6 @@ dl_producer_check_integrity(struct dl_producer const * const self)
 	    ("Producer topic cannot be NULL."));
 	DL_ASSERT(self->dlp_name != NULL,
 	    ("Producer instance cannot be NULL."));
-}
-
-static inline void
-dlp_stats_rtt(struct dl_producer *self, int32_t rtt)
-{
-
-	dl_producer_check_integrity(self);
-	self->dlp_stats->dlps_rtt = rtt;
-}
-
-static inline void
-dlp_stats_received_cid(struct dl_producer *self, int32_t cid)
-{
-
-	dl_producer_check_integrity(self);
-	self->dlp_stats->dlps_received.dlpsm_cid = cid;
-}
-
-static inline void
-dlp_stats_received_error(struct dl_producer *self, bool err)
-{
-
-	dl_producer_check_integrity(self);
-	self->dlp_stats->dlps_received.dlpsm_error = err;
-}
-
-static inline void
-dlp_stats_received_timestamp(struct dl_producer *self)
-{
-
-	dl_producer_check_integrity(self);
-	self->dlp_stats->dlps_received.dlpsm_timestamp = time(NULL);
-}
-
-static inline void
-dlp_stats_sent_cid(struct dl_producer *self, int32_t cid)
-{
-
-	dl_producer_check_integrity(self);
-	self->dlp_stats->dlps_sent.dlpsm_cid = cid;
-}
-
-static inline void
-dlp_stats_sent_error(struct dl_producer *self, bool err)
-{
-
-	dl_producer_check_integrity(self);
-	self->dlp_stats->dlps_sent.dlpsm_error = err;
-}
-
-static inline void
-dlp_stats_sent_timestamp(struct dl_producer *self)
-{
-
-	dl_producer_check_integrity(self);
-	self->dlp_stats->dlps_sent.dlpsm_timestamp = time(NULL);
-}
-
-static inline void
-dlp_stats_state_name(struct dl_producer *self)
-{
-
-	dl_producer_check_integrity(self);
-	strncpy(self->dlp_stats->dlps_state_name,
-	    DLP_STATE_NAME[self->dlp_state],
-	    sizeof(self->dlp_stats->dlps_state_name)); 
-}
-
-static inline void
-dlp_stats_topic_name(struct dl_producer *self, char *topic_name)
-{
-
-	dl_producer_check_integrity(self);
-	strncpy(self->dlp_stats->dlps_topic_name, topic_name,
-	    sizeof(self->dlp_stats->dlps_topic_name)); 
-}
-
-static inline void
-dlp_stats_resend(struct dl_producer *self)
-{
-
-	dl_producer_check_integrity(self);
-	self->dlp_stats->dlps_resend = self->dlp_resend;
-}
-
-static inline void
-dlp_stats_resend_timeout(struct dl_producer *self)
-{
-
-	dl_producer_check_integrity(self);
-	self->dlp_stats->dlps_resend_timeout = self->dlp_resend_timeout;
 }
 
 static dl_event_handler_handle
@@ -344,8 +255,11 @@ dl_producer_timer_handler(void *instance, int fd __attribute((unused)),
 				dl_segment_unlock(seg);
 
 				idx = dl_user_segment_get_index(seg);
-				if (dl_index_update(idx,
-			    	    dl_index_get_last(idx) + DL_FSYNC_DEFAULT_CHARS) > 0) {
+			    	if (dl_index_get_last(idx) + DL_FSYNC_DEFAULT_CHARS <= log_position) {
+			
+					/* Update the log index. */	
+					dl_index_update(idx, log_position);
+
 					/* Fire the produce() event into the
 					 * Producer state machine .
 					 */
@@ -443,11 +357,14 @@ dlp_produce_thread(void *vargp)
 	struct dl_producer *self = (struct dl_producer *)vargp;
 	struct dl_request_element *request;
 	ssize_t nbytes;
+	int cancel_state;
 
 	dl_producer_check_integrity(self);
 
 	if (self->dlp_debug_level > 1)
 		DLOGTR0(PRIO_LOW, "Producer thread started...\n");
+
+	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &cancel_state);
 
 	for (;;) {
 
@@ -465,26 +382,26 @@ dlp_produce_thread(void *vargp)
 			    self->dlp_transport, request->dlrq_buffer);
 
 			/* Update the producer statistics */
-			dlp_stats_sent_cid(self, request->dlrq_correlation_id);
-			dlp_stats_sent_timestamp(self);
+			dlps_set_sent_cid(self->dlp_stats, request->dlrq_correlation_id);
+			dlps_set_sent_timestamp(self->dlp_stats);
 			if (nbytes != -1) {
 				/* Update the producer statistics */
-				dlp_stats_sent_error(self, false);
+				dlps_set_sent_error(self->dlp_stats, false);
 
 				if (self->dlp_debug_level > 1)
 					DLOGTR2(PRIO_LOW,
 					    "ProduceRequest: id = %d "
-					    "sent (bytes = %ld)\n",
+					    "sent (%ld bytes)\n",
 					    request->dlrq_correlation_id,
 					    nbytes);
 			} else {
 				/* Update the producer statistics */
-				dlp_stats_sent_error(self, true);
+				dlps_set_sent_error(self->dlp_stats, true);
 
 				if (self->dlp_debug_level > 1)
 					DLOGTR2(PRIO_LOW,
 					    "ProduceRequest: id = %d failed "
-					    "(bytes = %zu)\n",
+					    "(%zu bytes)\n",
 					    request->dlrq_correlation_id,
 					    dl_bbuf_pos(request->dlrq_buffer));
 			}
@@ -522,7 +439,7 @@ dlp_enqueue_thread(void *vargp)
 	/* Get the topic's active segment. */
 	seg = dl_topic_get_active_segment(topic);
 	DL_ASSERT(seg != NULL, ("Topic's active segment cannot be NULL"));
-
+			
 	while (dl_segment_get_message_by_offset(seg,
 	    dl_segment_get_offset(seg), &msg_buffer) == 0) {
 
@@ -532,18 +449,34 @@ dlp_enqueue_thread(void *vargp)
 		    self->dlp_name, DL_DEFAULT_ACKS, DL_DEFAULT_ACK_TIMEOUT,
 		    topic_name) == 0) {
 
+			//if (dnvlist_get_number(self->dlp_props, DL_CONF_MSG_VERSION,
+			//    DL_DEFAULT_MSG_VERSION) == 2) {
+			//	rc = dl_request_encode(message, &buffer);
+			//} else {
+			//	rc = dl_request_encode(message, &buffer);
+			//}
 			rc = dl_request_encode(message, &buffer);
 			if (rc != 0) {
 
 				DLOGTR0(PRIO_HIGH,
 				    "Failed creating ProduceRequest\n");
+				dl_request_delete(message);
 				dl_producer_error(self);
 			}
 
 			/* Free the ProduceRequest */
-			dl_request_delete(message);
-		// TODO
-		dl_bbuf_put_int32(buffer, dl_bbuf_pos(msg_buffer));
+			//dl_request_delete(message);
+
+			/* Encode the MessageSet/RecordBatch size. */
+			/* TODO: this should be at the end of dl_request_encode */
+			rc = dl_bbuf_put_int32(buffer, dl_bbuf_pos(msg_buffer));
+			if (rc != 0) {
+
+				DLOGTR0(PRIO_HIGH,
+				    "Failed creating ProduceRequest\n");
+				dl_bbuf_delete(msg_buffer);
+				dl_producer_error(self);
+			}
 	
 			/* Concat the buffers together */
 			rc = dl_bbuf_concat(buffer, msg_buffer);
@@ -593,8 +526,6 @@ dlp_enqueue_thread(void *vargp)
 				/* Increment the offset to process. */
 				dl_offset_inc(dl_user_segment_get_offset_tmp(seg));
 			}
-
-			getchar();
 		} else {
 
 			DLOGTR0(PRIO_HIGH,
@@ -622,7 +553,7 @@ dl_producer_connecting(struct dl_producer * const self)
 	self->dlp_state = DLP_CONNECTING;
 
 	/* Update the producer statistics */
-	dlp_stats_state_name(self);
+	dlps_set_state(self->dlp_stats, DLP_CONNECTING);
 
 	if (self->dlp_debug_level > 0)
 		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
@@ -664,7 +595,7 @@ dl_producer_idle(struct dl_producer * const self)
 	self->dlp_state = DLP_IDLE;
 
 	/* Update the producer statistics */
-	dlp_stats_state_name(self);
+	dlps_set_state(self->dlp_stats, DLP_IDLE);
 
 	if (self->dlp_debug_level > 0)
 		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
@@ -683,7 +614,7 @@ dl_producer_syncing(struct dl_producer * const self)
 	self->dlp_state = DLP_SYNCING;
 
 	/* Update the producer statistics */
-	dlp_stats_state_name(self);
+	dlps_set_state(self->dlp_stats, DLP_SYNCING);
 
 	if (self->dlp_debug_level > 0)
 		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
@@ -715,20 +646,20 @@ dl_producer_offline(struct dl_producer * const self)
 	self->dlp_state = DLP_OFFLINE;
 
 	/* Update the producer statistics */
-	dlp_stats_state_name(self);
+	dlps_set_state(self->dlp_stats, DLP_OFFLINE);
 
 	if (self->dlp_debug_level > 0)
 		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
 	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
 
         /* Stop the produce and resender threads */
-	if (self->dlp_resend)
+	if (self->dlp_resend) {
 		pthread_cancel(self->dlp_resender_tid);
-	pthread_cancel(self->dlp_produce_tid);
-
-	pthread_join(self->dlp_produce_tid, NULL);
-	if (self->dlp_resend)
 		pthread_join(self->dlp_resender_tid, NULL);
+	}
+
+	pthread_cancel(self->dlp_produce_tid);
+	pthread_join(self->dlp_produce_tid, NULL);
 
 	/* Delete the producer transport */
 	DL_ASSERT(self->dlp_transport != NULL,
@@ -759,7 +690,7 @@ dl_producer_online(struct dl_producer * const self)
 	self->dlp_state = DLP_ONLINE;
 
 	/* Update the producer statistics */
-	dlp_stats_state_name(self);
+	dlps_set_state(self->dlp_stats, DLP_ONLINE);
 
 	if (self->dlp_debug_level > 0)
 		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
@@ -805,10 +736,10 @@ dl_producer_final(struct dl_producer * const self)
 	self->dlp_state = DLP_FINAL;
 
 	/* Update the producer statistics */
-	dlp_stats_state_name(self);
+	dlps_set_state(self->dlp_stats, DLP_FINAL);
 
 	if (self->dlp_debug_level > 0) {
-		DLOGTR2(PRIO_HIGH, "Producer state = %s (%d)\n",
+		DLOGTR2(PRIO_LOW, "Producer state = %s (%d)\n",
 	    	    DLP_STATE_NAME[self->dlp_state], self->dlp_state);
 	}
 }
@@ -819,7 +750,6 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 {
 	struct dl_producer *producer;
 	struct kevent kev;
-	struct sbuf *stats_path;
 	char *client_id;
 	int requestq_len, rc;
 
@@ -835,32 +765,13 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 
 	bzero(producer, sizeof(struct dl_producer));
 
-	/* Open a memory mapped file for the Producer stats. */
-	stats_path = sbuf_new_auto();
-	sbuf_printf(stats_path, "%s/%s/stats", path,
-	    sbuf_data(dl_topic_get_name(topic))); 
-	sbuf_finish(stats_path);
-	producer->dlp_stats_fd = open(sbuf_data(stats_path),
-	    O_RDWR | O_APPEND | O_CREAT, 0666);
-	if (producer->dlp_stats_fd == -1) {
-
-		DLOGTR1(PRIO_HIGH,
-		    "Failed opening Producer stats file %d.\n", errno);
-		sbuf_delete(stats_path);
-		goto err_producer_ctor;
-	}
-	sbuf_delete(stats_path);
-	ftruncate(producer->dlp_stats_fd, sizeof(struct dl_producer_stats));
-
 	producer->dlp_state = DLP_INITIAL;
 
-	producer->dlp_stats = (struct dl_producer_stats *) mmap(
-	    NULL, sizeof(struct dl_producer_stats), PROT_READ | PROT_WRITE,
-	    MAP_SHARED, producer->dlp_stats_fd, 0);
-	if (producer->dlp_stats == NULL) {
+	if (dl_producer_stats_new(&producer->dlp_stats, path,
+	    dl_topic_get_name(topic))) {
 
 		DLOGTR1(PRIO_HIGH,
-		    "Failed mmap of Producer stats file %d.\n", errno);
+		    "Failed to instatiate ProducerStats instance %d.\n", errno);
 		goto err_producer_ctor;
 	}
 
@@ -887,10 +798,8 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	sbuf_finish(producer->dlp_broker_hostname);
 	producer->dlp_broker_port = port;
 	   
-	(&producer->dlp_stats->dlps_request_q_stats)->dlrq_capacity = 10;
-
 	rc = dl_request_q_new(&producer->dlp_requests,
-	   &producer->dlp_stats->dlps_request_q_stats, requestq_len);
+	   producer->dlp_stats, requestq_len);
 	if (rc != 0) {
 
 		dlog_free(producer);
@@ -937,14 +846,14 @@ dl_producer_new(struct dl_producer **self, struct dl_topic *topic,
 	producer->dlp_debug_level = dnvlist_get_number(props,
 	    DL_CONF_DEBUG_LEVEL, DL_DEFAULT_DEBUG_LEVEL);
 
+	/* Update the producer statistics */
+	dlps_set_topic_name(producer->dlp_stats, sbuf_data(dl_topic_get_name(topic)));
+	dlps_set_state(producer->dlp_stats, DLP_INITIAL);
+	dlps_set_resend(producer->dlp_stats, producer->dlp_resend);
+	dlps_set_resend_timeout(producer->dlp_stats, producer->dlp_resend_timeout);
+	
 	*self = producer;
 	dl_producer_check_integrity(*self);
-
-	/* Update the producer statistics */
-	dlp_stats_topic_name(*self, sbuf_data(dl_topic_get_name(topic)));
-	dlp_stats_state_name(*self);
-	dlp_stats_resend(*self);
-	dlp_stats_resend_timeout(*self);
 
 	/* Synchnronously create the Producer in the connecting state. */
 	dl_producer_connecting(*self);
@@ -966,28 +875,26 @@ dl_producer_delete(struct dl_producer *self)
 
 	dl_producer_check_integrity(self);
 
-	/* Transition to the final state. */
-	dl_producer_final(self);
-
         /* Stop the enque, produce and resender threads */
-	if (self->dlp_resend)
+	if (self->dlp_resend) {
 		pthread_cancel(self->dlp_resender_tid);
-	pthread_cancel(self->dlp_produce_tid);
-	pthread_cancel(self->dlp_enqueue_tid);
-
-	if (self->dlp_resend)
 		pthread_join(self->dlp_resender_tid, NULL);
+	}
+	pthread_cancel(self->dlp_produce_tid);
 	pthread_join(self->dlp_produce_tid, NULL);
+
+	pthread_cancel(self->dlp_enqueue_tid);
 	pthread_join(self->dlp_enqueue_tid, NULL);
 
 	/* Unregister any poll reeactor handlers */
 	dl_poll_reactor_unregister(&self->dlp_kq_hdlr);
 	dl_poll_reactor_unregister(&self->dlp_ktimer_hdlr);
 
+	/* Transition to the final state. */
+	dl_producer_final(self);
+
 	/* Close and unmap the stats file. */
-	close(self->dlp_stats_fd);
-	msync(self->dlp_stats, sizeof(struct dl_producer_stats), MS_SYNC);
-	munmap(self->dlp_stats, sizeof(struct dl_producer_stats));
+	dl_producer_stats_delete(self->dlp_stats);
 
 	close(self->dlp_ktimer);
 
@@ -997,7 +904,7 @@ dl_producer_delete(struct dl_producer *self)
 	/* Destroy the correlation id */
 	dl_correlation_id_delete(self->dlp_cid);
 
-	/* Delete the request queuexs */
+	/* Delete the request queue */
 	dl_request_q_delete(self->dlp_requests);
 
 	/* Delete the broker hostname */
@@ -1013,12 +920,19 @@ dl_producer_delete(struct dl_producer *self)
 	dlog_free(self);
 }
 
+struct dl_producer_stats *
+dl_producer_get_stats(struct dl_producer *self)
+{
+
+	dl_producer_check_integrity(self);
+	return self->dlp_stats;
+}
+
 struct dl_topic *
 dl_producer_get_topic(struct dl_producer *self)
 {
 
 	dl_producer_check_integrity(self);
-
 	return self->dlp_topic;
 }
 
@@ -1028,46 +942,91 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 	struct dl_request_element *request;
 	struct timeval tv_now, tdiff;
 	struct dl_response_header *hdr;
+	struct dl_produce_response *response;
 	
 	dl_producer_check_integrity(self);
-	DL_ASSERT(hdr != NULL, ("Response header cannot be NULL"));
+	DL_ASSERT(buffer != NULL, ("Response buffer cannot be NULL"));
 
 	/* Deserialise the response header. */
 	if (dl_response_header_decode(&hdr, buffer) == 0) {
 
+		int32_t cid = dl_response_header_get_correlation_id(hdr);
+
 		/* Acknowledge the request message based on the
 		 * CorrelationId returned in the response.
 		 */
-		if (dl_request_q_ack(self->dlp_requests,
-		    hdr->dlrsh_correlation_id, &request) == 0) {
+		if (dl_request_q_ack(self->dlp_requests, cid, &request) == 0) {
 
 			/* Update the producer statistics */
-			dlp_stats_received_cid(self, hdr->dlrsh_correlation_id);
-			dlp_stats_received_timestamp(self);
+			dlps_set_received_cid(self->dlp_stats, cid);
+			dlps_set_received_timestamp(self->dlp_stats);
 
 			gettimeofday(&tv_now, NULL);
 			timersub(&tv_now, &request->dlrq_tv, &tdiff);
-			dlp_stats_rtt(self,
+			dlps_set_rtt(self->dlp_stats,
 			    (tdiff.tv_sec * 1000000 + tdiff.tv_usec));
 
 			if (self->dlp_debug_level > 1)
 				DLOGTR2(PRIO_NORMAL,
-				"ProduceResponse: id = %d received "
-				"(RTT = %ldms)\n",
-				request->dlrq_correlation_id,
-				(tdiff.tv_sec * 1000 +
-				tdiff.tv_usec / 1000));
+				    "ProduceResponse: id = %d received "
+				    "(RTT %ldms)\n",
+				    request->dlrq_correlation_id,
+				    (tdiff.tv_sec * 1000 +
+				    tdiff.tv_usec / 1000));
 
 			switch (request->dlrq_api_key) {
 			case DL_PRODUCE_API_KEY:
-				/* TODO: Construct ProducerResponse */
-				// dl_produce_response_decode(&response, &buffer);
-		
 
-				//dl_response_delete(response);
+				/* Construct the ProducerResponse */
+				if (dl_produce_response_decode(&response, buffer) != 0) {
 
-				/* Update the producer statistics */
-				dlp_stats_received_error(self, false);
+					DLOGTR0(PRIO_HIGH, "Error decoding ProduceRequest\n");
+
+					/* Update the producer statistics */
+					dlps_set_received_error(self->dlp_stats, true);
+				} else {
+					struct dl_produce_response_topic *topic;
+
+					/* Check whether the ProduceRequest corresponding
+					 * to this response resulted in an error.
+					 */
+					SLIST_FOREACH(topic, &response->dlpr_topics, dlprt_entries) {
+
+						for (int i = 0;
+						    i < topic->dlprt_npartitions; i++) {
+
+							struct dl_produce_response_partition part =
+							    topic->dlprt_partitions[i];
+
+							if (part.dlprp_error_code != 0) {
+
+								DLOGTR3(PRIO_HIGH,
+								   "Error ProduceRequest offset %ld to partition %d failed %d\n",
+								    part.dlprp_offset,
+								    part.dlprp_partition,
+								    part.dlprp_error_code);
+
+	//unsigned char *data = dl_bbuf_data(request->dlrq_buffer);
+	//for (int i = 0; i < dl_bbuf_pos(request->dlrq_buffer); i++) {
+//		printf("<%02X>", data[i]);
+//	}
+//		printf("\n");
+
+							} else {
+								DLOGTR3(PRIO_HIGH,
+								   "ProduceRequest offset %ld to partition %d successful %d\n",
+								    part.dlprp_offset,
+								    part.dlprp_partition,
+								    part.dlprp_error_code);
+							}
+						}
+					}
+
+					dl_produce_response_delete(response);
+
+					/* Update the producer statistics */
+					dlps_set_received_error(self->dlp_stats, false);
+				}
 				break;
 			default:
 				DLOGTR1(PRIO_HIGH,
@@ -1075,7 +1034,7 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 				    request->dlrq_api_key);
 
 				/* Update the producer statistics */
-				dlp_stats_received_error(self, true);
+				dlps_set_received_error(self->dlp_stats, true);
 				break;
 			}
 				
@@ -1084,8 +1043,7 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 			dlog_free(request);
 		} else {
 			DLOGTR1(PRIO_HIGH,
-			   "Error acknowledging request id = %d\n",
-			    hdr->dlrsh_correlation_id);
+			   "Error acknowledging request id = %d\n", cid);
 		}
 
 		/* Free the buffer containing the response header. */
@@ -1303,35 +1261,4 @@ dl_producer_error(struct dl_producer const * const self)
 		    self->dlp_state));
 		break;
 	}
-}
-
-void dl_producer_stats_tcp_connect(struct dl_producer *self, bool status)
-{
-
-	dl_producer_check_integrity(self);
-	self->dlp_stats->dlps_tcp_connected = status;
-}
-
-void
-dl_producer_stats_tls_connect(struct dl_producer *self, bool status)
-{
-
-	dl_producer_check_integrity(self);
-	self->dlp_stats->dlps_tls_connected = status;
-}
-
-void
-dl_producer_stats_bytes_sent(struct dl_producer *self, int32_t nbytes)
-{
-
-	dl_producer_check_integrity(self);
-	atomic_add_64(&self->dlp_stats->dlps_bytes_sent, nbytes);
-}
-
-void
-dl_producer_stats_bytes_received(struct dl_producer *self, int32_t nbytes)
-{
-
-	dl_producer_check_integrity(self);
-	atomic_add_64(&self->dlp_stats->dlps_bytes_received, nbytes);
 }
