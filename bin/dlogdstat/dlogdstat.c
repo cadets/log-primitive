@@ -123,7 +123,7 @@ display_stats()
 	printw("\tStatus = %s\n",
 	    dlps_get_sent_error(stats) ? "failed" : "OK");
 	printw("ProduceResponses:\n");
-	printw("\tLatest id = %ld\n", dlps_get_received_timestamp(stats));
+	printw("\tLatest id = %ld\n", dlps_get_received_cid(stats));
 	received_ts = dlps_get_received_timestamp(stats);
 	strftime(time_buf, 20, "%Y-%m-%d %H:%M:%S",
 	    localtime(&received_ts));
