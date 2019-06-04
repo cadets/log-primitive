@@ -1,5 +1,5 @@
 #-
-# Copyright (c) 2018 (Graeme Jenkinson)
+# Copyright (c) 2018-2019 (Graeme Jenkinson)
 # All rights reserved.
 #
 # This software was developed by BAE Systems, the University of Cambridge
@@ -29,77 +29,16 @@
 # SUCH DAMAGE.
 #
 
-import argparse;
-import struct;
-import zlib;
+import argparse
+import record_batch
+import struct
+import zlib
 
-# The header is 8-bytes long: <offset>,<size>
-LOG_HDR_SIZE = 8
+# The index is 16-bytes long: <offset>,<size>
+LOG_IDX_SIZE = 16 
 
-# The index is 12-bytes long: <offset>,<size>
-LOG_IDX_SIZE = 12 
-
-class MessageSet:
-
-    def __init__(self):
-        self.messages = []
-
-    def add_message(self, message):
-        self.messages.append(message)
-
-class Message:
-
-    def __init__(self, key_len, key, value_len, value):
-       self.key_len = key_len
-       self.key = key
-       self.value_len = value_len
-       self.value = value
-
-def message_set_decode(raw_data):
-
-    message_set = MessageSet()
-    message = message_decode(raw_data)
-    message_set.add_message(message)
-
-    return message_set
-
-def message_decode(raw_data):
-
-    raw_data_offset = 0
-
-    # Decode the Message offset, size, CRC, magic byte and attributes
-    (offset, size, crc, magic, attributes) = struct.unpack(">qiibb",
-            raw_data[0:18]);
-    raw_data_offset += 18;
-
-    if magic == 0x00 or magic == 0x01:
-        # Decode the Message timestamp
-        timestamp = struct.unpack_from(">q", raw_data, raw_data_offset)[0]
-        raw_data_offset += 8
-
-    # Decode the primitve Byte array holding the Message key
-    key_len = struct.unpack_from(">i", raw_data, raw_data_offset)[0]
-    raw_data_offset += 4
-    if key_len == -1:
-        key = None
-    else:
-        key = raw_data[raw_data_offset:raw_data_offset+key_len]
-        offset += key_len 
-
-    # Decode the primitve Byte array holding the Message value 
-    value_len = struct.unpack_from(">i", raw_data, raw_data_offset)[0]
-    raw_data_offset += 4
-    if value_len == -1:
-        value = None
-    else:
-        value = raw_data[raw_data_offset:raw_data_offset+value_len]
-        raw_data_offset += value_len 
-
-    # Uncompress value if compressed
-    if attributes & 0x01:
-        value = zlib.decompress(value, 31)
-
-    return Message(key_len, key, value_len, value)
+# The header is 12-bytes long: <offset>,<size>
+LOG_HDR_SIZE = 12 
 
 if __name__ == "__main__":
 
@@ -121,7 +60,7 @@ if __name__ == "__main__":
                exit() 
             
             # Unpack the value of the index (offset, off_t)
-            (idx_offset, poffset) = struct.unpack(">Iq", idx_val);
+            (idx_offset, poffset) = struct.unpack(">qq", idx_val);
 
             # Read LOG_HDR_SIZE sizes from the position the log;
             # header contains the log offset and record
@@ -132,28 +71,14 @@ if __name__ == "__main__":
               exit() 
             
             # Unpack the raw data
-            (log_offset, size) = struct.unpack(">Ii", header);
-
-            if idx_offset != log_offset:
-                exit();
-
+            (log_offset, size) = struct.unpack(">qi", header);
+            
             # Advance past the header and read the entry in the log
-            log.seek(poffset + LOG_HDR_SIZE)
-            message_set = log.read(size)
+            log.seek(poffset) # + LOG_HDR_SIZE)
+            message_set = log.read(size + LOG_HDR_SIZE)
             if not message_set: 
               exit() 
-
-            # Decode the MessageSet
-            ms = message_set_decode(message_set)
-
-            # Display the returned MessageSet
-            for m in ms.messages:
-                if m.key is not None:
-                    if args.verbose is True:
-                        print "Key = " + ''.join('<0x{:02x}>'.format(x) for x in bytearray(m.key))
-                    else:
-                        print "Key = {}".format(m.key)
-                if args.verbose is True:
-                    print "Value = " + ''.join('<0x{:02x}>'.format(x) for x in bytearray(m.value))
-                else:
-                    print "Value = {}".format(m.value)
+        
+            # Decode and print the RecordBatch
+            rb = record_batch.decode(message_set)
+            print rb
