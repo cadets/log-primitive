@@ -56,7 +56,6 @@ dl_fetch_response_new(struct dl_fetch_response **self,
 {
 	struct dl_fetch_response *response;
 	struct dl_fetch_response_topic *response_topic;
-	int rc;
 	
 	DL_ASSERT(self != NULL, ("FetchResponse instance cannot be NULL."));
 	DL_ASSERT(topic_name != NULL,

@@ -60,7 +60,7 @@ static const int32_t MAX_RESPONSE_PARTITIONS = 10;
 
 int
 dl_produce_response_new(struct dl_produce_response **self,
-    const int32_t correlation_id, struct sbuf *topic_name,
+    __attribute((unused)) const int32_t correlation_id, struct sbuf *topic_name,
     int32_t throttle_time, int64_t offset, int16_t error_code)
 {
 	struct dl_produce_response *response;
@@ -215,6 +215,7 @@ dl_produce_response_decode(struct dl_produce_response **self,
 			rc |= DL_DECODE_ERROR_CODE(source,
 			    &part_responses->dlprp_error_code);
 
+			/* Decode the Offset */
 			rc |= DL_DECODE_OFFSET(source,
 			    &part_responses->dlprp_offset);
 
@@ -235,9 +236,7 @@ dl_produce_response_decode(struct dl_produce_response **self,
 		*self = response;
 		return 0;
 	}
-#ifndef _KERNEL
 err_produce_response:
-#endif
 	DLOGTR0(PRIO_HIGH, "Failed decoding ProduceResponse,\n");
 	*self = NULL;
 	return -1;
