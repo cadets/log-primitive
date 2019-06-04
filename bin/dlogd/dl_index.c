@@ -136,7 +136,7 @@ dl_index_lookup_by_file_offset(struct dl_index *self, off_t offset,
 		goto err_index_lookup;	
 	}
 
-	rc |= dl_bbuf_get_int64(idx_buf, &record->dlir_offset);
+	rc |= dl_bbuf_get_uint64(idx_buf, &record->dlir_offset);
 	rc |= dl_bbuf_get_int64(idx_buf, &record->dlir_poffset);
 	DL_ASSERT(rc == 0, ("dl_bbuf operations failed on index record."));
 	dl_bbuf_delete(idx_buf);
@@ -224,7 +224,7 @@ dl_index_update_locked(struct dl_index *self, off_t log_end)
 		self->dli_last += (off_t) (sizeof(offset) + sizeof(size)
 		    + be32toh(size));
 
-		/* Increment the count of new indexs that were created. */
+		/* Increment the count of new indexes that were created. */
 		idx_cnt++;
 	}
 
