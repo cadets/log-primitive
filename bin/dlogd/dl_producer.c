@@ -969,8 +969,7 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 			if (self->dlp_debug_level > 1)
 				DLOGTR2(PRIO_NORMAL,
 				    "ProduceResponse: id = %d received "
-				    "(RTT %ldms)\n",
-				    request->dlrq_correlation_id,
+				    "(RTT %ldms)\n", cid,
 				    (tdiff.tv_sec * 1000 +
 				    tdiff.tv_usec / 1000));
 
@@ -1000,32 +999,33 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 
 							if (part.dlprp_error_code != 0) {
 
+								/* Update the producer statistics */
+								dlps_set_received_error(
+								    self->dlp_stats, true);
+
 								DLOGTR3(PRIO_HIGH,
 								   "Error ProduceRequest offset %ld to partition %d failed %d\n",
 								    part.dlprp_offset,
 								    part.dlprp_partition,
 								    part.dlprp_error_code);
-
-	//unsigned char *data = dl_bbuf_data(request->dlrq_buffer);
-	//for (int i = 0; i < dl_bbuf_pos(request->dlrq_buffer); i++) {
-//		printf("<%02X>", data[i]);
-//	}
-//		printf("\n");
-
 							} else {
-								DLOGTR3(PRIO_HIGH,
-								   "ProduceRequest offset %ld to partition %d successful %d\n",
-								    part.dlprp_offset,
-								    part.dlprp_partition,
-								    part.dlprp_error_code);
+
+								/* Update the producer statistics */
+								dlps_set_received_error(
+								    self->dlp_stats, false);
+
+								if (self->dlp_debug_level > 1)
+									DLOGTR3(PRIO_HIGH,
+								   	    "ProduceRequest offset %ld to partition %d successful %d\n",
+								    	    part.dlprp_offset,
+								    	    part.dlprp_partition,
+								    	    part.dlprp_error_code);
 							}
 						}
 					}
 
 					dl_produce_response_delete(response);
 
-					/* Update the producer statistics */
-					dlps_set_received_error(self->dlp_stats, false);
 				}
 				break;
 			default:
