@@ -50,7 +50,7 @@ static int dl_request_header_decode(struct dl_request * const,
     struct dl_bbuf * const);
 static int dl_request_header_encode(struct dl_request const * const,
     struct dl_bbuf * const);
-	
+
 static int
 dl_request_header_decode(struct dl_request * const request,
     struct dl_bbuf * const source)
@@ -67,7 +67,7 @@ dl_request_header_decode(struct dl_request * const request,
 	
 	/* Decode the Request APIVersion and check it is supported. */
 	rc |= DL_DECODE_API_VERSION(source, &api_version);
-	if (api_version != 0 && api_version != 1) {
+	if (api_version > DLOG_API_V3) {
 
 		DLOGTR1(PRIO_HIGH, "Unsupported API version %d\n", api_version);
 		return -1;
@@ -203,6 +203,7 @@ dl_request_decode(struct dl_request ** const self,
     struct dl_bbuf * const source)
 {
 	struct dl_request *request;
+	int32_t req_size;
 	int rc;
 
 	DL_ASSERT(self != NULL, ("Request buffer cannot be NULL"));
@@ -215,9 +216,12 @@ dl_request_decode(struct dl_request ** const self,
 	if (request == NULL)
 		goto err_request;
 #endif
+
+	/* Encode a placeholder for the total request size. */	
+	rc = DL_DECODE_REQUEST_SIZE(source, &req_size);
+
 	/* Decode the Request Header into the buffer. */
 	if (dl_request_header_decode(request, source) == 0) {
-	
 		/* Decode the Request Body into the buffer. */
 		switch (request->dlrqm_api_key) {
 		case DL_PRODUCE_API_KEY:
