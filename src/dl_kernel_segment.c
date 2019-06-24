@@ -13,8 +13,8 @@
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
+ * ar	 met:
+ *1. Redistributions of source code must retain the above copyright
  *    notice, this list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in the
@@ -42,7 +42,7 @@
 #include <sys/unistd.h>
 #include <sys/param.h>
 #include <sys/lock.h>
-#include <sys/sx.h>
+#include <sys/mutex.h>
 
 #include "dl_assert.h"
 #include "dl_memory.h"
@@ -53,115 +53,172 @@
 #include "dl_utils.h"
 
 struct dl_kernel_segment {
-	SLIST_ENTRY(dl_segment) dls_entries;
-	struct sx dls_lock; /* Lock for whilst updating segment. */
-	uint32_t offset;
-	struct file *_log;
+	struct dl_segment dlks_segment;
+	SLIST_ENTRY(dl_segment) dlks_entries;
+	struct mtx dlks_lock; /* Lock for whilst updating segment. */
+	struct file *dlks_log;
+	uint32_t dlks_offset;
 };
 
-static void dl_kernel_segment_lock(struct dl_segment *);
-static void dl_kernel_segment_unlock(struct dl_segment *);
-static int dl_kernel_segment_insert_message(struct dl_segment *,
-    struct dl_bbuf *);
-static int dl_kernel_segment_get_message_by_offset(
-    struct dl_segment *, int, struct dl_bbuf **);
-static void dl_kernel_segment_delete(struct dl_segment *);
-static uint32_t dl_kernel_get_offset(struct dl_segment *);
+static void dlks_lock(struct dl_segment *);
+static void dlks_unlock(struct dl_segment *);
+static int dlks_insert_message(struct dl_segment *, struct dl_bbuf *);
+static int dlks_get_message_by_offset(struct dl_segment *, int,
+    struct dl_bbuf **);
+static uint32_t dlks_get_offset(struct dl_segment *);
+static int dlks_sync(struct dl_segment *);
+static int dlks_get_log(struct dl_segment *);
 
+/**
+ * Check the integrity of a KernelSegment instance.
+ *
+ * @param self KernelSegment instance.
+ */
 static inline void dl_kernel_segment_check_integrity(
     struct dl_kernel_segment *self)
 {
 
-	DL_ASSERT(self != NULL, ("Segment instance cannot be NULL."));
+	DL_ASSERT(self != NULL, ("KernelSegment instance cannot be NULL."));
+	DL_ASSERT(self->dlks_log != NULL, ("KernelSegment file cannot be NULL."));
 }
 
-static void
-dl_kernel_segment_delete(struct dl_segment *self)
+/**
+ * KernelSegment destructor.
+ *
+ * @param self KernelSegment instance.
+ */
+void
+dl_kernel_segment_delete(struct dl_kernel_segment *self)
 {
 	struct thread *td = curthread;
-	struct dl_kernel_segment *kseg = self->dls_kernel;
 
-	dl_kernel_segment_check_integrity(kseg);
+	dl_kernel_segment_check_integrity(self);
 
-	sx_destroy(&(self->dls_kernel->dls_lock));
-	fdrop(self->dls_kernel->_log, td);
+	mtx_destroy(&(self->dlks_lock));
+	/* Decrease the reference count on the file. */
+	fdrop(self->dlks_log, td);
 	dlog_free(self);
 }
 
+/**
+ * Static factory methof for constructing a KernelSegment from a SegmentDescription.
+ *
+ * @param self KernelSegment instance.
+ * @param seg_desc KernelSegment instance.
+ * @return 0 is successful, -1 otherwise
+ */
 int
-dl_kernel_segment_from_desc(struct dl_segment **self,
+dl_kernel_segment_from_desc(struct dl_kernel_segment **self,
     struct dl_segment_desc *seg_desc)
 {
 	struct thread *td = curthread;
 	cap_rights_t rights;
-	struct dl_segment *seg;
 	struct dl_kernel_segment *kseg;
 	struct vnode *vp;
 	int rc;
 
-	/* Initalise the super class. */
-	rc = dl_segment_new(&seg, seg_desc->dlsd_base_offset,
-	    seg_desc->dlsd_seg_size,
-	    dl_kernel_segment_insert_message,
-	    dl_kernel_segment_get_message_by_offset,
-	    dl_kernel_get_offset,
-	    dl_kernel_segment_lock,
-	    dl_kernel_segment_unlock,
-	    dl_kernel_segment_delete);
-	if (rc != 0) {
+	DL_ASSERT(self != NULL, ("Segment instance cannot be NULL"));	
+	DL_ASSERT(seg_desc != NULL, ("SegmentDesc instance cannot be NULL"));	
 
-		return -1;
-	}
-	
-	kseg = seg->dls_kernel = (struct dl_kernel_segment *) dlog_alloc(
+	kseg = (struct dl_kernel_segment *) dlog_alloc(
 	    sizeof(struct dl_kernel_segment));
-	DL_ASSERT(kseg != NULL, ("Failed allocating segment instance"));
-	DLOGTR0(PRIO_HIGH, "Zeroing segment instance");
+	DL_ASSERT(kseg != NULL, ("Failed allocating KernelSegment instance"));
+	if (kseg == NULL)
+		goto err_kseg_ctor;
+
 	bzero(kseg, sizeof(struct dl_kernel_segment));
 
-	kseg->offset = seg_desc->dlsd_offset;
+	/* Initalise the KernelSegment super class. */
+	rc = dl_segment_new(&kseg->dlks_segment,
+	    seg_desc->dlsd_log,
+	    seg_desc->dlsd_base_offset,
+	    seg_desc->dlsd_size,
+	    dlks_insert_message,
+	    dlks_get_message_by_offset,
+	    dlks_get_offset,
+	    dlks_lock,
+	    dlks_unlock,
+	    dlks_sync);
+	if (rc != 0) {
 
-	//kseg->ucred = td->td_ucred;
-	fget_write(td, seg_desc->dlsd_log,
-	    cap_rights_init(&rights, CAP_WRITE), &kseg->_log); 
+		DLOGTR0(PRIO_HIGH,
+		    "KernelSegment vnode is TODO.\n");
+		goto err_kseg_free;
+	}
+
+	/* Set the KernelSegment offset */
+	kseg->dlks_offset = seg_desc->dlsd_offset;
+
+	/* Verify write permission for the file descriptor */
+	rc = fget_write(td, seg_desc->dlsd_log,
+	    cap_rights_init(&rights, CAP_WRITE), &kseg->dlks_log); 
+	if (rc != 0) {
+
+		DLOGTR0(PRIO_HIGH,
+		    "Lacking write permission to log file descriptor.\n");
+		goto err_kseg_free;
+	}
 
 	/* Check that it is a regular file. */
-	if (kseg->_log->f_type != DTYPE_VNODE) {
+	if (kseg->dlks_log->f_type != DTYPE_VNODE) {
 
-		return -1;
+		DLOGTR0(PRIO_HIGH,
+		    "KernelSegment log file descriptor is not a regular file.\n");
+		goto err_kseg_free;
 	}
 
 	/* Check that the vnode is non-NULL */
-	vp = kseg->_log->f_vnode;
-	if (vp->v_type != VREG) {
+	vp = kseg->dlks_log->f_vnode;
+	if (vp != NULL && vp->v_type != VREG) {
 
-		return -1;
+		DLOGTR0(PRIO_HIGH,
+		    "KernelSegment vnode is NULL or not a regular file.\n");
+		goto err_kseg_free;
 	}
 
-	sx_init(&kseg->dls_lock, "segment mtx");
+	/* Check if the number of clients using the node and
+	 * the number of clients vetoing recyling of
+	 * the vnode are zero.
+	 */
+	if (vp->v_usecount == 0 && vp->v_holdcnt == 0) {
+
+		DLOGTR0(PRIO_HIGH,
+		    "KernelSegment vnode is TODO.\n");
+		goto err_kseg_free;
+	}
+
+	mtx_init(&kseg->dlks_lock, NULL, "KernelSegment", MTX_DEF);
 
 	dl_kernel_segment_check_integrity(kseg);
-	*self = seg;
+	*self = kseg;
+
 	return 0;
+
+err_kseg_free:
+	dlog_free(kseg);
+
+err_kseg_ctor:
+	DLOGTR0(PRIO_HIGH, "Failed allocating KernelSegment instance\n");
+
+	return -1;
 }
 
 static int
-dl_kernel_segment_insert_message(struct dl_segment *self,
-    struct dl_bbuf *buffer)
+dlks_insert_message(struct dl_segment *super, struct dl_bbuf *buffer)
 {
 	struct mount *mp;
 	struct thread *td = curthread;
 	struct uio u;
 	struct iovec log_bufs[1];
 	struct vnode *vp;
-	struct dl_kernel_segment *kseg = self->dls_kernel;
+	struct dl_kernel_segment *self = (struct dl_kernel_segment *) super;
 	int rc;
 
-	dl_kernel_segment_check_integrity(self->dls_kernel);
+	dl_kernel_segment_check_integrity(self);
 	DL_ASSERT(buffer != NULL,
 	    ("Buffer to insert into segment cannot be NULL."));
 
-	dl_kernel_segment_lock(self);
+	dlks_lock(super);
 
 	/* Update the log file. */
 	log_bufs[0].iov_base = dl_bbuf_data(buffer);
@@ -176,28 +233,48 @@ dl_kernel_segment_insert_message(struct dl_segment *self,
         u.uio_rw = UIO_WRITE;
         u.uio_td = td;
 
-	/* Check that the vnode is non-NULL */
-	vp = kseg->_log->f_vnode;
-	if (vp->v_type != VREG) {
+	/* Check that the vnode is non-NULL and is a regular file */
+	vp = self->dlks_log->f_vnode;
+	if (vp != NULL && vp->v_type != VREG) {
 
+		DLOGTR0(PRIO_HIGH,
+		    "KernelSegment vnode is NULL or not a regular file.\n");
 		return -1;
 	}
 
-	vn_start_write(vp, &mp, V_WAIT);
-	VOP_LOCK(vp, LK_EXCLUSIVE | LK_RETRY);
-	VOP_WRITE(vp, &u, IO_UNIT | IO_APPEND, self->dls_kernel->_log->f_cred);
-	VOP_UNLOCK(vp, 0);
+	/* Check if the number of clients using the node and
+	 * the number of clients vetoing recyling of
+	 * the vnode are zero.
+	 */
+	if (vp->v_usecount == 0 && vp->v_holdcnt == 0) {
+
+		DLOGTR0(PRIO_HIGH,
+		    "KernelSegment vnode is TODO.\n");
+		return -1;
+	}
+
+	/* Write to the vnode.
+	 * Assume that each operation is successfull as there is very little
+	 * error recovery that can be done should an individual operation fail.
+	 */
+	rc = vn_start_write(vp, &mp, V_WAIT);
+	rc |= VOP_LOCK(vp, LK_EXCLUSIVE | LK_RETRY);
+	rc |= VOP_WRITE(vp, &u, IO_UNIT | IO_APPEND, self->dlks_log->f_cred);
+	rc |= VOP_UNLOCK(vp, 0);
 	vn_finished_write(mp);
 
-	/* Update the offset. */
-	self->dls_kernel->offset++;
+	if (rc == 0) {
 
-	dl_kernel_segment_unlock(self);
-	return 0;
+		/* Update the offset. */
+		self->dlks_offset++;
+	}
+
+	dlks_unlock(super);
+	return rc;
 }
 
 static int
-dl_kernel_segment_get_message_by_offset(struct dl_segment *self, int offset,
+dlks_get_message_by_offset(struct dl_segment *super, int offset,
     struct dl_bbuf **msg_buf)
 {
 	/* Unimplemented. */
@@ -205,64 +282,66 @@ dl_kernel_segment_get_message_by_offset(struct dl_segment *self, int offset,
 }
 
 static void
-dl_kernel_segment_lock(struct dl_segment *self) __attribute((no_thread_safety_analysis))
+dlks_lock(struct dl_segment *super) __attribute((no_thread_safety_analysis))
 {
+	struct dl_kernel_segment *self = (struct dl_kernel_segment *) super;
 
-	dl_kernel_segment_check_integrity(self->dls_kernel);
-	sx_slock(&self->dls_kernel->dls_lock);
+	dl_kernel_segment_check_integrity(self);
+	mtx_lock(&self->dlks_lock);
 }
 
 static void
-dl_kernel_segment_unlock(struct dl_segment *self) __attribute((no_thread_safety_analysis))
+dlks_unlock(struct dl_segment *seg) __attribute((no_thread_safety_analysis))
 {
+	struct dl_kernel_segment *self = (struct dl_kernel_segment *) self;
 
-	dl_kernel_segment_check_integrity(self->dls_kernel);
-	sx_sunlock(&self->dls_kernel->dls_lock);
+	dl_kernel_segment_check_integrity(self);
+	mtx_unlock(&self->dlks_lock);
 }
 
 static uint32_t 
-dl_kernel_get_offset(struct dl_segment *self)
+dlks_get_offset(struct dl_segment *super)
 {
+	struct dl_kernel_segment *self = (struct dl_kernel_segment *) super;
 
-	dl_kernel_segment_check_integrity(self->dls_kernel);
-	return self->dls_kernel->offset;
+	dl_kernel_segment_check_integrity(self);
+	return self->dlks_offset;
 }
 
-struct file*
-dl_kernel_segment_get_log(struct dl_segment *self)
+/**
+ * Method for syncing the KernelSegment's vnode.
+ *
+ * @param self KernelSegment instance.
+ * @return 0 is success, otherwise an error code
+ */
+static int
+dlks_sync(struct dl_segment *super)
 {
-
-	dl_kernel_segment_check_integrity(self->dls_kernel);
-	return self->dls_kernel->_log;
-}
-
-int
-dl_kernel_segment_sync(struct dl_segment *self)
-{
-	struct dl_kernel_segment *kseg = self->dls_kernel;
+	struct dl_kernel_segment *self = (struct dl_kernel_segment *) super;
 	struct mount *mp;
 	struct vnode *vp;
 	int rc;
 
-	dl_kernel_segment_check_integrity(kseg);
+	dl_kernel_segment_check_integrity(self);
 
-	/* Check that the vnode is non-NULL */
-	vp = kseg->_log->f_vnode;
-	if (vp->v_type != VREG) {
+	/* Check that the vnode is non-NULL and is a regular file */
+	vp = self->dlks_log->f_vnode;
+	if (vp != NULL && vp->v_type != VREG) {
 
+		DLOGTR0(PRIO_HIGH,
+		    "KernelSegment vnode is NULL or not a regular file.\n");
 		return -1;
 	}
 
+	/* Sync the vnode.
+	 * Assume that each operation is successfull as there is very little
+	 * error recovery that can be done should an individual operation fail.
+	 */
 	rc = vn_start_write(vp, &mp, V_WAIT);
-	if (rc == 0) {
+	rc |= VOP_LOCK(vp, LK_EXCLUSIVE | LK_RETRY);
+	rc |= VOP_FSYNC(vp, MNT_WAIT, curthread);
+	rc |= VOP_UNLOCK(vp, 0);
+	vn_finished_write(mp);
 
-		VOP_LOCK(vp, LK_EXCLUSIVE | LK_RETRY);
-		VOP_FSYNC(vp, MNT_WAIT, curthread);
-		VOP_UNLOCK(vp, 0);
-		vn_finished_write(mp);
-		return 0;
-	}
-
-	return -1;
+	return rc;
 }
-
