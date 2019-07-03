@@ -64,11 +64,11 @@ ATF_TC_BODY(test1, tc)
 	sbuf_cpy(topic, "test-topic");
 	sbuf_finish(topic);
 
-	rc = dl_fetch_request_new(&request, 0, client_id, topic, 0, 0, 0, 0);
+	rc = dl_fetch_request_new(&request, 0, client_id, 0, 0, topic, 0, 0);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(request != NULL);
 	
-	dl_request_delete(request);
+	dl_fetch_request_delete(request);
 	sbuf_delete(client_id);
 	sbuf_delete(topic);
 }
@@ -87,11 +87,11 @@ ATF_TC_BODY(test2, tc)
 	sbuf_cpy(topic, "test-topic");
 	sbuf_finish(topic);
 
-	rc = dl_fetch_request_new(&request, 0, NULL, topic, 0, 0, 0, 0);
+	rc = dl_fetch_request_new(&request, 0, NULL, 0, 0, topic, 0, 0);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(request != NULL);
 	
-	dl_request_delete(request);
+	dl_fetch_request_delete(request);
 	sbuf_delete(topic);
 }
 
@@ -113,7 +113,7 @@ ATF_TC_BODY(test3, tc)
 	sbuf_finish(topic);
 
 	atf_tc_expect_signal(6, "NULL value passed to request.");
-	rc = dl_fetch_request_new(NULL, 0, client_id, topic, 0, 0, 0, 0);
+	rc = dl_fetch_request_new(NULL, 0, client_id, 0, 0, topic, 0, 0);
 	
 	sbuf_delete(client_id);
 	sbuf_delete(topic);
@@ -134,19 +134,19 @@ ATF_TC_BODY(test4, tc)
 	sbuf_finish(client_id);
 
 	atf_tc_expect_signal(6, "NULL value passed to topic.");
-	rc = dl_fetch_request_new(&request, 0, client_id, NULL, 0, 0, 0, 0);
+	rc = dl_fetch_request_new(&request, 0, client_id, 0, 0, NULL, 0, 0);
 	
 	sbuf_delete(client_id);
 }
 
 /* Test 5 
- * dl_request_delete() - invalid params - request NULL. 
+ * dl_fetch_request_delete() - invalid params - request NULL. 
  */
 ATF_TC_WITHOUT_HEAD(test5);
 ATF_TC_BODY(test5, tc)
 {
 	atf_tc_expect_signal(6, "NULL value passed to request.");
-	dl_request_delete(NULL);
+	dl_fetch_request_delete(NULL);
 }
 
 /* Test 6
@@ -168,7 +168,7 @@ ATF_TC_BODY(test6, tc)
 	sbuf_cpy(topic, "test-topic");
 	sbuf_finish(topic);
 
-	rc = dl_fetch_request_new(&request, 0, client_id, topic, 0, 0, 0, 0);
+	rc = dl_fetch_request_new(&request, 0, client_id, 0, 0, topic, 0, 0);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(request != NULL);
 
@@ -176,7 +176,7 @@ ATF_TC_BODY(test6, tc)
 	ATF_REQUIRE(rc == 0);
 	
 	dl_bbuf_delete(buffer);
-	dl_request_delete(request);
+	dl_fetch_request_delete(request);
 	sbuf_delete(client_id);
 	sbuf_delete(topic);
 }
@@ -195,7 +195,7 @@ ATF_TC_BODY(test7, tc)
 	ATF_REQUIRE(buffer != NULL);
 
 	atf_tc_expect_signal(6, "NULL value passed to request.");
-	dl_fetch_request_encode(NULL, buffer);
+	dl_request_encode(NULL, buffer);
 
 	dl_bbuf_delete(buffer);
 }
@@ -219,14 +219,14 @@ ATF_TC_BODY(test8, tc)
 	sbuf_cpy(topic, "test-topic");
 	sbuf_finish(topic);
 
-	rc = dl_fetch_request_new(&request, 0, client_id, topic, 0, 0, 0, 0);
+	rc = dl_fetch_request_new(&request, 0, client_id, 0, 0, topic, 0, 0);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(request != NULL);
 
 	atf_tc_expect_signal(6, "NULL value passed to buffer.");
 	dl_request_encode(request, NULL);
 	
-	dl_request_delete(request);
+	dl_fetch_request_delete(request);
 	sbuf_delete(topic);
 	sbuf_delete(client_id);
 }
@@ -250,7 +250,7 @@ ATF_TC_BODY(test9, tc)
 	sbuf_cpy(topic, "test-topic");
 	sbuf_finish(topic);
 
-	rc = dl_fetch_request_new(&request, 0, client_id, topic, 0, 0, 0, 0);
+	rc = dl_fetch_request_new(&request, 0, client_id, 0, 0, topic, 0, 0);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(request != NULL);
 
@@ -258,13 +258,13 @@ ATF_TC_BODY(test9, tc)
 	ATF_REQUIRE(rc == 0);
 
 	dl_bbuf_flip(buffer);	
-	rc = dl_request_decode(&decoded_request, buffer);
+	rc = dl_fetch_request_decode(&decoded_request, buffer);
 	ATF_REQUIRE(rc == 0);
 	ATF_REQUIRE(decoded_request != NULL);
 	
-	dl_request_delete(decoded_request);
+	dl_fetch_request_delete(decoded_request);
 	dl_bbuf_delete(buffer);
-	dl_request_delete(request);
+	dl_fetch_request_delete(request);
 	sbuf_delete(client_id);
 	sbuf_delete(topic);
 }
