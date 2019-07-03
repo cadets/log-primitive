@@ -56,6 +56,8 @@ static void dl_metadata_request_tostring(void *);
 static int dl_metadata_request_encode(void *, struct dl_bbuf **);
 static int dl_metadata_request_encode_into(void *, struct dl_bbuf *);
 
+extern const void *DL_REQUEST;
+
 static const struct dl_request_class TYPE = {
 	{
 		sizeof(struct dl_metadata_request),
@@ -67,9 +69,7 @@ static const struct dl_request_class TYPE = {
 	dl_metadata_request_encode_into
 };
 
-const void *DL_METADATA_REQUEST = &TYPE;
-
-extern const void *DL_REQUEST;
+static const void *DL_METADATA_REQUEST = &TYPE;
 
 #define DL_ENCODE_TOPIC_NAME(target, source) dl_encode_string(target, source)
 #define DL_ENCODE_AUTO_CREATE(target, source) dl_bbuf_put_int8(target, source)

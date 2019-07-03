@@ -87,7 +87,7 @@ static const struct dl_request_class TYPE = {
 	dl_produce_request_encode_into
 };
 
-const void *DL_PRODUCE_REQUEST = &TYPE;
+static const void *DL_PRODUCE_REQUEST = &TYPE;
 
 static int
 dl_produce_request_ctor(void *super, va_list *ap)
