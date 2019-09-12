@@ -34,11 +34,13 @@
  *
  */
 
+#ifndef _KERNEL
+#include <stdlib.h>
+#endif
+
 #include "dl_assert.h"
 #include "dl_memory.h"
 #include "dl_new.h"
-
-#include <stdio.h>
 
 int
 dl_new(void **self, const void *_class, ...)
@@ -75,6 +77,7 @@ dl_delete(void *self)
 	
 	if (self != NULL && *class != NULL && (*class)->dl_dtor != NULL)
 		(* class)->dl_dtor(self);
+
 	dlog_free(self);
 }
 
