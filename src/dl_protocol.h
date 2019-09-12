@@ -50,7 +50,6 @@
 // Topic names should have a maximum length
 // so that when persisted to the filesystem they
 // don't exceed the maximum allowable path length
-#define DL_MAX_TOPIC_NAME_LEN 249
 #define DL_MAX_CLIENT_ID_LEN 249
 #define DL_MTU 102400
 
@@ -115,6 +114,7 @@ enum dl_api_key {
 	DL_PRODUCE_API_KEY = 0,
 	DL_FETCH_API_KEY = 1,
 	DL_OFFSET_API_KEY = 2,
+	DL_METADATA_API_KEY = 3,
 };
 typedef enum dl_api_key dl_api_key;
 
