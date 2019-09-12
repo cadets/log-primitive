@@ -116,7 +116,9 @@ dl_produce_request_ctor(void *super, va_list *ap)
 	if (req_topic == NULL)
 		goto err_request_ctor;
 
-	req_topic->dlprt_name = va_arg(*ap, struct sbuf *);
+	req_topic->dlprt_name = sbuf_new_auto();
+	sbuf_cat(req_topic->dlprt_name, va_arg(*ap, char *));
+	sbuf_finish(req_topic->dlprt_name);
 	DL_ASSERT(req_topic->dlprt_name != NULL,
 	    ("Topic name to produce to cannot be NULL"));
 
@@ -245,7 +247,7 @@ dl_produce_request_encode_into(void * _self, struct dl_bbuf *target)
 int
 dl_produce_request_new(struct dl_produce_request **self, const int32_t correlation_id,
     struct sbuf *client, dl_required_acks required_acks, int32_t timeout,
-    struct sbuf *topic_name, struct dl_message_set *message_set)
+    char *topic_name, struct dl_message_set *message_set)
 {
 
 	return dl_new((void **) self, DL_PRODUCE_REQUEST, DL_PRODUCE_API_KEY,
@@ -256,7 +258,7 @@ dl_produce_request_new(struct dl_produce_request **self, const int32_t correlati
 int
 dl_produce_request_new_nomsg(struct dl_produce_request **self,
     const int32_t correlation_id, struct sbuf *client, dl_required_acks required_acks,
-    int32_t timeout, struct sbuf *topic_name)
+    int32_t timeout, char *topic_name)
 {
 
 	return dl_new((void **) self, DL_PRODUCE_REQUEST, DL_PRODUCE_API_KEY,
