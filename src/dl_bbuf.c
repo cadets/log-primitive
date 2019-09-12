@@ -658,6 +658,43 @@ dl_bbuf_put_int16(struct dl_bbuf *self, int16_t value)
 }
 
 int
+dl_bbuf_put_int16_as_varint(struct dl_bbuf *self, int16_t value)
+{
+
+	dl_bbuf_assert_integrity(__func__, self);
+
+	/* zig-zag encode the signed value */
+	int32_t zigzag_value = (value << 1) ^ (value >> 15);		
+
+	return dl_bbuf_put_uint16_as_varint(self, zigzag_value);
+}
+
+int
+dl_bbuf_put_uint16_as_varint(struct dl_bbuf *self, uint16_t value)
+{
+	size_t packed_len = DLB_VARINT_SIZE_MAP[15 - clz(value)];
+	uint8_t packed_value[3];
+
+	dl_bbuf_assert_integrity(__func__, self);
+
+	/* varint encode the value. */
+	size_t size = 0;
+	uint32_t temp = value;
+	if (temp & 0xFF80U) {
+		packed_value[size++] = temp | 0x80;
+		temp >>= 7;
+		if (temp & 0xFF80U) {
+			packed_value[size++] = temp | 0x80;
+			temp >>= 7;
+		}
+	}
+	packed_value[size++] = temp;
+
+	/* Copy the varint encoded value into the bbuf */
+	return dl_bbuf_bcat(self, packed_value, packed_len);
+}
+
+int
 dl_bbuf_put_int32_at(struct dl_bbuf *self, int32_t value, size_t pos)
 {
 
@@ -704,18 +741,26 @@ dl_bbuf_put_int32(struct dl_bbuf *self, int32_t value)
 int
 dl_bbuf_put_int32_as_varint(struct dl_bbuf *self, int32_t value)
 {
-	size_t packed_len;
-	uint8_t packed_value[5];
 
 	dl_bbuf_assert_integrity(__func__, self);
 
 	/* zig-zag encode the signed value */
 	int32_t zigzag_value = (value << 1) ^ (value >> 31);		
 
-	packed_len = DLB_VARINT_SIZE_MAP[31 - clz(zigzag_value)];
+	return dl_bbuf_put_uint32_as_varint(self, zigzag_value);
+}
+
+int
+dl_bbuf_put_uint32_as_varint(struct dl_bbuf *self, uint32_t value)
+{
+	size_t packed_len = DLB_VARINT_SIZE_MAP[31 - clz(value)];
+	uint8_t packed_value[5];
+
+	dl_bbuf_assert_integrity(__func__, self);
 
 	/* varint encode the value. */
-	size_t size = 0; uint32_t temp = zigzag_value;
+	size_t size = 0;
+	uint32_t temp = value;
 	if (temp & 0xFFFFFF80U) {
 		packed_value[size++] = temp | 0x80;
 		temp >>= 7;
@@ -734,7 +779,7 @@ dl_bbuf_put_int32_as_varint(struct dl_bbuf *self, int32_t value)
 	}
 	packed_value[size++] = temp;
 
-	/* Copy the varint encoded value into ther bbuf */
+	/* Copy the varint encoded value into the bbuf */
 	return dl_bbuf_bcat(self, packed_value, packed_len);
 }
 
@@ -789,4 +834,66 @@ dl_bbuf_put_int64(struct dl_bbuf *self, int64_t value)
 	}
 	return -1;
 }
+
+int
+dl_bbuf_put_int64_as_varint(struct dl_bbuf *self, int64_t value)
+{
+
+	dl_bbuf_assert_integrity(__func__, self);
+
+	/* zig-zag encode the signed value */
+	int32_t zigzag_value = (value << 1) ^ (value >> 63);		
+
+	return dl_bbuf_put_uint32_as_varint(self, zigzag_value);
+}
+
+int
+dl_bbuf_put_uint64_as_varint(struct dl_bbuf *self, uint64_t value)
+{
+	size_t packed_len = DLB_VARINT_SIZE_MAP[63 - clz(value)];
+	uint8_t packed_value[5];
+
+	dl_bbuf_assert_integrity(__func__, self);
+
+	/* varint encode the value. */
+	size_t size = 0;
+	uint32_t temp = value;
+	if (temp & 0xFFFFFF80U) {
+		packed_value[size++] = temp | 0x80;
+		temp >>= 7;
+		if (temp & 0xFFFFFF80U) {
+			packed_value[size++] = temp | 0x80;
+			temp >>= 7;
+			if (temp & 0xFFFFFF80U) {
+				packed_value[size++] = temp | 0x80;
+				temp >>= 7;
+				if (temp & 0xFFFFFF80U) {
+					packed_value[size++] = temp | 0x80;
+					temp >>= 7;
+					if (temp & 0xFFFFFF80U) {
+						packed_value[size++] = temp | 0x80;
+						temp >>= 7;
+						if (temp & 0xFFFFFF80U) {
+							packed_value[size++] = temp | 0x80;
+							temp >>= 7;
+							if (temp & 0xFFFFFF80U) {
+								packed_value[size++] = temp | 0x80;
+								temp >>= 7;
+								if (temp & 0xFFFFFF80U) {
+									packed_value[size++] = temp | 0x80;
+									temp >>= 7;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	packed_value[size++] = temp;
+
+	/* Copy the varint encoded value into the bbuf */
+	return dl_bbuf_bcat(self, packed_value, packed_len);
+}
+
 
