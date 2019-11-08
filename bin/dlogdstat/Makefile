@@ -41,6 +41,7 @@ SRCS.dlogdstat = dlogdstat.c dl_producer_stats.c
 MAN.dlogdstat =
 
 LDADD+=-lncurses
+LDADD+=-lnv
 LDADD+=-ltinfo
 LDADD+=-lsbuf
 

@@ -34,6 +34,7 @@
  *
  */
 
+#include <sys/nv.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/sbuf.h>
@@ -47,6 +48,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "dl_config.h"
 #include "dl_memory.h"
 #include "dl_producer_stats.h"
 
@@ -56,6 +58,10 @@ static char const * const DLPS_STATE_NAME[] =
 
 const dlog_malloc_func dlog_alloc = malloc;
 const dlog_free_func dlog_free = free;
+
+/* Global singleton dlogd configuration */
+extern nvlist_t *dlogd_props;
+nvlist_t *dlogd_props;
 
 static char *g_pname;
 static bool stop  = false;
@@ -152,7 +158,6 @@ dlogdstat_update(int sig __attribute__((unused)))
 int
 main(int argc, char **argv)
 {
-	struct sbuf * t;
 	char *topic = NULL, *log_path = NULL;
 	static struct option options[] = {
 		{"log_path", required_argument, NULL, 'p'},
@@ -191,11 +196,13 @@ main(int argc, char **argv)
 	signal(SIGINT, dlogdstat_stop);
 	signal(SIGINFO, dlogdstat_update);
 
+	/* Create a new nvlist to store the dlogdstat configuration. */
+	dlogd_props = nvlist_create(0);
+
+	nvlist_add_string(dlogd_props, DL_CONF_LOG_PATH, log_path);
+
 	/* Open a memory mapped file for the Producer stats. */
-	t = sbuf_new_auto();
-	sbuf_cat(t, topic);
-	sbuf_finish(t);
-	if (dl_producer_stats_new(&stats, log_path, t))
+	if (dl_producer_stats_new(&stats, topic))
 		goto err_dlogdstat;
 
 	/* NCurses scren initialization. */
@@ -215,17 +222,11 @@ main(int argc, char **argv)
 	/* Close and unmap the stats file. */
 	dl_producer_stats_delete(stats);
 
-	/* Free the sbuf containing the topic name. */
-	sbuf_delete(t);
-
 	return EXIT_SUCCESS;
 
 err_dlogdstat:	
 	/* Restore terminal */
 	endwin();
 	
-	/* Free the sbuf containing the topic name. */
-	sbuf_delete(t);
-
 	return EXIT_FAILURE;
 }
