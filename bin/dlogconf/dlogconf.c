@@ -66,7 +66,7 @@ static char const * const DLOG_DEV = "/dev/dlog";
 static char const* dlog_topics_name;
 static int debug_lvl = 0;
 
-static int dlog_topics_add(int, char *, char *);
+static int dlog_topics_add(int, char *);
 static int dlog_topics_delete(int, char *);
 static int dlog_topics_get(int);
 
@@ -80,15 +80,18 @@ main(int argc, char *argv[])
 		{"debug", no_argument, NULL, 'X'},
 		{0, 0, 0, 0}
 	};
-	const char *add_opts[] =
+	/* Work around for incorrect getsubopt parameter types. */
+	char add_opts_topic[] = "topic";
+	char * const add_opts[] =
 	{
-		[0] = "topic",
-		[1] = "path",
+		[0] = add_opts_topic,
 		[2] = NULL
 	};
-	const char *del_opts[] =
+	/* Work around for incorrect getsubopt parameter types. */
+	char del_opts_topic[] = "topic";
+	char * const del_opts[] =
 	{
-		[0] = "topic",
+		[0] = del_opts_topic,
 		[1] = NULL
 	};
 	int c, dlog, rc;
@@ -102,7 +105,6 @@ main(int argc, char *argv[])
 	while ((c = getopt_long(argc, argv, "ad:gs:X", options, NULL)) != -1) {
 		switch(c) {
 		case 'X':
-			debug_lvl++;
 			break;
 		}
 	}
@@ -117,33 +119,32 @@ main(int argc, char *argv[])
 	}
 	
 	/* Parse the configuration file. */
-	rc = dl_config_new("/etc/dlogd/dlogd.cfg", debug_lvl);
+	char config_file_default[] = "/etc/dlogd/dlogd.cfg";
+
+	rc = dl_config_new(config_file_default, debug_lvl);
 
 	/* Parse the rest of the command line arguments */
 	optind = 1;
 	while ((c = getopt_long(argc, argv, "a:d:gs:X", options, NULL)) != -1) {
 		switch(c) {
 		case 'a': {
-			char *subopts = optarg, *value, *topic, *path;
+			char *subopts = optarg, *value, *topic = NULL;
 
 			while (*subopts != '\0') {
 				switch (getsubopt(&subopts, add_opts, &value)) {
 				case 0:
 					topic = value;
 					break;
-				case 1:
-					path = value;
-					break;
 				}
 			}
 
-			if (topic != NULL && path != NULL) {
+			if (topic != NULL) {
 				if (debug_lvl > 0)
 					DLOGTR1(PRIO_LOW, "Adding topic: %s\n", topic);
 
-				dlog_topics_add(dlog, topic, path);
+				dlog_topics_add(dlog, topic);
 			} else {
-				errx(EXIT_FAILURE, "Usage: %s -d topic=topic-name\n",
+				errx(EXIT_FAILURE, "Usage: %s -a topic=topic-name\n",
 				    dlog_topics_name);
 			}
 			break;
@@ -200,7 +201,7 @@ main(int argc, char *argv[])
 }
 
 static int 
-dlog_topics_add(int dlog, char *name, char *path)
+dlog_topics_add(int dlog, char *name)
 {
 	struct dl_topic_desc *desc;
 	size_t packed_len;
@@ -220,7 +221,6 @@ dlog_topics_add(int dlog, char *name, char *path)
 	desc->dltd_active_seg.dlsd_offset = 0;
 	desc->dltd_active_seg.dlsd_base_offset = 0;
 
-	DLOGTR1(PRIO_LOW, "Adding topic: %s\n", desc->dltd_name);
 	rc = ioctl(dlog, DLOGIOC_ADDTOPICPART, &desc);	
 	if (rc != 0) {
 
@@ -272,7 +272,7 @@ dlog_topics_get(int dlog)
 	if (rc == 0) {
 		rc = ioctl(dlog, DLOGIOC_GETTOPICS, &topics_desc);	
 		if (rc == 0) {
-			for (int i = 0; i < topics_desc->dltsd_ntopics; i++) {
+			for (size_t i = 0; i < topics_desc->dltsd_ntopics; i++) {
 			
 				DLOGTR1(PRIO_LOW, "Topic name = %s\n",
 				    topics_desc->dltsd_topic_desc[i].dltd_name);
