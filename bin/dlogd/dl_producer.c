@@ -161,7 +161,7 @@ is_log_rotated(struct dl_producer *self)
 
 	/* Get the name of the topic produce to. */	
 	topic = dl_topic_get_name(self->dlp_topic);
-	DL_ASSERT(topic_name != NULL, ("Topic's name cannot be NULL"));
+	DL_ASSERT(topic != NULL, ("Topic's name cannot be NULL"));
 
 	/* Get the topic's active segment. */
 	seg = dl_topic_get_active_segment(self->dlp_topic);
@@ -516,7 +516,6 @@ dlp_enqueue_thread(void *vargp)
 		uint64_t offset_val;
 		char *path;
 		char name[MAXPATHLEN];
-		int rc;
 
 		/* Construct filepath for new log segment */
 		offset_val = dl_segment_get_offset(seg);
@@ -1159,7 +1158,7 @@ dl_producer_response(struct dl_producer *self, struct dl_bbuf *buffer)
 	return 0;
 }
 void
-dl_producer_produce(struct dl_producer const * const self, uint32_t cnt)
+dl_producer_produce(struct dl_producer * const self, uint32_t cnt)
 {
 
 	assert_integrity(self);
@@ -1183,7 +1182,7 @@ dl_producer_produce(struct dl_producer const * const self, uint32_t cnt)
 		if (self->dlp_debug_level > 1)
 			DLOGTR0(PRIO_LOW, "Ignoring event = produce()\n");
 
-		((struct dl_producer *) self)->dlp_produce_cnt += cnt;
+		self->dlp_produce_cnt += cnt;
 		break;
 	case DLP_INITIAL: /* CANNOT HAPPEN */
 		/* FALLTHROUGH */

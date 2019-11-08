@@ -55,7 +55,7 @@ extern struct dl_producer_stats * dl_producer_get_stats(struct dl_producer *);
 extern struct dl_topic * dl_producer_get_topic(struct dl_producer *); 
 extern int dl_producer_response(struct dl_producer *, struct dl_bbuf *);
 
-extern void dl_producer_produce(struct dl_producer const * const, uint32_t);
+extern void dl_producer_produce(struct dl_producer * const, uint32_t);
 extern void dl_producer_up(struct dl_producer const * const);
 extern void dl_producer_down(struct dl_producer const * const);
 extern void dl_producer_syncd(struct dl_producer const * const);
