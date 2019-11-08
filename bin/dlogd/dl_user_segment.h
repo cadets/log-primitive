@@ -45,11 +45,9 @@
 struct dl_user_segment;
 
 extern int dl_user_segment_new(struct dl_user_segment **,
-    uint64_t, long int, char *, char *);
+    uint64_t, char *, char *);
 extern int dl_user_segment_new_default(struct dl_user_segment **,
     char *);
-extern int dl_user_segment_new_default_sized(struct dl_user_segment **,
-    uint32_t, char *);
 extern int dl_user_segment_new_default_base(struct dl_user_segment **,
     uint64_t, char *);
 extern void dl_user_segment_delete(struct dl_user_segment *);

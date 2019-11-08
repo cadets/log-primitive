@@ -70,7 +70,6 @@
 #include "dl_utils.h"
 
 static char const * const DL_DEFAULT_PARTITION = "0";
-static const uint32_t DL_DEFAULT_SEGMENT_SIZE = 1024*1024;
 static const uint64_t DL_DEFAULT_BASE = 0;
 
 extern const void *DL_SEGMENT;
@@ -142,7 +141,6 @@ log_handler(void *instance, int fd __attribute((unused)),
 {
 	struct dl_user_segment const * const self = instance;
 	struct kevent events[2];
-	off_t log_end;
 	int nevents = sizeof(events)/sizeof(struct kevent);
 	int rc;
 
@@ -160,8 +158,7 @@ log_handler(void *instance, int fd __attribute((unused)),
 			    events[i].fflags & NOTE_WRITE) {
 
 				/* Fire the update() event. */
-				log_end = lseek(self->dlus_log, 0, SEEK_END);
-				dl_index_update(self->dlus_idx, log_end);
+				dl_index_update(self->dlus_idx);
 			}
 			   
 		        /*	
@@ -394,15 +391,6 @@ dl_user_segment_new_default(struct dl_user_segment **self,
 {
 
 	return dl_user_segment_new(self, DL_DEFAULT_BASE,
-	    DL_DEFAULT_SEGMENT_SIZE, topic, DL_DEFAULT_PARTITION);
-}
-
-int
-dl_user_segment_new_default_sized(struct dl_user_segment **self,
-    uint32_t size, char *topic)
-{
-
-	return dl_user_segment_new(self, DL_DEFAULT_BASE, size,
 	    topic, DL_DEFAULT_PARTITION);
 }
 
@@ -412,13 +400,12 @@ dl_user_segment_new_default_base(struct dl_user_segment **self,
 {
 
 	return dl_user_segment_new(self, base_offset,
-	    DL_DEFAULT_SEGMENT_SIZE, topic, DL_DEFAULT_PARTITION);
+	    topic, DL_DEFAULT_PARTITION);
 }
 
 int
 dl_user_segment_new(struct dl_user_segment **self,
-    uint64_t base_offset, long int length, char *topic,
-    char *partition_name)
+    uint64_t base_offset, char *topic, char *partition_name)
 {
 
 	DL_ASSERT(self != NULL, ("Segment instance cannot be NULL"));
