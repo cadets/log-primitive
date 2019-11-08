@@ -476,7 +476,7 @@ dl_index_new(struct dl_index **self, struct dl_user_segment *useg,
 	} else {
 		rc = dl_index_lookup_by_poffset(idx,
 		    (idx_end - DL_INDEX_RECORD_SIZE), &record);
-		if (rc != 0) {
+		if (rc <= 0) {
 
 			DLOGTR1(PRIO_HIGH,
 			    "Failed to read from index file %d\n", errno);
@@ -596,7 +596,7 @@ dl_index_updated(struct dl_index const * const self)
 }
 
 void
-dl_index_update(struct dl_index const * const self, off_t log_end)
+dl_index_update(struct dl_index const * const self)
 {
 
 	assert_integrity(self);

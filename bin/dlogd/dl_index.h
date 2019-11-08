@@ -55,7 +55,7 @@ extern int dl_index_new(struct dl_index **, struct dl_user_segment *, char *, ch
 extern void dl_index_delete(struct dl_index *);
 
 extern void dl_index_updated(struct dl_index const * const);
-extern void dl_index_update(struct dl_index const * const, off_t);
+extern void dl_index_update(struct dl_index const * const);
 extern void dl_index_error(struct dl_index const * const);
 
 extern int dl_index_lookup(struct dl_index *, uint64_t, struct dl_index_record *); 
