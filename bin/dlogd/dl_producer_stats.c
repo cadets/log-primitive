@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2019 (Graeme Jenkinson)
+ * Copyright (c) 2019-2020 (Graeme Jenkinson)
  * All rights reserved.
  *
  * This software was developed by BAE Systems, the University of Cambridge
@@ -34,10 +34,11 @@
  *
  */
 
-#include <sys/dnv.h>
 #include <sys/types.h>
-#include <machine/atomic.h>
+#include <sys/dnv.h>
 #include <sys/mman.h>
+#include <sys/param.h>
+#include <machine/atomic.h>
 
 #include <errno.h>
 #include <fcntl.h>
@@ -83,43 +84,62 @@ struct dl_producer_stats {
 
 extern nvlist_t *dlogd_props;
 
+static char const * const PRODUCER_STATS_FMT = "%s/%s/stats";
+static const int PRODUCER_STAT_PERMS = 0600;
+
 static inline void
 check_integrity(struct dl_producer_stats const * const self)
 {
 
-	DL_ASSERT(self != NULL, ("ProducerStats instance cannot be NULL."));
+	if (self == NULL) {
+		
+		DL_ASSERT(true, ("ProducerStats instance cannot be NULL."));
+	}
 }
 
 int
-dl_producer_stats_new(struct dl_producer_stats **self,
+dl_producer_stats_new(struct dl_producer_stats const **self,
     char *topic_name)
 {
 	struct dl_producer_stats *stats;
-	struct sbuf *stats_path;
+	struct sbuf stats_path;
 	const char *path;
+	char name[MAXPATHLEN];
 
+	/* Vreify the method's preconditions */
 	DL_ASSERT(self != NULL, ("ProducerStats instance cannot be NULL."));
 
+	/* Allocate the ProducerStats instance. */
 	stats = (struct dl_producer_stats *) dlog_alloc(
 	    sizeof(struct dl_producer_stats));
+	DL_ASSERT(stats != NULL, ("Failed instantiating ProducerStats instance"));
+	if (stats == NULL) {
+
+		goto err_producer_stats;
+	}
 
 	/* Open a memory mapped file for the Producer stats. */
 	path = dnvlist_get_string(dlogd_props,
 	    DL_CONF_LOG_PATH, DL_DEFAULT_LOG_PATH);
+	DL_ASSERT(path != NULL, ("ProducerStats path cannot be NULL"));
 
-	stats_path = sbuf_new_auto();
-	sbuf_printf(stats_path, "%s/%s/stats", path, topic_name);
-	sbuf_finish(stats_path);
-	stats->dlps_fd = open(sbuf_data(stats_path),
-	    O_RDWR | O_APPEND | O_CREAT, 0666);
+	(void) sbuf_new(&stats_path, name, MAXPATHLEN, SBUF_FIXEDLEN);
+	sbuf_printf(&stats_path, PRODUCER_STATS_FMT, path, topic_name);
+	sbuf_finish(&stats_path);
+	if (sbuf_error(&stats_path) != 0) {
+
+		sbuf_delete(&stats_path);
+		goto err_producer_stats_free;
+	}
+	sbuf_delete(&stats_path);
+
+	stats->dlps_fd = open(name, O_RDWR | O_APPEND | O_CREAT, PRODUCER_STAT_PERMS);
 	if (stats->dlps_fd == -1) {
 
 		DLOGTR1(PRIO_HIGH,
-		    "Failed opening ProducerStats file %d.\n", errno);
-		sbuf_delete(stats_path);
+		    "Failed opening ProducerStats file %d\n", errno);
 		goto err_producer_stats;
 	}
-	sbuf_delete(stats_path);
 	ftruncate(stats->dlps_fd, sizeof(struct dl_producer_stats));
 
 	stats->dlps_vals = (struct dl_producer_stats_vals *) mmap(
@@ -128,13 +148,21 @@ dl_producer_stats_new(struct dl_producer_stats **self,
 	if (stats->dlps_vals == NULL)  {
 
 		DLOGTR1(PRIO_HIGH,
-		    "Failed mapping ProducerStats file %d.\n", errno);
+		    "Failed mapping ProducerStats file %d\n", errno);
 		goto err_producer_stats;
 	}
+	
+	strncpy(stats->dlps_vals->dlps_topic_name, topic_name,
+	   sizeof(stats->dlps_vals->dlps_topic_name)); 
 
 	*self = stats;
+
+	/* Verify the method's postconditions */
 	check_integrity(*self);
 	return 0;
+
+err_producer_stats_free:
+	dlog_free(stats);
 
 err_producer_stats:
 	DLOGTR0(PRIO_HIGH, "Failed instantiating ProducerStats instance\n");
@@ -144,7 +172,7 @@ err_producer_stats:
 }
 
 void
-dl_producer_stats_delete(struct dl_producer_stats *self)
+dl_producer_stats_delete(struct dl_producer_stats const *self)
 {
 
 	check_integrity(self);
@@ -156,7 +184,7 @@ dl_producer_stats_delete(struct dl_producer_stats *self)
 }
 
 void
-dlps_set_rtt(struct dl_producer_stats *self, int32_t rtt)
+dlps_set_rtt(struct dl_producer_stats const *self, const int32_t rtt)
 {
 
 	check_integrity(self);
@@ -164,7 +192,7 @@ dlps_set_rtt(struct dl_producer_stats *self, int32_t rtt)
 }
 
 void
-dlps_set_received_cid(struct dl_producer_stats *self, int32_t cid)
+dlps_set_received_cid(struct dl_producer_stats const *self, const int32_t cid)
 {
 
 	check_integrity(self);
@@ -172,7 +200,7 @@ dlps_set_received_cid(struct dl_producer_stats *self, int32_t cid)
 }
 
 void
-dlps_set_received_error(struct dl_producer_stats *self, bool err)
+dlps_set_received_error(struct dl_producer_stats const *self, const bool err)
 {
 
 	check_integrity(self);
@@ -180,7 +208,7 @@ dlps_set_received_error(struct dl_producer_stats *self, bool err)
 }
 
 void
-dlps_set_received_timestamp(struct dl_producer_stats *self)
+dlps_set_received_timestamp(struct dl_producer_stats const *self)
 {
 
 	check_integrity(self);
@@ -188,7 +216,7 @@ dlps_set_received_timestamp(struct dl_producer_stats *self)
 }
 
 void
-dlps_set_sent_cid(struct dl_producer_stats *self, int32_t cid)
+dlps_set_sent_cid(struct dl_producer_stats const *self, const int32_t cid)
 {
 
 	check_integrity(self);
@@ -196,7 +224,7 @@ dlps_set_sent_cid(struct dl_producer_stats *self, int32_t cid)
 }
 
 void
-dlps_set_sent_error(struct dl_producer_stats *self, bool err)
+dlps_set_sent_error(struct dl_producer_stats const *self, const bool err)
 {
 
 	check_integrity(self);
@@ -204,7 +232,7 @@ dlps_set_sent_error(struct dl_producer_stats *self, bool err)
 }
 
 void
-dlps_set_sent_timestamp(struct dl_producer_stats *self)
+dlps_set_sent_timestamp(struct dl_producer_stats const *self)
 {
 
 	check_integrity(self);
@@ -212,25 +240,15 @@ dlps_set_sent_timestamp(struct dl_producer_stats *self)
 }
 
 void
-dlps_set_state(struct dl_producer_stats *self, int32_t state)
+dlps_set_state(struct dl_producer_stats const *self, const int32_t state)
 {
 
 	check_integrity(self);
 	self->dlps_vals->dlps_state = state;
 }
 
-/* iTODO: In constructor */
 void
-dlps_set_topic_name(struct dl_producer_stats *self, char *topic_name)
-{
-
-	check_integrity(self);
-	strncpy(self->dlps_vals->dlps_topic_name, topic_name,
-	    sizeof(self->dlps_vals->dlps_topic_name)); 
-}
-
-void
-dlps_set_resend(struct dl_producer_stats *self, bool resend)
+dlps_set_resend(struct dl_producer_stats const *self, const bool resend)
 {
 
 	check_integrity(self);
@@ -238,7 +256,7 @@ dlps_set_resend(struct dl_producer_stats *self, bool resend)
 }
 
 void
-dlps_set_resend_timeout(struct dl_producer_stats *self, int timeout)
+dlps_set_resend_timeout(struct dl_producer_stats const *self, const int timeout)
 {
 
 	check_integrity(self);
@@ -246,7 +264,7 @@ dlps_set_resend_timeout(struct dl_producer_stats *self, int timeout)
 }
 
 void
-dlps_set_tcp_connect(struct dl_producer_stats *self, bool status)
+dlps_set_tcp_connect(struct dl_producer_stats const *self, const bool status)
 {
 
 	check_integrity(self);
@@ -254,7 +272,7 @@ dlps_set_tcp_connect(struct dl_producer_stats *self, bool status)
 }
 
 void
-dlps_set_tls_connect(struct dl_producer_stats *self, bool status)
+dlps_set_tls_connect(struct dl_producer_stats const *self, const bool status)
 {
 
 	check_integrity(self);
@@ -262,7 +280,7 @@ dlps_set_tls_connect(struct dl_producer_stats *self, bool status)
 }
 
 void
-dlps_set_bytes_sent(struct dl_producer_stats *self, int32_t nbytes)
+dlps_set_bytes_sent(struct dl_producer_stats const *self, const int32_t nbytes)
 {
 
 	check_integrity(self);
@@ -270,14 +288,14 @@ dlps_set_bytes_sent(struct dl_producer_stats *self, int32_t nbytes)
 }
 
 void
-dlps_set_bytes_received(struct dl_producer_stats *self, int32_t nbytes)
+dlps_set_bytes_received(struct dl_producer_stats const *self, const int32_t nbytes)
 {
 
 	check_integrity(self);
 	atomic_add_64(&self->dlps_vals->dlps_bytes_received, nbytes);
 }
 void
-dlps_set_queue_capacity(struct dl_producer_stats *self, int capacity)
+dlps_set_queue_capacity(struct dl_producer_stats const *self, const int capacity)
 {
 
 	check_integrity(self);
@@ -285,7 +303,7 @@ dlps_set_queue_capacity(struct dl_producer_stats *self, int capacity)
 }
 
 void
-dlps_set_queue_requests(struct dl_producer_stats *self, int requests)
+dlps_set_queue_requests(struct dl_producer_stats const *self, const int requests)
 {
 
 	check_integrity(self);
@@ -293,7 +311,7 @@ dlps_set_queue_requests(struct dl_producer_stats *self, int requests)
 }
 
 void
-dlps_set_queue_unackd(struct dl_producer_stats *self, int unackd)
+dlps_set_queue_unackd(struct dl_producer_stats const *self, const int unackd)
 {
 
 	check_integrity(self);
@@ -301,7 +319,7 @@ dlps_set_queue_unackd(struct dl_producer_stats *self, int unackd)
 }
 
 int32_t
-dlps_get_rtt(struct dl_producer_stats *self)
+dlps_get_rtt(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -309,7 +327,7 @@ dlps_get_rtt(struct dl_producer_stats *self)
 }
 
 int32_t
-dlps_get_received_cid(struct dl_producer_stats *self)
+dlps_get_received_cid(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -317,7 +335,7 @@ dlps_get_received_cid(struct dl_producer_stats *self)
 }
 
 bool
-dlps_get_received_error(struct dl_producer_stats *self)
+dlps_get_received_error(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -325,7 +343,7 @@ dlps_get_received_error(struct dl_producer_stats *self)
 }
 
 time_t
-dlps_get_received_timestamp(struct dl_producer_stats *self)
+dlps_get_received_timestamp(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -333,7 +351,7 @@ dlps_get_received_timestamp(struct dl_producer_stats *self)
 }
 
 int32_t
-dlps_get_sent_cid(struct dl_producer_stats *self)
+dlps_get_sent_cid(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -341,7 +359,7 @@ dlps_get_sent_cid(struct dl_producer_stats *self)
 }
 
 bool
-dlps_get_sent_error(struct dl_producer_stats *self)
+dlps_get_sent_error(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -349,7 +367,7 @@ dlps_get_sent_error(struct dl_producer_stats *self)
 }
 
 time_t
-dlps_get_sent_timestamp(struct dl_producer_stats *self)
+dlps_get_sent_timestamp(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -357,7 +375,7 @@ dlps_get_sent_timestamp(struct dl_producer_stats *self)
 }
 
 int32_t
-dlps_get_state(struct dl_producer_stats *self)
+dlps_get_state(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -365,7 +383,7 @@ dlps_get_state(struct dl_producer_stats *self)
 }
 
 char *
-dlps_get_topic_name(struct dl_producer_stats *self)
+dlps_get_topic_name(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -373,7 +391,7 @@ dlps_get_topic_name(struct dl_producer_stats *self)
 }
 
 bool
-dlps_get_resend(struct dl_producer_stats *self)
+dlps_get_resend(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -381,7 +399,7 @@ dlps_get_resend(struct dl_producer_stats *self)
 }
 
 int
-dlps_get_resend_timeout(struct dl_producer_stats *self)
+dlps_get_resend_timeout(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -389,7 +407,7 @@ dlps_get_resend_timeout(struct dl_producer_stats *self)
 }
 
 bool
-dlps_get_tcp_connect(struct dl_producer_stats *self)
+dlps_get_tcp_connect(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -397,7 +415,7 @@ dlps_get_tcp_connect(struct dl_producer_stats *self)
 }
 
 bool
-dlps_get_tls_connect(struct dl_producer_stats *self)
+dlps_get_tls_connect(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -405,7 +423,7 @@ dlps_get_tls_connect(struct dl_producer_stats *self)
 }
 
 int32_t
-dlps_get_bytes_sent(struct dl_producer_stats *self)
+dlps_get_bytes_sent(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -413,7 +431,7 @@ dlps_get_bytes_sent(struct dl_producer_stats *self)
 }
 
 int32_t
-dlps_get_bytes_received(struct dl_producer_stats *self)
+dlps_get_bytes_received(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -421,7 +439,7 @@ dlps_get_bytes_received(struct dl_producer_stats *self)
 }
 
 int
-dlps_get_queue_capacity(struct dl_producer_stats *self)
+dlps_get_queue_capacity(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -429,7 +447,7 @@ dlps_get_queue_capacity(struct dl_producer_stats *self)
 }
 
 int
-dlps_get_queue_requests(struct dl_producer_stats *self)
+dlps_get_queue_requests(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
@@ -437,7 +455,7 @@ dlps_get_queue_requests(struct dl_producer_stats *self)
 }
 
 int
-dlps_get_queue_unackd(struct dl_producer_stats *self)
+dlps_get_queue_unackd(struct dl_producer_stats const * const self)
 {
 
 	check_integrity(self);
