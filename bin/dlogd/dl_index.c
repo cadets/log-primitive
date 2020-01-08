@@ -268,8 +268,8 @@ dl_index_idle(struct dl_index * const self)
 	self->dli_state = DLI_IDLE;
 
 	if (self->dli_debug_lvl > 0) {
-		DLOGTR2(PRIO_LOW, "Index state = %s (%d)\n",
-	    	    DLI_STATE_NAME[self->dli_state], self->dli_state);
+		DLOGTR2(PRIO_LOW, "Index state = %s\n",
+	    	    DLI_STATE_NAME[self->dli_state]);
 	}
 }
 
@@ -283,8 +283,8 @@ dl_index_updating(struct dl_index * const self)
 	self->dli_state = DLI_UPDATING;
 
 	if (self->dli_debug_lvl > 0) {
-		DLOGTR2(PRIO_LOW, "Index state = %s (%d)\n",
-	    	    DLI_STATE_NAME[self->dli_state], self->dli_state);
+		DLOGTR2(PRIO_LOW, "Index state = %s\n",
+	    	    DLI_STATE_NAME[self->dli_state]);
 	}
 
 	/* Start the thread to update the index. */ 
@@ -308,8 +308,8 @@ dl_index_final(struct dl_index * const self)
 	self->dli_state = DLI_FINAL;
 
 	if (self->dli_debug_lvl > 0) {
-		DLOGTR2(PRIO_LOW, "Index state = %s (%d)\n",
-	    	    DLI_STATE_NAME[self->dli_state], self->dli_state);
+		DLOGTR2(PRIO_LOW, "Index state = %s\n",
+	    	    DLI_STATE_NAME[self->dli_state]);
 	}
 }
 
