@@ -94,14 +94,15 @@ DLB_VARINT_SIZE_MAP[] = {
 static int dl_bbuf_extend(struct dl_bbuf *, int);
 static int dl_bbuf_extendsize(int);
 
+#ifdef INVARIANTS
 #ifdef _KERNEL
 static inline void
-dl_bbuf_assert_integrity(const char *func, struct dl_bbuf *self)
+_assert_intergrity(const char *func, struct dl_bbuf *self)
 #else
 static inline void
-dl_bbuf_assert_integrity(const char *func __attribute((unused)),
+_assert_intergrity(const char *func __attribute((unused)),
     struct dl_bbuf const * const self)
-#endif
+#endif /* _KERNEL */
 {
 
 	DL_ASSERT(self != NULL, ("%s called with NULL dl_buf instance", func)); 
@@ -111,6 +112,14 @@ dl_bbuf_assert_integrity(const char *func __attribute((unused)),
 	    ("wrote past the end of the dl_buf (%zu >= %zu)",
 	    self->dlb_pos, self->dlb_capacity)); 
 }
+
+#define assert_intergrity(self) _assert_intergrity(__func__, self)
+
+#else
+
+#define assert_intergrity(self) do {} while(0)
+
+#endif /* INVARIANTS */
 
 static int
 dl_bbuf_extendsize(int len)
@@ -137,7 +146,7 @@ dl_bbuf_extend(struct dl_bbuf *self, int addlen)
 	int newlen;
 	
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity(self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -147,16 +156,14 @@ dl_bbuf_extend(struct dl_bbuf *self, int addlen)
 	newbuf = (unsigned char *) dlog_alloc(newlen);
 #ifdef _KERNEL
 	DL_ASSERT(newbuf != NULL, ("Failed to reallocate dl_bbuf.\n"));
-	{
-#else
+#endif /* _KERNEL */
 	if (newbuf != NULL) {
-#endif
 		bcopy(self->dlb_data, newbuf, self->dlb_capacity);
 		dlog_free(self->dlb_data);
 		self->dlb_data = newbuf;
 		self->dlb_capacity = newlen;
 		self->dlb_limit = newlen;
-		dl_bbuf_assert_integrity(__func__, self);
+		assert_intergrity( self);
 		return 0;
 	}
 
@@ -169,7 +176,7 @@ void
 dl_bbuf_delete(struct dl_bbuf *self)
 {
 
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
         if ((self->dlb_flags & DL_BBUF_EXTERNBUF) == 0)
 		dlog_free(self->dlb_data);
 	dlog_free(self);
@@ -191,10 +198,8 @@ dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, size_t capacity, int flag
 	newbuf = (struct dl_bbuf *) dlog_alloc(sizeof(struct dl_bbuf));
 #ifdef _KERNEL
 	DL_ASSERT(newbuf != NULL, ("Failed to allocate dl_buf.\n"));
-	{
-#else
+#endif /* _KERNEL */
 	if (newbuf != NULL) {
-#endif
 		newbuf->dlb_flags = flags;
 		newbuf->dlb_capacity = capacity;
 		newbuf->dlb_limit = capacity;
@@ -207,13 +212,11 @@ dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, size_t capacity, int flag
 #ifdef _KERNEL
 			DL_ASSERT(newbuf->dlb_data != NULL,
 			    ("Failed to allocate dl_bbuf.\n"));
-			{
-#else
+#endif /* _KERNEL */
 			if (newbuf->dlb_data == NULL) {
 
 				dlog_free(newbuf);
 				goto err;
-#endif
 			}
 		} else {
 			newbuf->dlb_data = buf;
@@ -226,12 +229,10 @@ dl_bbuf_new(struct dl_bbuf **self, unsigned char *buf, size_t capacity, int flag
 		return 0;
 	}
 
-#ifndef _KERNEL
 err:	
 	DLOGTR0(PRIO_HIGH, "Failed to allocate dl_bbuf.\n");
 	*self = NULL;
 	return -1;
-#endif
 }
 
 int
@@ -246,7 +247,7 @@ int
 dl_bbuf_error(struct dl_bbuf *self)
 {
 
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	return self->dlb_error;
 }
 
@@ -256,7 +257,7 @@ dl_bbuf_bcat(struct dl_bbuf *self, unsigned char const * const source, size_t le
 	int add_len;
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -287,7 +288,7 @@ dl_bbuf_scat(struct dl_bbuf *self, struct sbuf *source)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	DL_ASSERT(source != NULL, ("Source sbuf cannot be NULL"));
 	if (self->dlb_error != 0) {
 
@@ -304,7 +305,7 @@ dl_bbuf_clear(struct dl_bbuf *self)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return;
@@ -318,8 +319,8 @@ dl_bbuf_concat(struct dl_bbuf *self, struct dl_bbuf *source)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
-	dl_bbuf_assert_integrity(__func__, source);
+	assert_intergrity( self);
+	assert_intergrity( source);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -349,7 +350,7 @@ dl_bbuf_data(struct dl_bbuf *self)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return NULL;
@@ -363,7 +364,7 @@ dl_bbuf_get_flags(struct dl_bbuf const *self)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -377,7 +378,7 @@ dl_bbuf_flip(struct dl_bbuf *self)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -393,7 +394,7 @@ dl_bbuf_len(struct dl_bbuf *self)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -407,7 +408,7 @@ dl_bbuf_pos(struct dl_bbuf *self)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -421,7 +422,7 @@ dl_bbuf_get_int8(struct dl_bbuf * const self, int8_t * const value)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -443,7 +444,7 @@ dl_bbuf_get_uint8(struct dl_bbuf * const self, uint8_t * const value)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -465,7 +466,7 @@ dl_bbuf_get_int16(struct dl_bbuf * const self, int16_t * const value)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -495,7 +496,7 @@ dl_bbuf_get_uint16(struct dl_bbuf * const self, uint16_t * const value)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -525,7 +526,7 @@ dl_bbuf_get_int32(struct dl_bbuf * const self, int32_t * const value)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -559,7 +560,7 @@ dl_bbuf_get_uint32(struct dl_bbuf * const self, uint32_t * const value)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -594,7 +595,7 @@ dl_bbuf_get_int64(struct dl_bbuf * const self, int64_t * const value)
 	uint32_t l, h;
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -643,7 +644,7 @@ dl_bbuf_get_uint64(struct dl_bbuf * const self, uint64_t * const value)
 	uint32_t l, h;
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -691,7 +692,7 @@ dl_bbuf_put_int8_at(struct dl_bbuf *self, int8_t value, size_t pos)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -719,7 +720,7 @@ dl_bbuf_put_int8(struct dl_bbuf *self, int8_t value)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -740,7 +741,7 @@ dl_bbuf_put_uint8_at(struct dl_bbuf *self, uint8_t value, size_t pos)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -768,7 +769,7 @@ dl_bbuf_put_uint8(struct dl_bbuf *self, uint8_t value)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -789,7 +790,7 @@ dl_bbuf_put_int16_at(struct dl_bbuf *self, int16_t value, size_t pos)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -824,7 +825,7 @@ dl_bbuf_put_int16(struct dl_bbuf *self, int16_t value)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -847,7 +848,7 @@ dl_bbuf_put_int16_as_varint(struct dl_bbuf *self, int16_t value)
 	int32_t zigzag_value = (value << 1) ^ (value >> 15);		
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -863,7 +864,7 @@ dl_bbuf_put_uint16_as_varint(struct dl_bbuf *self, uint16_t value)
 	uint8_t packed_value[3];
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -891,7 +892,7 @@ dl_bbuf_put_int32_at(struct dl_bbuf *self, int32_t value, size_t pos)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -930,7 +931,7 @@ dl_bbuf_put_int32(struct dl_bbuf *self, int32_t value)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -953,7 +954,7 @@ dl_bbuf_put_int32_as_varint(struct dl_bbuf *self, int32_t value)
 	int32_t zigzag_value = (value << 1) ^ (value >> 31);		
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -971,7 +972,7 @@ dl_bbuf_put_uint32_as_varint(struct dl_bbuf *self, uint32_t value)
 	uint8_t packed_value[5];
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -1005,7 +1006,7 @@ dl_bbuf_put_int64_at(struct dl_bbuf *self, int64_t value, size_t pos)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -1052,7 +1053,7 @@ dl_bbuf_put_int64(struct dl_bbuf *self, int64_t value)
 {
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -1075,7 +1076,7 @@ dl_bbuf_put_int64_as_varint(struct dl_bbuf *self, int64_t value)
 	int32_t zigzag_value = (value << 1) ^ (value >> 63);		
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
@@ -1093,7 +1094,7 @@ dl_bbuf_put_uint64_as_varint(struct dl_bbuf *self, uint64_t value)
 	uint8_t packed_value[5];
 
 	/* Verify the method's preconditions. */
-	dl_bbuf_assert_integrity(__func__, self);
+	assert_intergrity( self);
 	if (self->dlb_error != 0) {
 
 		return -1;
